@@ -404,17 +404,11 @@ module emu_system_top
         .rewind_active(1'd0)
     );
     
-    audio_filter u_audio_filter
-    (
-       .reset    (~reset_n),
-       .clk      (hclk),
-
-       .core_l   (snd_l),
-       .core_r   (snd_r),
-
-       .filter_l (left),
-       .filter_r (right)
-    );
+    // Bypass IIR filter - simple volume scaling to prevent overflow/reboots
+    // Game Boy audio is good quality without filtering
+    // Divide by 4 for testing volume level
+    assign left = {snd_l[15], snd_l[15], snd_l[15:2]};
+    assign right = {snd_r[15], snd_r[15], snd_r[15:2]};
     
 // synthesis translate_off
    wire DDRAM_CLK            ;

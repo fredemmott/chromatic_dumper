@@ -15,7 +15,9 @@ git submodule update --init --recursive
 
 ### Gowin Development Environment
 
-**The Gowin FPGA Designer v1.9.9.03 must be used.** Using Gowin IDE v1.9.10.X or newer is currently not supported by this build.
+**Gowin FPGA Designer v1.9.9.03 or v1.9.12+ is supported.**
+
+If using v1.9.12+, the project file includes the required dual-purpose GPIO device options (use_sspi_as_gpio, use_i2c_as_gpio, use_cpu_as_gpio, use_mspi_as_gpio) in the `.gprj` file.
 
 You will also need to apply for a local license with Gowin through their website:
 https://www.gowinsemi.com/en/support/license

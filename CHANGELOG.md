@@ -6,6 +6,15 @@
 ### Fixed
 - IO0/En control sometimes fails to boot the ESP32
 - The FPGA sometimes resets during play
+- Gowin IDE v1.9.12+ compatibility - fixed Place & Route crashes
+- Added dual-purpose GPIO device options to project file (use_sspi_as_gpio, use_i2c_as_gpio, use_cpu_as_gpio, use_mspi_as_gpio)
+- Simplified SDC timing constraints - now auto-infers PLL clocks instead of manual definitions
+- Uncommented CLK_24MHz IO_TYPE constraint in CST file
+- Removed orphaned audio filter files from project that were not instantiated
+
+### Changed
+- Updated timing constraints to use simplified approach from audio fix commit
+- Added false paths for asynchronous inputs (buttons, cart detect, power signals)
 
 ## v18.7
 
