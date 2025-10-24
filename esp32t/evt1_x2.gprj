@@ -4,6 +4,22 @@
     <Template>FPGA</Template>
     <Version>5</Version>
     <Device name="GW5A-25A" pn="GW5A-EV25UG256CC1/I0">gw5a25a-013</Device>
+    <Options>
+        <Option name="synthesis_tool" value="gowinsynthesis"/>
+        <Option name="top_module" value="top"/>
+        <Option name="verilog_std" value="sysv2017"/>
+        <Option name="vhdl_std" value="vhd2008"/>
+        <Option name="rw_check_on_ram" value="1"/>
+        <Option name="use_sspi_as_gpio" value="1"/>
+        <Option name="power_on_reset_monitor" value="1"/>
+        <Option name="use_i2c_as_gpio" value="1"/>
+        <Option name="use_cpu_as_gpio" value="1"/>
+        <Option name="multi_boot" value="0"/>
+        <Option name="bit_format" value="bin"/>
+        <Option name="bg_programming" value="jtag_sspi_qsspi"/>
+        <Option name="output_base_name" value="evt1_x2_v07"/>
+        <Option name="use_mspi_as_gpio" value="1"/>
+    </Options>
     <FileList>
         <File path="src/Gameboy_MiSTer/rtl/hdma.v" type="file.verilog" enable="1"/>
         <File path="src/Gameboy_MiSTer/rtl/timer.v" type="file.verilog" enable="1"/>
@@ -40,10 +56,8 @@
         <File path="src/rtl/EMU/CORE/sprites.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/EMU/CORE/video.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/EMU/CORE/videoBypass.v" type="file.verilog" enable="1"/>
-        <File path="src/rtl/EMU/audio_filter.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/EMU/cart.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/EMU/emu_system_top.v" type="file.verilog" enable="1"/>
-        <File path="src/rtl/EMU/iir_filter.sv" type="file.verilog" enable="1"/>
         <File path="src/rtl/USB/USBUVCUART/Gowin_PLL_UVC/Gowin_PLL_UVC.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/USB/USBUVCUART/color_space_convertor/color_space_convertor.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/USB/USBUVCUART/fifo_video/fifo_video.v" type="file.verilog" enable="1"/>
