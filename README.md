@@ -1,3 +1,27 @@
+# Chromatic Dumper
+
+This is a fork of the Chromatic FPGA repro, implementing the FlashGBX protocol; it requires a modified version of FlashGBX to recognize the device.
+
+Working:
+- Dumping ROMs and saves from ModRetro cartridges
+- Dumping ROMs from original GB cartridges
+
+Not working:
+- MBC3000 v4 Flash cartridge
+
+Not tested:
+- Everything else
+
+This was originally produced by Claude based on the upstream FPGA source and a description of the FlashGBX protocol, with significant human debugging.
+
+## How to use
+
+Not ready for general use; developers only for now. Don't ask me for help, none's available.
+
+You need the GoWin EDA (the educational version is *not* sufficient) and an unreleased fork of FlashGBX.
+
+---
+
 # Chromatic FPGA
 This repository houses the ModRetro Chromatic's FPGA design files.
 
