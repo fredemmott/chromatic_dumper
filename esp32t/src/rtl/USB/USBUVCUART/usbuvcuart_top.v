@@ -21,11 +21,18 @@ module usbuvcuart_top(
 
     input   [7:0]       playerNum,
 
+    // Legacy UART serial ports (kept for top-level compatibility, unused)
     output              UART_TXD   ,
     input               UART_RXD   ,
-    output              E_UART_DTR   , // when UART_RTS = 0, UART This Device Ready to receive.
-    output              E_UART_RTS   , // when UART_RTS = 0, UART This Device Ready to receive.
-    input               UART_CTS   , // when UART_CTS = 0, UART Opposite Device Ready to receive.
+    output              E_UART_DTR   , // CDC DTR → ESP32_EN
+    output              E_UART_RTS   , // CDC RTS → ESP32_IO0
+    input               UART_CTS   ,
+
+    // Parallel byte interface for EP3 (CDC serial data, cart reader)
+    output              ep3_rx_valid,   // byte received from USB host
+    output  [7:0]       ep3_rx_data,    // byte from USB host
+    input               ep3_tx_valid,   // byte ready to send to USB host
+    input   [7:0]       ep3_tx_data,    // byte to send to USB host
 
     input [15:0]        left,
     input [15:0]        right,
@@ -952,40 +959,13 @@ module usbuvcuart_top(
     };
 
     //==============================================================
-    //======UART
-    wire [15:0] uart_tx_data    ;
-    wire        uart_tx_data_val;
-    wire        uart_tx_busy    ;
-    wire [15:0] uart_rx_data    ;
-    wire        uart_rx_data_val;
+    //======UART (serial pins kept idle; EP3 data goes directly to parallel ports)
+    assign UART_TXD = 1'b1; // idle high
 
-
-    wire uart_cts = 1'b0;
-    wire        ep3_rx_dval;
-    wire [7:0]  ep3_rx_data;
-
-    assign uart_tx_data     = {8'd0,ep3_rx_data};
-    assign uart_tx_data_val = ep3_rx_dval;
-    UART  #(
-        .CLK_FREQ     (30'd60000000)  // set system clock frequency in Hz
-    )u_UART
-    (
-         .CLK        (pClk                )// clock
-        ,.RST        (usb_busreset | RESET_IN)// reset
-        ,.UART_TXD   (UART_TXD            )//output
-        ,.UART_RXD   (UART_RXD            )//input
-        ,.UART_RTS   (                    )// when UART_RTS = 0, UART This Device Ready to receive.
-        ,.UART_CTS   (1'd0                )// when UART_CTS = 0, UART Opposite Device Ready to receive.
-        ,.BAUD_RATE  (uart_dte_rate       )
-        ,.PARITY_BIT (uart_parity_type    )
-        ,.STOP_BIT   (uart_char_format    )
-        ,.DATA_BITS  (uart_data_bits      )
-        ,.TX_DATA    (uart_tx_data        ) //
-        ,.TX_DATA_VAL(uart_tx_data_val    ) // when TX_DATA_VAL = 1, data on TX_DATA will be transmit, DATA_SEND can set to 1 only when BUSY = 0
-        ,.TX_BUSY    (uart_tx_busy        ) // when BUSY = 1 transiever is busy, you must not set DATA_SEND to 1
-        ,.RX_DATA    (uart_rx_data        ) //
-        ,.RX_DATA_VAL(uart_rx_data_val    ) //
-    );
+    wire ep3_rx_dval_w;
+    wire [7:0] ep3_rx_data_w;
+    assign ep3_rx_valid = ep3_rx_dval_w;
+    assign ep3_rx_data  = ep3_rx_data_w;
 
     //==============================================================
     //======FIFO
@@ -1006,15 +986,15 @@ module usbuvcuart_top(
         ,.o_usb_txcork  (uart_txcork)
         ,.o_usb_txlen   (uart_txdat_len )
         ,.o_usb_txdat   (uart_txdat )
-        //Endpoint 3
-        ,.i_ep3_tx_clk  (pClk             )
-        ,.i_ep3_tx_max  (12'd64           )
-        ,.i_ep3_tx_dval (uart_rx_data_val )
-        ,.i_ep3_tx_data (uart_rx_data[7:0])
-        ,.i_ep3_rx_clk  (pClk             )
-        ,.i_ep3_rx_rdy  (!uart_tx_busy    )
-        ,.o_ep3_rx_dval (ep3_rx_dval      )
-        ,.o_ep3_rx_data (ep3_rx_data      )
+        //Endpoint 3: parallel byte interface for cart reader
+        ,.i_ep3_tx_clk  (pClk          )
+        ,.i_ep3_tx_max  (12'd64        )
+        ,.i_ep3_tx_dval (ep3_tx_valid  )  // byte from cart reader → USB host
+        ,.i_ep3_tx_data (ep3_tx_data   )
+        ,.i_ep3_rx_clk  (pClk          )
+        ,.i_ep3_rx_rdy  (1'b1          )  // always ready to receive from host
+        ,.o_ep3_rx_dval (ep3_rx_dval_w )  // byte from USB host → cart reader
+        ,.o_ep3_rx_data (ep3_rx_data_w )
     );
 
     assign    E_UART_DTR = s_ctl_sig[0];

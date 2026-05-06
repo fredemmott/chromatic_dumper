@@ -41,6 +41,7 @@
         <File path="src/rtl/EMU/CORE/video.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/EMU/CORE/videoBypass.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/EMU/audio_filter.v" type="file.verilog" enable="1"/>
+        <File path="src/rtl/cart_reader.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/EMU/cart.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/EMU/emu_system_top.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/EMU/iir_filter.sv" type="file.verilog" enable="1"/>

@@ -440,64 +440,65 @@ module top #(parameter ISSIMU=0)
     wire gbc_mode;
     wire [63:0] gpd;
 
-    emu_system_top u_emu_system_top(
-        .hclk(hClk),
-        .pclk(pClk),
-        .reset_n(~memrst),//lock_o),
-        .POWER_GOOD(~POWER_ON_FPGA),
+    // ── Cart reader ─────────────────────────────────────────────────────
+    // Signals from usbuvcuart_top EP3 parallel byte interface
+    wire        ep3_rx_valid_w;
+    wire [7:0]  ep3_rx_data_w;
+    wire        ep3_tx_valid_w;
+    wire [7:0]  ep3_tx_data_w;
 
-        .customPaletteEna(paletteBGIn[63]),
-        .paletteOff(system_control[12]),
-        .paletteBGIn(paletteBGIn),
-        .paletteOBJ0In(paletteOBJ0In),
-        .paletteOBJ1In(paletteOBJ1In),
-        .gbc_mode(gbc_mode),
-        .gpd(gpd),
+    // Cart reader output wires
+    wire [15:0] cart_a_w;
+    wire        cart_clk_w, cart_cs_w, cart_rd_w, cart_wr_w;
+    wire        cart_rst_w, cart_data_dir_e_w;
+    wire [7:0]  cart_d_out_w;
 
-        .BTN_NODIAGONAL(system_control[11]),
-        .BTN_A(BTN_A_filtered | MCU_buttons[3]),
-        .BTN_B(BTN_B_filtered | MCU_buttons[2]),
-        .BTN_DPAD_DOWN(BTN_DPAD_DOWN_filtered | MCU_buttons[7]),
-        .BTN_DPAD_LEFT(BTN_DPAD_LEFT_filtered | MCU_buttons[6]),
-        .BTN_DPAD_RIGHT(BTN_DPAD_RIGHT_filtered | MCU_buttons[5]),
-        .BTN_DPAD_UP(BTN_DPAD_UP_filtered | MCU_buttons[4]),
-        .BTN_MENU(~BTN_MENU_ored),
-        .BTN_SEL(BTN_SEL_filtered | MCU_buttons[1]),
-        .BTN_START(BTN_START_filtered | MCU_buttons[0]),
-        .MENU_CLOSED(menuDisabled & ~slideOutActive),
+    // Drive cartridge bus outputs
+    assign CART_A          = cart_a_w;
+    assign CART_CLK        = cart_clk_w;
+    assign CART_CS         = cart_cs_w;
+    assign CART_RD         = cart_rd_w;
+    assign CART_WR         = cart_wr_w;
+    assign CART_RST        = cart_rst_w;
+    assign CART_DATA_DIR_E = ~cart_data_dir_e_w;
+    assign CART_D          = cart_data_dir_e_w ? cart_d_out_w : 8'hZZ;
 
-        .CART_A(CART_A),
-        .CART_CLK(CART_CLK),
-        .CART_CS(CART_CS),
-        .CART_D(CART_D),
-        .CART_RD(CART_RD),
-        .CART_RST(CART_RST),
-        .CART_WR(CART_WR),
-        .CART_DATA_DIR_E(CART_DATA_DIR_E),
-
-        .IR_RX(IR_RX),
-        .IR_LED(IR_LED),
-
-        .LINK_CLK(LINK_CLK),
-        .LINK_IN(LINK_IN),
-        .LINK_OUT(LINK_OUT),
-
-        .lcd_on_int(lcd_on_int),
-        .lcd_off_overwrite(lcd_off_overwrite),
-
-        .boot_rom_enabled(boot_rom_enabled),
-
-        // audio
-        .left(left),
-        .right(right),
-        // video
-        .LCD_INIT_DONE(LCD_INIT_DONE),
-        .gb_lcd_clkena(gb_lcd_clkena),
-        .gb_lcd_mode(gb_lcd_mode),
-        .gb_lcd_on(gb_lcd_on),
-        .gb_lcd_vsync(gb_lcd_vsync),
-        .gb_lcd_data(gb_lcd_data)
+    cart_reader #(.CLK_FREQ(60_000_000))
+    u_cart_reader(
+        .clk            (PHY_CLKOUT),
+        .reset          (~usblocked),
+        .rx_valid       (ep3_rx_valid_w),
+        .rx_data        (ep3_rx_data_w),
+        .tx_valid       (ep3_tx_valid_w),
+        .tx_data        (ep3_tx_data_w),
+        .cart_a         (cart_a_w),
+        .cart_clk       (cart_clk_w),
+        .cart_cs        (cart_cs_w),
+        .cart_rd        (cart_rd_w),
+        .cart_wr        (cart_wr_w),
+        .cart_rst       (cart_rst_w),
+        .cart_data_dir_e(cart_data_dir_e_w),
+        .cart_d_out     (cart_d_out_w),
+        .cart_d_in      (CART_D),
+        .cart_det       (CART_DET)
     );
+
+    // Signals previously driven by emu_system_top — stub to safe defaults
+    assign left              = 16'd0;
+    assign right             = 16'd0;
+    assign gb_lcd_clkena     = 1'b0;
+    assign gb_lcd_data       = 15'd0;
+    assign gb_lcd_mode       = 2'd0;
+    assign gb_lcd_on         = 1'b0;
+    assign gb_lcd_vsync      = 1'b0;
+    assign boot_rom_enabled  = 1'b0;
+    assign lcd_on_int        = 1'b0;
+    assign lcd_off_overwrite = 1'b0;
+    assign gbc_mode          = 1'b0;
+    assign gpd               = 64'd0;
+    assign IR_LED            = 1'b0;
+    assign LINK_OUT          = 1'b0;
+    assign LINK_SD           = 1'b0;
 
     reg UART_TXD;
     wire UART_RXD;
@@ -622,13 +623,19 @@ module top #(parameter ISSIMU=0)
         .usblocked(usblocked),
         .hClk(gClk),
 
-        .UART_TXD(UART_RXD), // output
-        .UART_RXD(UART_TXD), // input
+        .UART_TXD(UART_RXD), // output (idle — UART bypassed)
+        .UART_RXD(UART_TXD), // input  (unused — UART bypassed)
         .E_UART_DTR(UART_DTR), // used for ESP32_EN
         .E_UART_RTS(UART_RTS), // used for ESP32_IO0 (bootloader select)
 
-        .left(left),
-        .right(right),
+        // EP3 parallel byte interface (connected to cart_reader)
+        .ep3_rx_valid(ep3_rx_valid_w),
+        .ep3_rx_data (ep3_rx_data_w),
+        .ep3_tx_valid(ep3_tx_valid_w),
+        .ep3_tx_data (ep3_tx_data_w),
+
+        .left(16'd0),
+        .right(16'd0),
 
         .hLineValid(hr1),
         .hEnable(he1),
