@@ -121,8 +121,8 @@ reg [7:0]  var8  [0:17];  // CART_MODE … DMG_AUDIO_ENABLED
 `define XFER_SIZE     var16[VAR16_XFER_SIZE]
 `define CART_MODE_V   var8[VAR8_CART_MODE]
 `define ACCESS_MODE   var8[VAR8_ACCESS_MODE]
-`define DMG_READ_CS_PULSE   var8[VAR8_DMG_READ_CS_PULSE]
-`define DMG_WRITE_CS_PULSE  var8[VAR8_DMG_WRITE_CS_PULSE]
+`define DMG_READ_CS_PULSE   var8[VAR8_DMG_READ_CS_PULSE][0]
+`define DMG_WRITE_CS_PULSE  var8[VAR8_DMG_WRITE_CS_PULSE][0]
 
 
 // ============================================================
@@ -480,11 +480,12 @@ always @(posedge clk or posedge reset) begin
             if (cart_wait_cnt != 0) begin
                 cart_wait_cnt <= cart_wait_cnt - 5'd1;
             end else begin
-                cart_cs <= 1'b0;
                 if (cart_write_r) begin
+                    if (`DMG_WRITE_CS_PULSE) cart_cs <= 1'b0;
                     cart_wait_cnt <= CART_WR_HOLD[4:0] - 5'd1;
                     cart_state    <= C_WR_LOW;
                 end else begin
+                    if (`DMG_READ_CS_PULSE) cart_cs <= 1'b0;
                     cart_rd       <= 1'b0;
                     cart_wait_cnt <= CART_RD_HOLD[4:0] - 5'd1;
                     cart_state    <= C_WAIT;
