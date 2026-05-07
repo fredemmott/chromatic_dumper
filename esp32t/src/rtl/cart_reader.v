@@ -73,7 +73,8 @@ module cart_reader #(
     output reg         cart_data_dir_e,   // 1 = FPGA drives CART_D
     output reg  [7:0]  cart_d_out,        // data to write
     input  wire [7:0]  cart_d_in,         // data read from cart
-    input  wire        cart_det           // 0 = no cart (active-low)
+    input  wire        cart_det,          // 0 = no cart (active-low)
+    output reg         cart_pullups_enabled
 );
 
 // ============================================================
@@ -452,6 +453,7 @@ always @(posedge clk or posedge reset) begin
         cart_d_out      <= 8'hFF;
         cart_done       <= 1'b0;
         flash_ret       <= 8'h01;
+        cart_pullups_enabled <= 1'b0;
         for (i=0; i<2;  i=i+1) var32[i] <= 32'd0;
         for (i=0; i<7;  i=i+1) var16[i] <= 16'd0;
         for (i=0; i<18; i=i+1) var8[i]  <= 8'd0;
@@ -627,8 +629,6 @@ always @(posedge clk or posedge reset) begin
                 8'hA5, // SET_VOLTAGE_5V
                 8'hA7, // SET_FLASH_CMD (not used)
                 8'hA8, // SET_ADDR_AS_INPUTS
-                8'hAB, // ENABLE_PULLUPS
-                8'hAC, // DISABLE_PULLUPS
                 8'hC9, // AGB_BOOTUP_SEQUENCE
                 8'hD5, // CALC_CRC32 (stub)
                 8'hF1, // BOOTLOADER_RESET
@@ -645,6 +645,16 @@ always @(posedge clk or posedge reset) begin
                     cart_write_r    <= 1'b1;
                     cart_state      <= C_SETUP;
                     pstate          <= P_CART_WR_DO;
+                end
+
+                8'hAB: begin // ENABLE_PULLUPS
+                    cart_pullups_enabled <= 1'b1;
+                    pstate <= P_TX_ACK;
+                end
+
+                8'hAC: begin // DISABLE_PULLUPS
+                    cart_pullups_enabled <= 1'b0;
+                    pstate <= P_TX_ACK;
                 end
 
                 8'hF4: begin // QUERY_CART_PWR → respond 0x01 (always on)

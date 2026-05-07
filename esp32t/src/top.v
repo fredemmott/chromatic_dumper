@@ -452,6 +452,7 @@ module top #(parameter ISSIMU=0)
     wire        cart_clk_w, cart_cs_w, cart_rd_w, cart_wr_w;
     wire        cart_rst_w, cart_data_dir_e_w;
     wire [7:0]  cart_d_out_w;
+    wire cart_pullups_enabled_w;
 
     // Drive cartridge bus outputs
     assign CART_A          = cart_a_w;
@@ -461,7 +462,7 @@ module top #(parameter ISSIMU=0)
     assign CART_WR         = cart_wr_w;
     assign CART_RST        = cart_rst_w;
     assign CART_DATA_DIR_E = ~cart_data_dir_e_w;
-    assign CART_D          = cart_data_dir_e_w ? cart_d_out_w : 8'hZZ;
+    assign CART_D          = cart_data_dir_e_w ? cart_d_out_w : (cart_pullups_enabled_w ? 8'hFF : 8'hZZ);
 
     cart_reader #(.CLK_FREQ(60_000_000))
     u_cart_reader(
@@ -480,7 +481,8 @@ module top #(parameter ISSIMU=0)
         .cart_data_dir_e(cart_data_dir_e_w),
         .cart_d_out     (cart_d_out_w),
         .cart_d_in      (CART_D),
-        .cart_det       (CART_DET)
+        .cart_det       (CART_DET),
+        .cart_pullups_enabled (cart_pullups_enabled_w)
     );
 
     // Signals previously driven by emu_system_top — stub to safe defaults
