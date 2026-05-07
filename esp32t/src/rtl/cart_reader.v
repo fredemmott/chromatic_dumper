@@ -32,12 +32,6 @@
 //   0xF4 (QUERY_CART_PWR) → respond 0x01 (cart always on)
 //   0xF5 (SET_PIN)        → recv 5 bytes, ACK 0x01
 //
-// Cartridge read/write interface is direct (no emulator).
-// Reads use a single 16 KB page cache (BRAM). Cache is invalidated on any write.
-// Linear read-ahead: on cache miss, the entire 16 KB page is prefetched before
-// responding.  A second read to the same page hits the cache instantly.
-//
-// SRAM (address >= 0xA000): no caching, direct access every time.
 //
 // pClk is ~60 MHz (USB PHY clock from Gowin_PLL_UVC).
 // Cart timing: 16-cycle CS/RD assertion (~267 ns) + 16-cycle wait → safe for 5V GB.
@@ -208,10 +202,6 @@ reg        cart_write_r;  // 1=write, 0=read
 reg [7:0]  cart_din_r;    // latched read result
 reg        cart_done;     // pulses for one cycle when cart access complete
 reg [4:0]  cart_wait_cnt;
-
-// Prefetch / cache fill counters
-reg [13:0] pf_offset;     // current offset within 16 KB page (0..16383)
-reg [15:0] pf_base;       // base address of page being fetched
 
 // Transfer counters
 reg [15:0] xfer_remain;   // bytes remaining in current transfer
