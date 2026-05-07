@@ -215,8 +215,6 @@ reg [7:0]  fcmd_num;      // number of entries remaining
 reg [5:0]  fcmd_par_cnt;  // bytes in current entry remaining (6 each: addr32+val16)
 reg [5:0]  fcmd_par_idx;
 reg [7:0]  fcmd_par [0:5];
-reg [15:0] fcmd_addr;
-reg [7:0]  fcmd_val;
 
 // CLK_TOGGLE counter
 reg [31:0] clk_tog_cnt;
