@@ -67,6 +67,7 @@ module cart_reader #(
     output reg         cart_data_dir_e,   // 1 = FPGA drives CART_D
     output reg  [7:0]  cart_d_out,        // data to write
     input  wire [7:0]  cart_d_in,         // data read from cart
+    output reg         cart_audio,
     input  wire        cart_det,          // 0 = no cart (active-low)
     output reg         cart_pullups_enabled
 );
@@ -117,7 +118,13 @@ reg [7:0]  var8  [0:17];  // CART_MODE … DMG_AUDIO_ENABLED
 `define ACCESS_MODE   var8[VAR8_ACCESS_MODE]
 `define DMG_READ_CS_PULSE   var8[VAR8_DMG_READ_CS_PULSE][0]
 `define DMG_WRITE_CS_PULSE  var8[VAR8_DMG_WRITE_CS_PULSE][0]
+`define FLASH_WE_PIN var8[VAR8_FLASH_WEPIN][1:0]
 
+localparam CART_WRITE_PULSE_PINS_NONE = 2'd0;
+localparam CART_WRITE_PULSE_PINS_WR = 2'd1;
+localparam CART_WRITE_PULSE_PINS_AUDIO = 2'd2;
+localparam CART_WRITE_PULSE_PINS_DEFAULT = 2'd3;
+reg [2:0] cart_write_pulse_pins = CART_WRITE_PULSE_PINS_DEFAULT;
 
 // ============================================================
 // Protocol states
@@ -232,6 +239,7 @@ reg [2:0]  setpin_cnt;
 // ============================================================
 integer k;
 initial begin
+    cart_audio = 1'b0;
     // FW info buffer
     // size=8
     fwi_buf[0]  = 8'd8;
@@ -464,8 +472,13 @@ always @(posedge clk or posedge reset) begin
         end
 
         C_WR_LOW: begin
-            cart_wr  <= 1'b0;
-            cart_cs  <= 1'b0;
+            case (cart_write_pulse_pins)
+              CART_WRITE_PULSE_PINS_DEFAULT, CART_WRITE_PULSE_PINS_WR: cart_wr <= 1'b0;
+              CART_WRITE_PULSE_PINS_AUDIO: cart_audio <= 1'b0;
+              CART_WRITE_PULSE_PINS_NONE: begin
+              end
+            endcase
+ 
             cart_clk <= 1'b0; // Drop clock with WR
             if (cart_wait_cnt != 0) begin
                 cart_wait_cnt <= cart_wait_cnt - 5'd1;
@@ -481,7 +494,12 @@ always @(posedge clk or posedge reset) begin
             if (cart_wait_cnt != 0) begin
                 cart_wait_cnt <= cart_wait_cnt - 5'd1;
             end else begin
-                cart_wr       <= 1'b1; // De-assert WR
+                case (cart_write_pulse_pins)
+                  CART_WRITE_PULSE_PINS_DEFAULT, CART_WRITE_PULSE_PINS_WR: cart_wr <= 1'b1;
+                  CART_WRITE_PULSE_PINS_AUDIO: cart_audio <= 1'b1;
+                  CART_WRITE_PULSE_PINS_NONE: begin
+                  end
+                endcase
                 cart_cs       <= 1'b1; // De-assert CS
                 cart_wait_cnt <= CART_WR_HOLD[4:0] - 5'd1; 
                 cart_state    <= C_WR_HIGH;
@@ -942,6 +960,7 @@ always @(posedge clk or posedge reset) begin
 
         P_CART_WR_DO: begin
             if (cart_done) begin
+                cart_write_pulse_pins <= CART_WRITE_PULSE_PINS_DEFAULT;
                 pstate <= P_TX_ACK;
             end
         end
@@ -1000,6 +1019,7 @@ always @(posedge clk or posedge reset) begin
             if (rx_valid) begin
                 par[par_idx] <= rx_data;
                 if (par_cnt == 4'd1) begin
+                    cart_write_pulse_pins = `FLASH_WE_PIN;
                     cart_a          <= {par[2], par[3]};
                     cart_d_out      <= rx_data;
                     cart_data_dir_e <= 1'b1;
@@ -1026,6 +1046,7 @@ always @(posedge clk or posedge reset) begin
                     if (rx_data == 8'd0) begin
                         pstate <= P_TX_ACK;   // no entries
                     end else begin
+                        cart_write_pulse_pins = `FLASH_WE_PIN;
                         pstate <= P_FLASH_CMD_E;
                     end
                 end else begin
@@ -1041,10 +1062,13 @@ always @(posedge clk or posedge reset) begin
                 fcmd_par[fcmd_par_idx[2:0]] <= rx_data;
                 if (fcmd_par_cnt == 6'd1) begin
                     // Entry complete
-                    fcmd_addr <= {fcmd_par[2], fcmd_par[3]};  // lower 16 bits
-                    fcmd_val  <= fcmd_par[4];                  // lower 8 bits used
+                    // DMG only has 16-bit addresses
                     cart_a          <= {fcmd_par[2], fcmd_par[3]};
-                    cart_d_out      <= fcmd_par[4];
+                    // fcmd_par[4]: MSB
+                    // fcmd_par[5]: LSB, on next cycle
+                    // Ignore MSB: it is unused for DMG, only for AGB
+                    // rx_data also contains the LSB, and is available this cycle
+                    cart_d_out      <= rx_data;
                     cart_data_dir_e <= 1'b1;
                     cart_write_r    <= 1'b1;
                     cart_state      <= C_SETUP;
@@ -1060,6 +1084,7 @@ always @(posedge clk or posedge reset) begin
             if (cart_done) begin
                 fcmd_num <= fcmd_num - 8'd1;
                 if (fcmd_num == 8'd1) begin
+                    cart_write_pulse_pins = CART_WRITE_PULSE_PINS_DEFAULT;
                     pstate <= P_TX_ACK;
                 end else begin
                     fcmd_par_cnt <= 6'd6;
