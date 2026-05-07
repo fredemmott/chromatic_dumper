@@ -629,23 +629,22 @@ always @(posedge clk or posedge reset) begin
                 8'hA8, // SET_ADDR_AS_INPUTS
                 8'hAB, // ENABLE_PULLUPS
                 8'hAC, // DISABLE_PULLUPS
-                8'hB4, // DMG_MBC_RESET
                 8'hC9, // AGB_BOOTUP_SEQUENCE
                 8'hD5, // CALC_CRC32 (stub)
                 8'hF1, // BOOTLOADER_RESET
                 8'hF2, // CART_PWR_ON
                 8'hF3: // CART_PWR_OFF
                 begin
-                    // DMG_MBC_RESET: write 0x00 to address 0 (cart reset)
-                    if (rx_data == 8'hB4) begin
-                        cart_a          <= 16'h0000;
-                        cart_d_out      <= 8'h00;
-                        cart_data_dir_e <= 1'b1;
-                        cart_write_r    <= 1'b1;
-                        cart_state      <= C_SETUP;
-                        // ACK will be sent after write completes (see P_TX_ACK)
-                    end
                     pstate <= P_TX_ACK;
+                end
+
+                8'hB4: begin // DMG_MBC_RESET
+                    cart_a          <= 16'h0000;
+                    cart_d_out      <= 8'h00;
+                    cart_data_dir_e <= 1'b1;
+                    cart_write_r    <= 1'b1;
+                    cart_state      <= C_SETUP;
+                    pstate          <= P_CART_WR_DO;
                 end
 
                 8'hF4: begin // QUERY_CART_PWR → respond 0x01 (always on)
