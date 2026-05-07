@@ -230,7 +230,6 @@ reg [7:0]  fcmd_val;
 
 // CLK_TOGGLE counter
 reg [31:0] clk_tog_cnt;
-reg [2:0] clk_tog_div;
 
 // GET_VAR_STATE / SET_VAR_STATE index
 reg [6:0]  vstate_idx;
@@ -417,7 +416,6 @@ always @(posedge clk or posedge reset) begin
         tx_data         <= 8'd0;
         cart_a          <= 16'hFFFF;
         cart_clk        <= 1'b1;
-        clk_tog_div     <= 3'b0;
         cart_cs         <= 1'b1;
         cart_rd         <= 1'b1;
         cart_wr         <= 1'b1;
