@@ -189,10 +189,10 @@ reg [5:0]  resp_len;
 reg [5:0]  resp_pos;
 
 // ID string (sent after 0x55 0xAA)
-// "\x00Chromatic FPGA FW L v1\0"  – no "Joey", contains "FW L"
-localparam ID_LEN = 25;
-reg [7:0]  id_str [0:ID_LEN-1];
-reg [4:0]  id_pos;
+// Adjust for release builds
+localparam ID_STR = {"\0", "Chromatic FPGA FW L vYYYY.MM.DD.NN", "\r", "\0" };
+localparam ID_LEN = $bits(ID_STR) / 8;
+reg [5:0]  id_pos;
 
 // FW info bytes (sent after QUERY_FW_INFO 0xA1)
 // Format: size(1)=0x08, then 8 bytes: cfw_id='L'(1), fw_ver=12(2BE), pcb_ver=0x42(1), fw_ts(4BE)
@@ -245,33 +245,6 @@ reg [2:0]  setpin_cnt;
 // ============================================================
 integer k;
 initial begin
-    // "\x00Chromatic FPGA FW L v1\x00"  (25 bytes)
-    id_str[0]  = 8'h00; // first byte 0 → host will send 'LK' to enable
-    id_str[1]  = "C";
-    id_str[2]  = "h";
-    id_str[3]  = "r";
-    id_str[4]  = "o";
-    id_str[5]  = "m";
-    id_str[6]  = "a";
-    id_str[7]  = "t";
-    id_str[8]  = "i";
-    id_str[9]  = "c";
-    id_str[10] = " ";
-    id_str[11] = "F";
-    id_str[12] = "P";
-    id_str[13] = "G";
-    id_str[14] = "A";
-    id_str[15] = " ";
-    id_str[16] = "F";
-    id_str[17] = "W";
-    id_str[18] = " ";
-    id_str[19] = "L";   // ← "FW L" token required by LK_Device
-    id_str[20] = " ";
-    id_str[21] = "v";
-    id_str[22] = "1";
-    id_str[23] = 8'h0D;
-    id_str[24] = 8'h00;
-
     // FW info buffer
     // size=8
     fwi_buf[0]  = 8'd8;
@@ -559,7 +532,7 @@ always @(posedge clk or posedge reset) begin
         P_AA: begin
             if (rx_valid) begin
                 if (rx_data == 8'hAA) begin
-                    id_pos <= 5'd0;
+                    id_pos <= 6'd0;
                     pstate <= P_TX_ID;
                 end else begin
                     pstate <= P_INIT;
@@ -570,12 +543,12 @@ always @(posedge clk or posedge reset) begin
         P_TX_ID: begin
             // Send ID string byte-by-byte
             if (!tx_valid) begin
-                tx_data  <= id_str[id_pos];
+                tx_data  <= ID_STR[(ID_LEN-1-id_pos) * 8 +: 8];
                 tx_valid <= 1'b1;
-                if (id_pos == ID_LEN[4:0] - 5'd1) begin
+                if (id_pos == ID_LEN[5:0] - 6'd1) begin
                     pstate <= P_HELLO_WAIT_L;
                 end else begin
-                    id_pos <= id_pos + 5'd1;
+                    id_pos <= id_pos + 6'd1;
                 end
             end
         end
