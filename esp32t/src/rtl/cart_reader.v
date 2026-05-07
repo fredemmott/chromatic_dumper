@@ -100,8 +100,8 @@ localparam VAR8_FLASH_WEPIN  = 5'd4;
 localparam VAR8_FLASH_PULRST = 5'd5;
 localparam VAR8_FLASH_CMDB1  = 5'd6;
 localparam VAR8_FLASH_SHRPSR = 5'd7;
-localparam VAR8_DMG_RD_CSPU  = 5'd8;
-localparam VAR8_DMG_WR_CSPU  = 5'd9;
+localparam VAR8_DMG_READ_CS_PULSE  = 5'd8;
+localparam VAR8_DMG_WRITE_CS_PULSE  = 5'd9;
 localparam VAR8_FLASH_DDIE   = 5'd10;
 localparam VAR8_DMG_RD_METH  = 5'd11;
 localparam VAR8_AGB_RD_METH  = 5'd12;
@@ -121,8 +121,8 @@ reg [7:0]  var8  [0:17];  // CART_MODE … DMG_AUDIO_ENABLED
 `define XFER_SIZE     var16[VAR16_XFER_SIZE]
 `define CART_MODE_V   var8[VAR8_CART_MODE]
 `define ACCESS_MODE   var8[VAR8_ACCESS_MODE]
-`define RD_CS_PULSE   var8[VAR8_DMG_RD_CSPU]
-`define WR_CS_PULSE   var8[VAR8_DMG_WR_CSPU]
+`define DMG_READ_CS_PULSE   var8[VAR8_DMG_READ_CS_PULSE]
+`define DMG_WRITE_CS_PULSE  var8[VAR8_DMG_WRITE_CS_PULSE]
 
 
 // ============================================================
@@ -356,8 +356,8 @@ task do_set_var;
             8'h05: var8[VAR8_FLASH_PULRST]<= val[7:0];
             8'h06: var8[VAR8_FLASH_CMDB1] <= val[7:0];
             8'h07: var8[VAR8_FLASH_SHRPSR]<= val[7:0];
-            8'h08: var8[VAR8_DMG_RD_CSPU] <= val[7:0];
-            8'h09: var8[VAR8_DMG_WR_CSPU] <= val[7:0];
+            8'h08: var8[VAR8_DMG_READ_CS_PULSE] <= val[7:0];
+            8'h09: var8[VAR8_DMG_WRITE_CS_PULSE] <= val[7:0];
             8'h0A: var8[VAR8_FLASH_DDIE]  <= val[7:0];
             8'h0B: var8[VAR8_DMG_RD_METH] <= val[7:0];
             8'h0C: var8[VAR8_AGB_RD_METH] <= val[7:0];
@@ -409,8 +409,8 @@ function [31:0] do_get_var;
             8'h05: do_get_var = {24'd0, var8[VAR8_FLASH_PULRST]};
             8'h06: do_get_var = {24'd0, var8[VAR8_FLASH_CMDB1]};
             8'h07: do_get_var = {24'd0, var8[VAR8_FLASH_SHRPSR]};
-            8'h08: do_get_var = {24'd0, var8[VAR8_DMG_RD_CSPU]};
-            8'h09: do_get_var = {24'd0, var8[VAR8_DMG_WR_CSPU]};
+            8'h08: do_get_var = {24'd0, var8[VAR8_DMG_READ_CS_PULSE]};
+            8'h09: do_get_var = {24'd0, var8[VAR8_DMG_WRITE_CS_PULSE]};
             8'h0A: do_get_var = {24'd0, var8[VAR8_FLASH_DDIE]};
             8'h0B: do_get_var = {24'd0, var8[VAR8_DMG_RD_METH]};
             8'h0C: do_get_var = {24'd0, var8[VAR8_AGB_RD_METH]};
