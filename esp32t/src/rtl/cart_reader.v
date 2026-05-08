@@ -129,38 +129,41 @@ reg [2:0] cart_write_pulse_pins = CART_WRITE_PULSE_PINS_DEFAULT;
 // ============================================================
 // Protocol states
 // ============================================================
-localparam P_INIT        = 6'd0;   // Waiting for 0x55
-localparam P_AA          = 6'd1;   // Got 0x55, waiting for 0xAA
-localparam P_TX_ID       = 6'd2;   // Sending ID string
-localparam P_HELLO_WAIT_L      = 6'd3;   // Waiting for 'L'
-localparam P_HELLO_WAIT_K      = 6'd4;   // Got 'L', waiting for 'K'
-localparam P_CMD         = 6'd6;   // Waiting for command byte
-localparam P_TX_ACK      = 6'd7;   // Send 0x01, return to CMD
-localparam P_TX_BYTES    = 6'd8;   // Send resp_buf[0..resp_len-1], return to CMD
-localparam P_FW_INFO     = 6'd9;   // QUERY_FW_INFO multi-byte send
-localparam P_SET_VAR_P   = 6'd10;  // SET_VARIABLE: collecting params
-localparam P_GET_VAR_P   = 6'd11;  // GET_VARIABLE: collecting params
-localparam P_GET_VAR_TX  = 6'd12;  // GET_VARIABLE: sending 4-byte result
-localparam P_CART_RD_CHK = 6'd13;  // DMG_CART_READ: check cache
-localparam P_CART_RD_TX  = 6'd15;  // Sending cached bytes to host
-localparam P_CART_WR_P   = 6'd16;  // DMG_CART_WRITE: collecting 5 bytes
-localparam P_CART_WR_DO  = 6'd17;  // DMG_CART_WRITE: doing the write
-localparam P_SRAM_WR_RX  = 6'd18;  // DMG_CART_WRITE_SRAM: receiving data
-localparam P_SRAM_WR_DO  = 6'd19;  // Performing SRAM write
-localparam P_FLASH_RX    = 6'd20;  // FLASH_PROGRAM / SRAM WR: receive data byte
-localparam P_FLASH_WR_DO = 6'd21;  // FLASH_PROGRAM: write one byte to cart
-localparam P_FLB_WR_P    = 6'd22;  // DMG_FLASH_WRITE_BYTE: param collection
-localparam P_FLB_WR_DO   = 6'd23;  // DMG_FLASH_WRITE_BYTE: write
-localparam P_FLASH_CMD_P = 6'd24;  // CART_WRITE_FLASH_CMD: collecting header
-localparam P_FLASH_CMD_E = 6'd25;  // CART_WRITE_FLASH_CMD: entry bytes
-localparam P_FLASH_CMD_W = 6'd26;  // CART_WRITE_FLASH_CMD: write one entry
-localparam P_CLK_TOG_P   = 6'd27;  // CLK_TOGGLE: collecting count
-localparam P_CLK_TOG_DO  = 6'd28;  // CLK_TOGGLE: toggling
-localparam P_SET_PIN_P   = 6'd29;  // SET_PIN: collecting 5 bytes
-localparam P_GET_VAR_ST  = 6'd30;  // GET_VAR_STATE: sending all vars
-localparam P_SET_VAR_ST  = 6'd31;  // SET_VAR_STATE: receiving (ignored)
-localparam P_BYE_WAIT_L  = 6'd32;
-localparam P_FLASH_CMD_W_NOWAIT = 6'd33;
+localparam P_INIT        = 8'd0;   // Waiting for 0x55
+localparam P_AA          = 8'd1;   // Got 0x55, waiting for 0xAA
+localparam P_TX_ID       = 8'd2;   // Sending ID string
+localparam P_HELLO_WAIT_L      = 8'd3;   // Waiting for 'L'
+localparam P_HELLO_WAIT_K      = 8'd4;   // Got 'L', waiting for 'K'
+localparam P_CMD         = 8'd6;   // Waiting for command byte
+localparam P_TX_ACK      = 8'd7;   // Send 0x01, return to CMD
+localparam P_TX_BYTES    = 8'd8;   // Send resp_buf[0..resp_len-1], return to CMD
+localparam P_FW_INFO     = 8'd9;   // QUERY_FW_INFO multi-byte send
+localparam P_SET_VAR_P   = 8'd10;  // SET_VARIABLE: collecting params
+localparam P_GET_VAR_P   = 8'd11;  // GET_VARIABLE: collecting params
+localparam P_GET_VAR_TX  = 8'd12;  // GET_VARIABLE: sending 4-byte result
+localparam P_CART_RD_CHK = 8'd13;  // DMG_CART_READ: check cache
+localparam P_CART_RD_TX  = 8'd15;  // Sending cached bytes to host
+localparam P_CART_WR_P   = 8'd16;  // DMG_CART_WRITE: collecting 5 bytes
+localparam P_CART_WR_DO  = 8'd17;  // DMG_CART_WRITE: doing the write
+localparam P_SRAM_WR_RX  = 8'd18;  // DMG_CART_WRITE_SRAM: receiving data
+localparam P_SRAM_WR_DO  = 8'd19;  // Performing SRAM write
+localparam P_FLASH_RX    = 8'd20;  // FLASH_PROGRAM / SRAM WR: receive data byte
+localparam P_FLASH_WR_DO = 8'd21;  // FLASH_PROGRAM: write one byte to cart
+localparam P_FLB_WR_P    = 8'd22;  // DMG_FLASH_WRITE_BYTE: param collection
+localparam P_FLB_WR_DO   = 8'd23;  // DMG_FLASH_WRITE_BYTE: write
+localparam P_FLASH_CMD_P = 8'd24;  // CART_WRITE_FLASH_CMD: collecting header
+localparam P_FLASH_CMD_E = 8'd25;  // CART_WRITE_FLASH_CMD: entry bytes
+localparam P_FLASH_CMD_W = 8'd26;  // CART_WRITE_FLASH_CMD: write one entry
+localparam P_CLK_TOG_P   = 8'd27;  // CLK_TOGGLE: collecting count
+localparam P_CLK_TOG_DO  = 8'd28;  // CLK_TOGGLE: toggling
+localparam P_SET_PIN_P   = 8'd29;  // SET_PIN: collecting 5 bytes
+localparam P_GET_VAR_ST  = 8'd30;  // GET_VAR_STATE: sending all vars
+localparam P_SET_VAR_ST  = 8'd31;  // SET_VAR_STATE: receiving (ignored)
+localparam P_BYE_WAIT_L  = 8'd32;
+localparam P_FLASH_CMD_W_NOWAIT = 8'd33;
+localparam P_FLASH_CMD_SET_P = 8'd34;
+localparam P_SET_BANK_CHANGE_CMD_P = 8'd35;
+localparam P_SET_BANK_CHANGE_CMD_E = 8'd36;
 
 // ============================================================
 // Cart access states
@@ -177,12 +180,12 @@ localparam C_WR_HIGH = 3'd7;   // write: WR high + drive data
 // ============================================================
 // Registers
 // ============================================================
-reg [5:0]  pstate;
+reg [7:0]  pstate;
 reg [2:0]  cart_state;
 
 // General parameter accumulator (up to 9 bytes for SET_VARIABLE)
 reg [7:0]  par [0:8];
-reg [3:0]  par_cnt;      // bytes remaining to collect
+reg [7:0]  par_cnt;      // bytes remaining to collect
 reg [3:0]  par_idx;      // index into par[]
 
 // Response buffer (used by P_TX_BYTES, P_FW_INFO, P_GET_VAR_TX)
@@ -478,7 +481,7 @@ always @(posedge clk or posedge reset) begin
               CART_WRITE_PULSE_PINS_NONE: begin
               end
             endcase
- 
+
             cart_clk <= 1'b0; // Drop clock with WR
             if (cart_wait_cnt != 0) begin
                 cart_wait_cnt <= cart_wait_cnt - 5'd1;
@@ -501,7 +504,7 @@ always @(posedge clk or posedge reset) begin
                   end
                 endcase
                 cart_cs       <= 1'b1; // De-assert CS
-                cart_wait_cnt <= CART_WR_HOLD[4:0] - 5'd1; 
+                cart_wait_cnt <= CART_WR_HOLD[4:0] - 5'd1;
                 cart_state    <= C_WR_HIGH;
             end
         end
@@ -594,21 +597,16 @@ always @(posedge clk or posedge reset) begin
             if (rx_valid) begin
                 cmd_r     <= rx_data;
                 par_idx   <= 3'd0;
-                par_cnt   <= 3'd0;
+                par_cnt   <= 8'd0;
 
                 case (rx_data)
                 // ─ Bye ("KL") ───────────────────────────────────────
                 "K": pstate <= P_BYE_WAIT_L;
-                // ─ Simple ACK commands ──────────────────────────────
-                8'h43, // OFW_CART_MODE
-                8'hA2, // SET_MODE_AGB   → ACK (not really supported)
+                // ─ Stub ACK commands ────────────────────────────────
                 8'hA3, // SET_MODE_DMG
-                8'hA4, // SET_VOLTAGE_3_3V
                 8'hA5, // SET_VOLTAGE_5V
-                8'hA7, // SET_FLASH_CMD (not used)
                 8'hA8, // SET_ADDR_AS_INPUTS
-                8'hC9, // AGB_BOOTUP_SEQUENCE
-                8'hD5, // CALC_CRC32 (stub)
+                8'hD5, // CALC_CRC32
                 8'hF1, // BOOTLOADER_RESET
                 8'hF2, // CART_PWR_ON
                 8'hF3: // CART_PWR_OFF
@@ -616,6 +614,11 @@ always @(posedge clk or posedge reset) begin
                     pstate <= P_TX_ACK;
                 end
 
+                // ─ Stub commands without an ACK ───────────────────────
+                8'hA2, // SET_MODE_AGB (should be ACKed, but unsupported)
+                8'hC9, // AGB_BOOTUP_SEQUENCE (ditto)
+                8'hA4, // SET_VOLTAGE_3_3V (ditto)
+                8'h43, // OFW_CART_MODE (unused)
                 8'hB4: begin // DMG_MBC_RESET
                     cart_a          <= 16'h0000;
                     cart_d_out      <= 8'h00;
@@ -623,6 +626,13 @@ always @(posedge clk or posedge reset) begin
                     cart_write_r    <= 1'b1;
                     cart_state      <= C_SETUP;
                     pstate          <= P_CART_WR_DO;
+                end
+
+                8'hA7: begin // SET_FLASH_CMD
+                    // 3 bytes: command set, method (buffered/unbuffered/... weird), pins.
+                    // Then a series of flash commands
+                    par_cnt <= 3;
+                    pstate <= P_FLASH_CMD_SET_P;
                 end
 
                 8'hAB: begin // ENABLE_PULLUPS
@@ -674,12 +684,17 @@ always @(posedge clk or posedge reset) begin
                     pstate  <= P_CLK_TOG_P;
                 end
 
-                8'hF5, // SET_PIN: 4-byte mask + 1-byte direction = 5 bytes
-                8'hB8: // DMG_SET_BANK_CHANGE_CMD: 3 bytes (cmd+bank1+bank2)
+                8'hF5: // SET_PIN: 4-byte mask + 1-byte direction = 5 bytes
                 begin
-                    par_cnt <= (rx_data == 8'hF5) ? 4'd5 : 4'd3;
+                    par_cnt <= 4'd5;
                     par_idx <= 4'd0;
                     pstate  <= P_SET_PIN_P;
+                end
+
+                8'hB8: begin // DMG_SET_BANK_CHANGE_CMD: 1-byte count, then N * (4-byte value/address, 1-byte type)
+                    par_cnt <= 4'd1;
+                    par_idx <= 4'd0;
+                    pstate <= P_SET_BANK_CHANGE_CMD_P;
                 end
 
                 8'hB1, // DMG_CART_READ
@@ -724,6 +739,46 @@ always @(posedge clk or posedge reset) begin
                 endcase
             end
         end // P_CMD
+
+        P_SET_BANK_CHANGE_CMD_P: begin
+            if (rx_valid) begin
+                // 1-byte count, then n 5-byte entires
+                if (rx_data == 8'd0) begin
+                    pstate <= P_TX_ACK;
+                end else begin
+                    par_cnt <= rx_data * 8'd5;
+                    pstate <= P_SET_BANK_CHANGE_CMD_E;
+                end
+            end
+        end
+
+        P_SET_BANK_CHANGE_CMD_E: begin
+            // TODO: stub - just ignores the command
+            // This is fine for the MBC3000v4 as it has no commands
+            if (rx_valid) begin
+              par_cnt <= par_cnt - 8'd1;
+              if (par_cnt == 8'd1) pstate <= P_TX_ACK;
+            end
+        end
+
+
+        P_FLASH_CMD_SET_P: begin
+            // We only support no-command-set (direct writes), unbuffered
+            // TODO: byte 3 is 'pins'. For now, we just treat this as a set of
+            // `FLASH_WE_PIN`; however we don't support 4 == WR_RESET, which conflicts
+            // with 'DEFAULT' for the override register. However, mapping 'unsupported'
+            // to default seems reasonable for now.
+            if (rx_valid) begin
+                par_cnt <= par_cnt - 4'd1;
+                if (par_cnt == 4'd1) begin
+                    `FLASH_WE_PIN <= rx_data;
+                    fcmd_entry_count <= 6;
+                    fcmd_idx <= 0;
+                    pstate <= P_FLASH_CMD_E;
+                end
+            end
+        end
+
 
         // ── Send single ACK 0x01 ────────────────────────────────────────
         P_TX_ACK: begin
