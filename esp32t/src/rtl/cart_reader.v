@@ -159,7 +159,8 @@ localparam P_CLK_TOG_DO  = 6'd28;  // CLK_TOGGLE: toggling
 localparam P_SET_PIN_P   = 6'd29;  // SET_PIN: collecting 5 bytes
 localparam P_GET_VAR_ST  = 6'd30;  // GET_VAR_STATE: sending all vars
 localparam P_SET_VAR_ST  = 6'd31;  // SET_VAR_STATE: receiving (ignored)
-localparam P_BYE_WAIT_L  = 6'd33;
+localparam P_BYE_WAIT_L  = 6'd32;
+localparam P_FLASH_CMD_W_NOWAIT = 6'd33;
 
 // ============================================================
 // Cart access states
@@ -218,10 +219,9 @@ reg [13:0] send_offset;   // offset within cache for current send
 reg [7:0]  flash_ret;
 
 // CART_WRITE_FLASH_CMD working registers
-reg [7:0]  fcmd_num;      // number of entries remaining
-reg [5:0]  fcmd_par_cnt;  // bytes in current entry remaining (6 each: addr32+val16)
-reg [5:0]  fcmd_par_idx;
-reg [7:0]  fcmd_par [0:5];
+reg [7:0]  fcmd_entry_count; // number of entries remaining
+reg [7:0]  fcmd_par [0:6*16];
+reg [7:0]  fcmd_idx;
 
 // CLK_TOGGLE counter
 reg [31:0] clk_tog_cnt;
@@ -1019,7 +1019,7 @@ always @(posedge clk or posedge reset) begin
             if (rx_valid) begin
                 par[par_idx] <= rx_data;
                 if (par_cnt == 4'd1) begin
-                    cart_write_pulse_pins = `FLASH_WE_PIN;
+                    cart_write_pulse_pins <= `FLASH_WE_PIN;
                     cart_a          <= {par[2], par[3]};
                     cart_d_out      <= rx_data;
                     cart_data_dir_e <= 1'b1;
@@ -1039,14 +1039,13 @@ always @(posedge clk or posedge reset) begin
             if (rx_valid) begin
                 par[par_idx] <= rx_data;
                 if (par_cnt == 4'd1) begin
-                    // par[0]=flashcart, rx_data=num
-                    fcmd_num     <= rx_data;
-                    fcmd_par_cnt <= 6'd6;  // 4-byte addr + 2-byte val
-                    fcmd_par_idx <= 6'd0;
+                    // par[0] = flashcart [UNUSED]
+                    // par[1] <= rx_data == num_entries
                     if (rx_data == 8'd0) begin
                         pstate <= P_TX_ACK;   // no entries
                     end else begin
-                        cart_write_pulse_pins = `FLASH_WE_PIN;
+                        fcmd_entry_count <= rx_data;
+                        fcmd_idx <= 8'd0;
                         pstate <= P_FLASH_CMD_E;
                     end
                 end else begin
@@ -1059,37 +1058,38 @@ always @(posedge clk or posedge reset) begin
         P_FLASH_CMD_E: begin
             // Receive 6 bytes per entry: addr(4 BE) + val(2 BE)
             if (rx_valid) begin
-                fcmd_par[fcmd_par_idx[2:0]] <= rx_data;
-                if (fcmd_par_cnt == 6'd1) begin
-                    // Entry complete
-                    // DMG only has 16-bit addresses
-                    cart_a          <= {fcmd_par[2], fcmd_par[3]};
-                    // fcmd_par[4]: MSB
-                    // fcmd_par[5]: LSB, on next cycle
-                    // Ignore MSB: it is unused for DMG, only for AGB
-                    // rx_data also contains the LSB, and is available this cycle
-                    cart_d_out      <= rx_data;
-                    cart_data_dir_e <= 1'b1;
-                    cart_write_r    <= 1'b1;
-                    cart_state      <= C_SETUP;
-                    pstate          <= P_FLASH_CMD_W;
+                fcmd_par[fcmd_idx] <= rx_data;
+                if (fcmd_idx == (6 * fcmd_entry_count) - 1) begin
+                    fcmd_idx <= 0;
+                    pstate <= P_FLASH_CMD_W_NOWAIT;
                 end else begin
-                    fcmd_par_cnt <= fcmd_par_cnt - 6'd1;
-                    fcmd_par_idx <= fcmd_par_idx + 6'd1;
+                    fcmd_idx <= fcmd_idx + 8'd1;
                 end
             end
         end
 
-        P_FLASH_CMD_W: begin
-            if (cart_done) begin
-                fcmd_num <= fcmd_num - 8'd1;
-                if (fcmd_num == 8'd1) begin
-                    cart_write_pulse_pins = CART_WRITE_PULSE_PINS_DEFAULT;
+        P_FLASH_CMD_W, P_FLASH_CMD_W_NOWAIT: begin
+            if (cart_done || pstate == P_FLASH_CMD_W_NOWAIT) begin
+                if (fcmd_entry_count == 8'd0) begin
+                    cart_write_pulse_pins <= CART_WRITE_PULSE_PINS_DEFAULT;
                     pstate <= P_TX_ACK;
                 end else begin
-                    fcmd_par_cnt <= 6'd6;
-                    fcmd_par_idx <= 6'd0;
-                    pstate       <= P_FLASH_CMD_E;
+                    // Entry complete
+                    // DMG only has 16-bit addresses
+                    cart_a          <= {fcmd_par[fcmd_idx+2], fcmd_par[fcmd_idx+3]};
+                    // entry[4]: MSB
+                    // entry[5]: LSB, on next cycle
+                    // Ignore MSB: it is unused for DMG, only for AGB
+                    // rx_data also contains the LSB, and is available this cycle
+                    cart_d_out      <= fcmd_par[fcmd_idx+5];
+                    cart_data_dir_e <= 1'b1;
+                    cart_write_r    <= 1'b1;
+                    cart_write_pulse_pins <= `FLASH_WE_PIN;
+                    cart_state      <= C_SETUP;
+
+                    fcmd_entry_count <= fcmd_entry_count - 8'd1;
+                    fcmd_idx <= fcmd_idx + 8'd6;
+                    pstate <= P_FLASH_CMD_W;
                 end
             end
         end
