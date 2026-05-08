@@ -164,6 +164,9 @@ localparam P_FLASH_CMD_W_NOWAIT = 8'd33;
 localparam P_FLASH_CMD_SET_P = 8'd34;
 localparam P_SET_BANK_CHANGE_CMD_P = 8'd35;
 localparam P_SET_BANK_CHANGE_CMD_E = 8'd36;
+localparam P_CALC_CRC_P = 8'd37;
+localparam P_CALC_CRC_DO_FIRST = 8'd38;
+localparam P_CALC_CRC_DO = 8'd39;
 
 // ============================================================
 // Cart access states
@@ -187,6 +190,10 @@ reg [2:0]  cart_state;
 reg [7:0]  par [0:8];
 reg [7:0]  par_cnt;      // bytes remaining to collect
 reg [3:0]  par_idx;      // index into par[]
+
+// 16kb buffer for writes, CRC, or other large operations
+reg [7:0]  blob [0:(16 * 1024) - 1];
+reg [15:0] blob_idx;
 
 // Response buffer (used by P_TX_BYTES, P_FW_INFO, P_GET_VAR_TX)
 reg [7:0]  resp_buf [0:63];
@@ -222,6 +229,7 @@ reg [13:0] send_offset;   // offset within cache for current send
 reg [7:0]  flash_ret;
 
 // CART_WRITE_FLASH_CMD working registers
+// TODO: use `blob` and `par_cnt` instead?
 reg [7:0]  fcmd_entry_count; // number of entries remaining
 reg [7:0]  fcmd_par [0:6*16];
 reg [7:0]  fcmd_idx;
@@ -236,6 +244,25 @@ localparam VSTATE_LEN = 40;
 
 // SET_PIN receive counter
 reg [2:0]  setpin_cnt;
+
+// CALC_CRC32 working registers
+reg [15:0] crc_len;
+reg [31:0] crc_state;
+
+function [31:0] next_crc;
+    input [31:0] current_crc;
+    input [7:0]  data;
+    reg   [31:0] crc;
+    integer j;
+    begin
+        crc = current_crc ^ {24'b0, data};
+        for (j = 0; j < 8; j = j + 1) begin
+            if (crc[0]) crc = (crc >> 1) ^ 32'hEDB88320;
+            else        crc = (crc >> 1);
+        end
+        next_crc = crc;
+    end
+endfunction
 
 // ============================================================
 // ID string initialisation (combinational ROM)
@@ -606,7 +633,6 @@ always @(posedge clk or posedge reset) begin
                 8'hA3, // SET_MODE_DMG
                 8'hA5, // SET_VOLTAGE_5V
                 8'hA8, // SET_ADDR_AS_INPUTS
-                8'hD5, // CALC_CRC32
                 8'hF1, // BOOTLOADER_RESET
                 8'hF2, // CART_PWR_ON
                 8'hF3: // CART_PWR_OFF
@@ -618,7 +644,10 @@ always @(posedge clk or posedge reset) begin
                 8'hA2, // SET_MODE_AGB (should be ACKed, but unsupported)
                 8'hC9, // AGB_BOOTUP_SEQUENCE (ditto)
                 8'hA4, // SET_VOLTAGE_3_3V (ditto)
-                8'h43, // OFW_CART_MODE (unused)
+                8'h43: begin // OFW_CART_MODE (unused)
+                    pstate <= P_CMD;
+                end
+
                 8'hB4: begin // DMG_MBC_RESET
                     cart_a          <= 16'h0000;
                     cart_d_out      <= 8'h00;
@@ -626,6 +655,12 @@ always @(posedge clk or posedge reset) begin
                     cart_write_r    <= 1'b1;
                     cart_state      <= C_SETUP;
                     pstate          <= P_CART_WR_DO;
+                end
+
+                8'hD5: begin // CALC_CRC32
+                    par_cnt <= 3'd4;
+                    par_idx <= 3'd0;
+                    pstate <= P_CALC_CRC_P;
                 end
 
                 8'hA7: begin // SET_FLASH_CMD
@@ -739,6 +774,49 @@ always @(posedge clk or posedge reset) begin
                 endcase
             end
         end // P_CMD
+
+        P_CALC_CRC_P: begin
+            // We have `ADDRESS already set via SET_FW_VARIABLE
+            // Now we need to get the 4-byte BE chunk length
+            if (rx_valid) begin
+              par_cnt <= par_cnt - 3'd1;
+              par[par_idx] <= rx_data;
+              par_idx <= par_idx + 3'd1;
+              if (par_cnt == 3'd1) begin
+                blob_idx <= 8'd0;
+                // Ignore 2 MSB, always 0 for DMG
+                // par[3] not set until end of this cycle, so use rx_data instead
+                crc_len <= { par[2], rx_data };
+                crc_state <= ~32'd0;
+                pstate <= P_CALC_CRC_DO_FIRST;
+              end
+            end
+        end
+
+        P_CALC_CRC_DO, P_CALC_CRC_DO_FIRST: begin
+            logic last_byte;
+
+            last_byte = (blob_idx == crc_len - 16'd1);
+            pstate <= P_CALC_CRC_DO;
+
+            if (cart_done) begin
+                if (last_byte) begin
+                    {resp_buf[3], resp_buf[2], resp_buf[1], resp_buf[0]} <= next_crc(crc_state, cart_din_r) ^ 32'hFFFFFFFF;
+                    resp_len <= 6'd4;
+                    pstate <= P_TX_BYTES;
+                end else begin
+                    crc_state <= next_crc(crc_state, cart_din_r);
+                    blob_idx <= blob_idx + 16'd1;
+                end
+            end
+
+            if ((cart_done && ~last_byte) || pstate == P_CALC_CRC_DO_FIRST) begin
+                cart_a <= `ADDRESS[15:0] + blob_idx + (cart_done ? 16'd1 : 16'd0);
+                cart_data_dir_e <= 1'b0;
+                cart_write_r <= 1'b0;
+                cart_state <= C_SETUP;
+            end
+        end
 
         P_SET_BANK_CHANGE_CMD_P: begin
             if (rx_valid) begin
