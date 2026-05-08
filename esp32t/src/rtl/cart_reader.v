@@ -124,6 +124,7 @@ reg [7:0]  var8  [0:17];  // CART_MODE … DMG_AUDIO_ENABLED
 // Assuming 16-bit is for GBA support
 `define STATUS_REGISTER_MASK var16[VAR16_SR_MASK][7:0]
 `define STATUS_REGISTER_VALUE var16[VAR16_SR_VALUE][7:0]
+`define STATUS_REGISTER var16[VAR16_STATUS_REG][7:0]
 
 localparam CART_WRITE_PULSE_PINS_NONE = 2'd0;
 localparam CART_WRITE_PULSE_PINS_WR = 2'd1;
@@ -161,10 +162,11 @@ typedef enum {
     P_FLASH_PROGRAM_WR_WAIT_STATUS, // Wait for (status & mask == value), then go back to P_CALC_FLASH_WR_DO
     P_FLB_WR_P, // DMG_FLASH_WRITE_BYTE: param collection
     P_FLB_WR_DO, // DMG_FLASH_WRITE_BYTE: write
-    P_FLASH_CMD_P, // CART_WRITE_FLASH_CMD: collecting header
-    P_FLASH_CMD_E, // CART_WRITE_FLASH_CMD: entry bytes
-    P_FLASH_CMD_W, // CART_WRITE_FLASH_CMD: write one entry
-    P_FLASH_CMD_W_NOWAIT,
+    P_CART_WRITE_FLASH_CMD_P, // CART_WRITE_FLASH_CMD: collecting header
+    P_CART_WRITE_FLASH_CMD_E, // CART_WRITE_FLASH_CMD: entry bytes
+    P_CART_WRITE_FLASH_CMD_W, // CART_WRITE_FLASH_CMD: write one entry
+    P_CART_WRITE_FLASH_CMD_W_NOWAIT,
+    P_CART_WRITE_FLASH_CMD_WAIT_STATUS,
     P_CLK_TOG_P, // CLK_TOGGLE: collecting count
     P_CLK_TOG_DO, // CLK_TOGGLE: toggling
     P_SET_PIN_P, // SET_PIN: collecting 5 bytes
@@ -245,7 +247,8 @@ localparam FLASH_COMMANDS_MAX = 6;
 typedef struct packed {
     logic [15:0] unused_addr_msb; // Only for GBA
     logic [15:0] address;
-    logic [15:0] data;
+    logic [7:0] unused_data_msb; // Only for GBA
+    logic [7:0] data;
 } flash_command_t;
 
 union packed {
@@ -254,15 +257,6 @@ union packed {
 } flash_commands;
 reg [7:0] flash_command_count; // total number of flash commands
 
-// FLASH_PROGRAM return code (0x01 normally, 0x03 if buffer still has room)
-
-// Materialized from flash_command_t
-typedef struct packed {
-  logic [15:0] address;
-  logic [7:0] data;
-} flash_program_command_t;
-flash_program_command_t [0:FLASH_COMMANDS_MAX - 1] flash_program_commands;
-logic [7:0] flash_program_command_idx;
 
 
 // CART_WRITE_FLASH_CMD working registers
@@ -539,13 +533,16 @@ always @(posedge clk or posedge reset) begin
 
         C_WR_LOW: begin
             case (cart_write_pulse_pins)
-              CART_WRITE_PULSE_PINS_DEFAULT, CART_WRITE_PULSE_PINS_WR: cart_wr <= 1'b0;
-              CART_WRITE_PULSE_PINS_AUDIO: cart_audio <= 1'b0;
-              CART_WRITE_PULSE_PINS_NONE: begin
-              end
+                CART_WRITE_PULSE_PINS_DEFAULT: begin
+                    cart_wr <= 1'b0;
+                    cart_clk <= 1'b0;
+                end
+                CART_WRITE_PULSE_PINS_WR: cart_wr <= 1'b0;
+                CART_WRITE_PULSE_PINS_AUDIO: cart_audio <= 1'b0;
+                CART_WRITE_PULSE_PINS_NONE: begin
+                end
             endcase
 
-            cart_clk <= 1'b0; // Drop clock with WR
             if (cart_wait_cnt != 0) begin
                 cart_wait_cnt <= cart_wait_cnt - 5'd1;
             end else begin
@@ -800,7 +797,7 @@ always @(posedge clk or posedge reset) begin
                 8'hD4: begin // CART_WRITE_FLASH_CMD: flashcart(1) + num(1) + entries
                     par_cnt  <= 4'd2;   // read 2 header bytes
                     par_idx  <= 4'd0;
-                    pstate   <= P_FLASH_CMD_P;
+                    pstate   <= P_CART_WRITE_FLASH_CMD_P;
                 end
 
                 default: begin
@@ -1192,34 +1189,18 @@ always @(posedge clk or posedge reset) begin
         end
 
         P_FLASH_PROGRAM_WR_COMMANDS: begin
-            for (integer i = 0; i < FLASH_COMMANDS_MAX; i = i + 1) begin
-                case (flash_commands.as_struct[i].address)
-                    "PA": begin
-                        flash_program_commands[i].address <= `ADDRESS[15:0] + blob_idx;
-                    end
-                    default: begin
-                        flash_program_commands[i].address <= flash_commands.as_struct[i].address;
-                    end
-                endcase
+            flash_commands.as_struct[flash_command_count].address <= `ADDRESS[15:0] + blob_idx;
+            flash_commands.as_struct[flash_command_count].data <= blob[blob_idx];
 
-                // On DMG, we can never fit address in data, as address is 16-bits and data is 8-bits wide
-                case (flash_commands.as_struct[i].data)
-                    "PD": begin
-                        flash_program_commands[i].data <= blob[blob_idx];
-                    end
-                    default: begin
-                        flash_program_commands[i].data <= flash_commands.as_struct[i].data[7:0];
-                    end
-                endcase
-            end
-            flash_program_command_idx <= 0;
+            par[0] <= blob[blob_idx];
+            par_idx <= 0;
             pstate <= P_FLASH_PROGRAM_WR_DO;
         end
 
         P_FLASH_PROGRAM_WR_DO: begin
             cart_write_pulse_pins <= `FLASH_WE_PIN;
-            cart_a <= flash_program_commands[flash_program_command_idx].address;
-            cart_d_out <= flash_program_commands[flash_program_command_idx].data;
+            cart_a <= flash_commands.as_struct[par_idx].address;
+            cart_d_out <= flash_commands.as_struct[par_idx].data;
             cart_data_dir_e <= 1'b1;
             cart_write_r <= 1'b1;
             cart_state <= C_SETUP;
@@ -1229,13 +1210,13 @@ always @(posedge clk or posedge reset) begin
 
         P_FLASH_PROGRAM_WR_WAIT_WRITE: begin
             if (cart_done) begin
-                if (flash_program_command_idx == flash_command_count - 1) begin
+                if (par_idx == flash_command_count) begin
                     cart_data_dir_e <= 1'b0;
                     cart_write_r <= 1'b0;
                     cart_state <= C_SETUP;
                     pstate <= P_FLASH_PROGRAM_WR_WAIT_STATUS;
                 end else begin
-                    flash_program_command_idx <= flash_program_command_idx + 1;
+                    par_idx <= par_idx + 1;
                     pstate <= P_FLASH_PROGRAM_WR_DO;
                 end
             end
@@ -1246,10 +1227,14 @@ always @(posedge clk or posedge reset) begin
             last_byte = (blob_idx == `XFER_SIZE - 16'd1);
 
             if (cart_done) begin
-                if ((cart_d_in & `STATUS_REGISTER_MASK) == `STATUS_REGISTER_VALUE) begin
+                `STATUS_REGISTER <= cart_d_in;
+                if (cart_d_in[7] == par[0][7]) begin
                     if (last_byte) begin
                         cart_write_pulse_pins <= CART_WRITE_PULSE_PINS_DEFAULT;
                         pstate <= P_TX_ACK;
+                        // LK_Device::WriteROM only sets ADDRESS on the first chunk,
+                        // so we need to increment it before the next one.
+                        `ADDRESS[15:0] <= `ADDRESS[15:0] + `XFER_SIZE;
                     end else begin
                         blob_idx <= blob_idx + 1;
                         pstate <= P_FLASH_PROGRAM_WR_COMMANDS;
@@ -1278,7 +1263,7 @@ always @(posedge clk or posedge reset) begin
         end
 
         // ── CART_WRITE_FLASH_CMD ────────────────────────────────────────
-        P_FLASH_CMD_P: begin
+        P_CART_WRITE_FLASH_CMD_P: begin
             // Receive flashcart_flag(1) + num_entries(1)
             if (rx_valid) begin
                 par[par_idx] <= rx_data;
@@ -1290,7 +1275,7 @@ always @(posedge clk or posedge reset) begin
                     end else begin
                         fcmd_entry_count <= rx_data;
                         fcmd_idx <= 8'd0;
-                        pstate <= P_FLASH_CMD_E;
+                        pstate <= P_CART_WRITE_FLASH_CMD_E;
                     end
                 end else begin
                     par_cnt <= par_cnt - 4'd1;
@@ -1299,24 +1284,28 @@ always @(posedge clk or posedge reset) begin
             end
         end
 
-        P_FLASH_CMD_E: begin
+        P_CART_WRITE_FLASH_CMD_E: begin
             // Receive 6 bytes per entry: addr(4 BE) + val(2 BE)
             if (rx_valid) begin
                 fcmd_par[fcmd_idx] <= rx_data;
                 if (fcmd_idx == (6 * fcmd_entry_count) - 1) begin
                     fcmd_idx <= 0;
-                    pstate <= P_FLASH_CMD_W_NOWAIT;
+                    pstate <= P_CART_WRITE_FLASH_CMD_W_NOWAIT;
                 end else begin
                     fcmd_idx <= fcmd_idx + 8'd1;
                 end
             end
         end
 
-        P_FLASH_CMD_W, P_FLASH_CMD_W_NOWAIT: begin
-            if (cart_done || pstate == P_FLASH_CMD_W_NOWAIT) begin
+        P_CART_WRITE_FLASH_CMD_W, P_CART_WRITE_FLASH_CMD_W_NOWAIT: begin
+            if (cart_done || pstate == P_CART_WRITE_FLASH_CMD_W_NOWAIT) begin
                 if (fcmd_entry_count == 8'd0) begin
                     cart_write_pulse_pins <= CART_WRITE_PULSE_PINS_DEFAULT;
-                    pstate <= P_TX_ACK;
+                    cart_data_dir_e <= 1'b0;
+                    cart_write_r <= 1'b0;
+                    cart_state <= C_SETUP;
+                    pstate <= P_FLASH_PROGRAM_WR_WAIT_STATUS;
+                    pstate <= P_CART_WRITE_FLASH_CMD_WAIT_STATUS;
                 end else begin
                     // Entry complete
                     // DMG only has 16-bit addresses
@@ -1333,8 +1322,15 @@ always @(posedge clk or posedge reset) begin
 
                     fcmd_entry_count <= fcmd_entry_count - 8'd1;
                     fcmd_idx <= fcmd_idx + 8'd6;
-                    pstate <= P_FLASH_CMD_W;
+                    pstate <= P_CART_WRITE_FLASH_CMD_W;
                 end
+            end
+        end
+
+        P_CART_WRITE_FLASH_CMD_WAIT_STATUS: begin
+            if (cart_done) begin
+                `STATUS_REGISTER <= cart_d_in;
+                pstate <= P_TX_ACK;
             end
         end
 
