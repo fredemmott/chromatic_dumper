@@ -134,65 +134,69 @@ reg [2:0] cart_write_pulse_pins = CART_WRITE_PULSE_PINS_DEFAULT;
 // ============================================================
 // Protocol states
 // ============================================================
-localparam P_INIT        = 8'd0;   // Waiting for 0x55
-localparam P_AA          = 8'd1;   // Got 0x55, waiting for 0xAA
-localparam P_TX_ID       = 8'd2;   // Sending ID string
-localparam P_HELLO_WAIT_L      = 8'd3;   // Waiting for 'L'
-localparam P_HELLO_WAIT_K      = 8'd4;   // Got 'L', waiting for 'K'
-localparam P_CMD         = 8'd6;   // Waiting for command byte
-localparam P_TX_ACK      = 8'd7;   // Send 0x01, return to CMD
-localparam P_TX_BYTES    = 8'd8;   // Send resp_buf[0..resp_len-1], return to CMD
-localparam P_FW_INFO     = 8'd9;   // QUERY_FW_INFO multi-byte send
-localparam P_SET_VAR_P   = 8'd10;  // SET_VARIABLE: collecting params
-localparam P_GET_VAR_P   = 8'd11;  // GET_VARIABLE: collecting params
-localparam P_GET_VAR_TX  = 8'd12;  // GET_VARIABLE: sending 4-byte result
-localparam P_CART_RD_CHK = 8'd13;  // DMG_CART_READ: check cache
-localparam P_CART_RD_TX  = 8'd15;  // Sending cached bytes to host
-localparam P_CART_WR_P   = 8'd16;  // DMG_CART_WRITE: collecting 5 bytes
-localparam P_CART_WR_DO  = 8'd17;  // DMG_CART_WRITE: doing the write
-localparam P_SRAM_WR_RX  = 8'd18;  // DMG_CART_WRITE_SRAM: receiving data
-localparam P_SRAM_WR_DO  = 8'd19;  // Performing SRAM write
-localparam P_FLASH_RX    = 8'd20;  // FLASH_PROGRAM / SRAM WR: receive data byte
-localparam P_FLASH_WR_DO = 8'd21;  // FLASH_PROGRAM: write one byte to cart
-localparam P_FLB_WR_P    = 8'd22;  // DMG_FLASH_WRITE_BYTE: param collection
-localparam P_FLB_WR_DO   = 8'd23;  // DMG_FLASH_WRITE_BYTE: write
-localparam P_FLASH_CMD_P = 8'd24;  // CART_WRITE_FLASH_CMD: collecting header
-localparam P_FLASH_CMD_E = 8'd25;  // CART_WRITE_FLASH_CMD: entry bytes
-localparam P_FLASH_CMD_W = 8'd26;  // CART_WRITE_FLASH_CMD: write one entry
-localparam P_CLK_TOG_P   = 8'd27;  // CLK_TOGGLE: collecting count
-localparam P_CLK_TOG_DO  = 8'd28;  // CLK_TOGGLE: toggling
-localparam P_SET_PIN_P   = 8'd29;  // SET_PIN: collecting 5 bytes
-localparam P_GET_VAR_ST  = 8'd30;  // GET_VAR_STATE: sending all vars
-localparam P_SET_VAR_ST  = 8'd31;  // SET_VAR_STATE: receiving (ignored)
-localparam P_BYE_WAIT_L  = 8'd32;
-localparam P_FLASH_CMD_W_NOWAIT = 8'd33;
-localparam P_FLASH_CMD_SET_P = 8'd34;
-localparam P_SET_BANK_CHANGE_CMD_P = 8'd35;
-localparam P_SET_BANK_CHANGE_CMD_E = 8'd36;
-localparam P_CALC_CRC_P = 8'd37;
-localparam P_CALC_CRC_DO_FIRST = 8'd38;
-localparam P_CALC_CRC_DO = 8'd39;
-localparam P_FLASH_WR_WAIT_WRITE = 8'd40; // Wait for `cart_done` on the actual right, then switch to reading the status
-localparam P_FLASH_WR_WAIT_STATUS = 8'd41; // Wait for (status & mask == value), then go back to P_CALC_FLASH_WR_DO
+typedef enum {
+    P_INIT, // Waiting for 0x55
+    P_AA, // Got 0x55, waiting for 0xAA
+    P_TX_ID, // Sending ID string
+    P_HELLO_WAIT_L, // Waiting for 'L'
+    P_HELLO_WAIT_K, // Got 'L', waiting for 'K'
+    P_BYE_WAIT_L, // Got 'L', waiting for 'L'
+    P_CMD, // Waiting for command byte
+    P_TX_ACK, // Send 0x01, return to CMD
+    P_TX_BYTES, // Send resp_buf[0..resp_len-1], return to CMD
+    P_FW_INFO, // QUERY_FW_INFO multi-byte send
+    P_SET_VAR_P, // SET_VARIABLE: collecting params
+    P_GET_VAR_P, // GET_VARIABLE: collecting params
+    P_GET_VAR_TX, // GET_VARIABLE: sending 4-byte result
+    P_CART_RD_CHK, // DMG_CART_READ: check cache
+    P_CART_RD_TX, // Sending cached bytes to host
+    P_CART_WR_P, // DMG_CART_WRITE: collecting 5 bytes
+    P_CART_WR_DO, // DMG_CART_WRITE: doing the write
+    P_SRAM_WR_RX, // DMG_CART_WRITE_SRAM: receiving data
+    P_SRAM_WR_DO, // Performing SRAM write
+    P_FLASH_RX, // FLASH_PROGRAM / SRAM WR: receive data byte
+    P_FLASH_WR_DO, // FLASH_PROGRAM: write one byte to cart
+    P_FLASH_WR_WAIT_WRITE, // Wait for `cart_done` on the actual right, then switch to reading the status
+    P_FLASH_WR_WAIT_STATUS, // Wait for (status & mask == value), then go back to P_CALC_FLASH_WR_DO
+    P_FLB_WR_P, // DMG_FLASH_WRITE_BYTE: param collection
+    P_FLB_WR_DO, // DMG_FLASH_WRITE_BYTE: write
+    P_FLASH_CMD_P, // CART_WRITE_FLASH_CMD: collecting header
+    P_FLASH_CMD_E, // CART_WRITE_FLASH_CMD: entry bytes
+    P_FLASH_CMD_W, // CART_WRITE_FLASH_CMD: write one entry
+    P_CLK_TOG_P, // CLK_TOGGLE: collecting count
+    P_CLK_TOG_DO, // CLK_TOGGLE: toggling
+    P_SET_PIN_P, // SET_PIN: collecting 5 bytes
+    P_GET_VAR_ST, // GET_VAR_STATE: sending all vars
+    P_SET_VAR_ST, // SET_VAR_STATE: receiving (ignored)
+    P_FLASH_CMD_W_NOWAIT,
+    P_FLASH_CMD_SET_P,
+    P_SET_BANK_CHANGE_CMD_P,
+    P_SET_BANK_CHANGE_CMD_E,
+    P_CALC_CRC_P,
+    P_CALC_CRC_DO_FIRST,
+    P_CALC_CRC_DO
+} pstate_t;
 
 
 // ============================================================
 // Cart access states
 // ============================================================
-localparam C_IDLE  = 3'd0;
-localparam C_SETUP = 3'd1;   // address stable, dir set
-localparam C_CSRD  = 3'd2;   // CS/RD asserted
-localparam C_WAIT  = 3'd3;   // hold
-localparam C_DONE  = 3'd4;   // single-cycle done pulse
-localparam C_WR_LOW = 3'd5;   // write: WR low
-localparam C_WR_HOLD = 3'd6;
-localparam C_WR_HIGH = 3'd7;   // write: WR high + drive data
+typedef enum {
+    C_IDLE,
+    C_SETUP,  // address stable, dir set
+    C_CSRD,   // CS/RD asserted
+    C_WAIT,   // hold
+    C_DONE,   // single-cycle done pulse
+    C_WR_LOW, // write: WR low
+    C_WR_HOLD,
+    C_WR_HIGH // write: WR high + drive data
+} cart_state_t;
 
 // ============================================================
 // Registers
 // ============================================================
-reg [7:0]  pstate;
-reg [2:0]  cart_state;
+pstate_t     pstate;
+cart_state_t cart_state;
 
 // General parameter accumulator (up to 9 bytes for SET_VARIABLE)
 reg [7:0]  par [0:8];
