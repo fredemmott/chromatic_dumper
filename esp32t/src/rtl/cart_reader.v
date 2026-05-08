@@ -120,6 +120,11 @@ reg [7:0]  var8  [0:17];  // CART_MODE … DMG_AUDIO_ENABLED
 `define DMG_WRITE_CS_PULSE  var8[VAR8_DMG_WRITE_CS_PULSE][0]
 `define FLASH_WE_PIN var8[VAR8_FLASH_WEPIN][1:0]
 
+// These are 16-bit variables, but on DMG we only have an 8-bit data bus
+// Assuming 16-bit is for GBA support
+`define STATUS_REGISTER_MASK var16[VAR16_SR_MASK][7:0]
+`define STATUS_REGISTER_VALUE var16[VAR16_SR_VALUE][7:0]
+
 localparam CART_WRITE_PULSE_PINS_NONE = 2'd0;
 localparam CART_WRITE_PULSE_PINS_WR = 2'd1;
 localparam CART_WRITE_PULSE_PINS_AUDIO = 2'd2;
@@ -167,7 +172,8 @@ localparam P_SET_BANK_CHANGE_CMD_E = 8'd36;
 localparam P_CALC_CRC_P = 8'd37;
 localparam P_CALC_CRC_DO_FIRST = 8'd38;
 localparam P_CALC_CRC_DO = 8'd39;
-localparam P_FLASH_WR_DO_FIRST = 8'd40;
+localparam P_FLASH_WR_WAIT_WRITE = 8'd40; // Wait for `cart_done` on the actual right, then switch to reading the status
+localparam P_FLASH_WR_WAIT_STATUS = 8'd41; // Wait for (status & mask == value), then go back to P_CALC_FLASH_WR_DO
 
 
 // ============================================================
@@ -1129,36 +1135,48 @@ always @(posedge clk or posedge reset) begin
         P_FLASH_RX: begin
             if (rx_valid) begin
                 blob[blob_idx] <= rx_data;
-                blob_idx <= blob_idx + 16'd1;
                 xfer_remain <= xfer_remain - 16'd1;
                 if (xfer_remain == 16'd1) begin
                     blob_idx <= 16'd0;
-                    pstate <= P_FLASH_WR_DO_FIRST;
+                    pstate <= P_FLASH_WR_DO;
                 end else blob_idx <= blob_idx + 16'd1;
             end
         end
 
-        P_FLASH_WR_DO, P_FLASH_WR_DO_FIRST: begin
-            logic last_byte;
+        P_FLASH_WR_DO: begin
+            cart_write_pulse_pins <= `FLASH_WE_PIN;
+            cart_a <= `ADDRESS[15:0] + blob_idx;
+            cart_d_out <= blob[blob_idx];
+            cart_data_dir_e <= 1'b1;
+            cart_write_r <= 1'b1;
+            cart_state <= C_SETUP;
 
-            pstate <= P_FLASH_WR_DO;
+            pstate <= P_FLASH_WR_WAIT_WRITE;
+        end
+
+        P_FLASH_WR_WAIT_WRITE: begin
+            if (cart_done) begin
+                cart_data_dir_e <= 1'b0;
+                cart_write_r <= 1'b0;
+                cart_state <= C_SETUP;
+                pstate <= P_FLASH_WR_WAIT_STATUS;
+            end
+        end
+
+        P_FLASH_WR_WAIT_STATUS: begin
+            logic last_byte;
             last_byte = (blob_idx == `XFER_SIZE - 16'd1);
 
-
-            if ((cart_done && ~last_byte) || pstate == P_FLASH_WR_DO_FIRST) begin
-                cart_write_pulse_pins <= `FLASH_WE_PIN;
-                cart_a <= `ADDRESS[15:0] + blob_idx;
-                cart_d_out <= blob[blob_idx];
-                cart_data_dir_e <= 1'b1;
-                cart_write_r <= 1'b1;
-                cart_state <= C_SETUP;
-
-                blob_idx <= blob_idx + 16'd1;
-            end
-
-            if (cart_done && last_byte) begin
-                cart_write_pulse_pins <= CART_WRITE_PULSE_PINS_DEFAULT;
-                pstate <= P_TX_ACK;
+            if (cart_done) begin
+                if ((cart_d_in & `STATUS_REGISTER_MASK) == `STATUS_REGISTER_VALUE) begin
+                    if (last_byte) begin
+                        cart_write_pulse_pins <= CART_WRITE_PULSE_PINS_DEFAULT;
+                        pstate <= P_TX_ACK;
+                    end else begin
+                        blob_idx <= blob_idx + 16'd1;
+                        pstate <= P_FLASH_WR_DO;
+                    end
+                end else cart_state <= C_SETUP;
             end
         end
 
