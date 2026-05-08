@@ -167,6 +167,8 @@ localparam P_SET_BANK_CHANGE_CMD_E = 8'd36;
 localparam P_CALC_CRC_P = 8'd37;
 localparam P_CALC_CRC_DO_FIRST = 8'd38;
 localparam P_CALC_CRC_DO = 8'd39;
+localparam P_FLASH_WR_DO_FIRST = 8'd40;
+
 
 // ============================================================
 // Cart access states
@@ -757,6 +759,7 @@ always @(posedge clk or posedge reset) begin
 
                 8'hD3: begin // FLASH_PROGRAM: receive XFER_SIZE bytes, write each
                     xfer_remain <= `XFER_SIZE;
+                    blob_idx <= 16'd0;
                     flash_ret   <= 8'h01;
                     pstate      <= P_FLASH_RX;
                 end
@@ -1125,25 +1128,37 @@ always @(posedge clk or posedge reset) begin
         // ── FLASH_PROGRAM: receive XFER_SIZE bytes, write each ─────────
         P_FLASH_RX: begin
             if (rx_valid) begin
-                cart_a          <= `ADDRESS[15:0];
-                cart_d_out      <= rx_data;
-                cart_data_dir_e <= 1'b1;
-                cart_write_r    <= 1'b1;
-                cart_state      <= C_SETUP;
-                pstate          <= P_FLASH_WR_DO;
+                blob[blob_idx] <= rx_data;
+                blob_idx <= blob_idx + 16'd1;
+                xfer_remain <= xfer_remain - 16'd1;
+                if (xfer_remain == 16'd1) begin
+                    blob_idx <= 16'd0;
+                    pstate <= P_FLASH_WR_DO_FIRST;
+                end else blob_idx <= blob_idx + 16'd1;
             end
         end
 
-        P_FLASH_WR_DO: begin
-            if (cart_done) begin
-                `ADDRESS    <= `ADDRESS + 32'd1;
-                xfer_remain <= xfer_remain - 16'd1;
-                if (xfer_remain == 16'd1) begin
-                    // Send ACK 0x01
-                    pstate <= P_TX_ACK;
-                end else begin
-                    pstate <= P_FLASH_RX;
-                end
+        P_FLASH_WR_DO, P_FLASH_WR_DO_FIRST: begin
+            logic last_byte;
+
+            pstate <= P_FLASH_WR_DO;
+            last_byte = (blob_idx == `XFER_SIZE - 16'd1);
+
+
+            if ((cart_done && ~last_byte) || pstate == P_FLASH_WR_DO_FIRST) begin
+                cart_write_pulse_pins <= `FLASH_WE_PIN;
+                cart_a <= `ADDRESS[15:0] + blob_idx;
+                cart_d_out <= blob[blob_idx];
+                cart_data_dir_e <= 1'b1;
+                cart_write_r <= 1'b1;
+                cart_state <= C_SETUP;
+
+                blob_idx <= blob_idx + 16'd1;
+            end
+
+            if (cart_done && last_byte) begin
+                cart_write_pulse_pins <= CART_WRITE_PULSE_PINS_DEFAULT;
+                pstate <= P_TX_ACK;
             end
         end
 
