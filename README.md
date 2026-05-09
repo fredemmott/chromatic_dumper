@@ -16,9 +16,10 @@ This is good enough for me, I'm sharing in case another developer is interested 
 Works:
 
 * Chromatic v2
-* Dumping ModRetro cartridges (ROM and saves)
 * Dumping OG cartridges (ROM and saves)
-* *NEW!*: Dumping and restoring MBC3000 v4 flash carts (ROM and saves)
+* Dumping ModRetro cartridges (ROM and saves)
+* *NEW*: Restoring ModRetro cartridges (ROM and saves)
+* *NEW*: Dumping and restoring MBC3000 v4 flash carts (ROM and saves)
 
 Does not work:
 
