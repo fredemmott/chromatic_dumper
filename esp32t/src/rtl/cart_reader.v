@@ -220,7 +220,7 @@ reg [5:0]  resp_pos;
 
 // ID string (sent after 0x55 0xAA)
 // Adjust for release builds
-localparam ID_STR = {"\0", "Chromatic FPGA FW L vYYYY.MM.DD.NN", "\r", "\0" };
+localparam ID_STR = {"\0", "Chromatic FPGA FW L v2026.05.08.01", "\r", "\0" };
 localparam ID_LEN = $bits(ID_STR) / 8;
 reg [5:0]  id_pos;
 
