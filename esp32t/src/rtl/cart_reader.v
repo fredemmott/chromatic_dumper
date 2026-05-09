@@ -837,8 +837,10 @@ always @(posedge clk or posedge reset) begin
 
             if (cart_done) begin
                 if (last_byte) begin
-                    {resp_buf[3], resp_buf[2], resp_buf[1], resp_buf[0]} <= next_crc(crc_state, cart_din_r) ^ 32'hFFFFFFFF;
+                    // Our value is big-endian, but we need to return little-endian
+                    {resp_buf[0], resp_buf[1], resp_buf[2], resp_buf[3]} <= next_crc(crc_state, cart_din_r) ^ 32'hFFFFFFFF;
                     resp_len <= 6'd4;
+                    resp_pos <= 6'd0;
                     pstate <= P_TX_BYTES;
                 end else begin
                     crc_state <= next_crc(crc_state, cart_din_r);
