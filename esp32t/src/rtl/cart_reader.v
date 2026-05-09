@@ -155,6 +155,7 @@ typedef enum {
     P_CART_WR_DO, // DMG_CART_WRITE: doing the write
     P_SRAM_WR_RX, // DMG_CART_WRITE_SRAM: receiving data
     P_SRAM_WR_DO, // Performing SRAM write
+    P_SRAM_WR_WAIT, // Wait for SRAM write to finish
     P_FLASH_PROGRAM_RX, // FLASH_PROGRAM / SRAM WR: receive data byte
     P_FLASH_PROGRAM_WR_COMMANDS, // populate flash_program_commands for one data byte
     P_FLASH_PROGRAM_WR_DO, // write one command byte to cart
@@ -785,6 +786,7 @@ always @(posedge clk or posedge reset) begin
 
                 8'hB3: begin // DMG_CART_WRITE_SRAM: receive XFER_SIZE bytes then write
                     xfer_remain <= `XFER_SIZE;
+                    blob_idx    <= 0;
                     pstate      <= P_SRAM_WR_RX;
                 end
 
@@ -1155,23 +1157,33 @@ always @(posedge clk or posedge reset) begin
         // ── DMG_CART_WRITE_SRAM: receive XFER_SIZE bytes, write each ───
         P_SRAM_WR_RX: begin
             if (rx_valid) begin
-                cart_a          <= `ADDRESS[15:0];
-                cart_d_out      <= rx_data;
-                cart_data_dir_e <= 1'b1;
-                cart_write_r    <= 1'b1;
-                cart_state      <= C_SETUP;
-                pstate          <= P_SRAM_WR_DO;
+                blob[blob_idx] <= rx_data;
+                if (blob_idx == `XFER_SIZE - 1) begin
+                    blob_idx <= 0;
+                    pstate   <= P_SRAM_WR_DO;
+                end else begin
+                    blob_idx <= blob_idx + 1;
+                end
             end
         end
 
         P_SRAM_WR_DO: begin
+                cart_a          <= `ADDRESS[15:0];
+                cart_d_out      <= blob[blob_idx];
+                cart_data_dir_e <= 1'b1;
+                cart_write_r    <= 1'b1;
+                cart_state      <= C_SETUP;
+                pstate          <= P_SRAM_WR_WAIT;
+        end
+
+        P_SRAM_WR_WAIT: begin
             if (cart_done) begin
-                `ADDRESS    <= `ADDRESS + 32'd1;
-                xfer_remain <= xfer_remain - 16'd1;
-                if (xfer_remain == 16'd1) begin
+                `ADDRESS[15:0] <= `ADDRESS[15:0] + 16'd1;
+                if (blob_idx == `XFER_SIZE - 1) begin
                     pstate <= P_TX_ACK;
                 end else begin
-                    pstate <= P_SRAM_WR_RX;
+                    blob_idx <= blob_idx + 1;
+                    pstate <= P_SRAM_WR_DO;
                 end
             end
         end
