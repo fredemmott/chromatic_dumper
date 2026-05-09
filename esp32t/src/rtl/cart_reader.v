@@ -836,7 +836,7 @@ always @(posedge clk or posedge reset) begin
 
             if (cart_done) begin
                 if (last_byte) begin
-                    // Our value is big-endian, but we need to return little-endian
+                    // Like most LK commands, FlashGBX does the MB <-> LE conversion
                     {resp_buf[0], resp_buf[1], resp_buf[2], resp_buf[3]} <= next_crc(crc_state, cart_din_r) ^ 32'hFFFFFFFF;
                     resp_len <= 6'd4;
                     resp_pos <= 6'd0;
