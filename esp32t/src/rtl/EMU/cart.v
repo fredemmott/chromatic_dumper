@@ -16,14 +16,15 @@ module cart
     input               wr,
     input               rd,
     input   [15:0]      a,
-    input   [7:0]       CART_DOUT,
+    input   [7:0]       CART_DOUT, // data to write out
     input               nCS,
     input   [2:0]       TSTATEo,
 
     output  reg [15:0]  CART_A,
     output              CART_CLK,
     output  reg         CART_CS = 1'd1,
-    inout   [7:0]       CART_D,
+    input   [7:0]       CART_D_IN,
+    output  [7:0]       CART_D_OUT,
     output  reg         CART_RD,
     output  reg         CART_WR = 1'd1,
     output              CART_DATA_DIR_E,
@@ -38,10 +39,10 @@ module cart
     assign CART_CLK = phi; 
     
     reg [7:0]   CART_DOUT_r1;
-    assign CART_D = CART_DATA_DIR ? CART_DOUT_r1 : {8{1'bZ}};
+    assign CART_D_OUT = CART_DOUT_r1;
 
     wire [7:0]  CART_DIN; 
-    assign CART_DIN = CART_D;
+    assign CART_DIN = CART_D_IN;
     always@(negedge pclk)
     begin
         if (rd | DMA_on) CART_DIN_r1 <= CART_DIN;

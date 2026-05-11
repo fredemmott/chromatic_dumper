@@ -390,7 +390,11 @@ module system_monitor(
         1'd0,  // 1 bit reserved
         1'd0,  // 1 bit debug,
         6'd8,  // 6 bits minor version
-        6'd18  // 6 bits major version
+        // Upstream:
+        //     6'd18  // 6 bits major version
+        // Set to 0 for this fork per ModRetro's request, so that the ModRetro updater recognizes this is not the
+        // standard firmware
+        6'd0  // 6 bits major version
     };
 
     localparam  NUM_CH = 10;

@@ -29,7 +29,8 @@ module top #(parameter ISSIMU=0)
     output              CART_DATA_DIR_E,
 
     input               CART_DET,
-    input               CART_AUDIN,
+    // FlashGBX LK: inout because some flash cartridges need this held high to enable flash chip commands
+    inout               CART_AUDIN,
 
     input               CLK_FPGA,       // 33.55432MHz
     input               CLK_27MHz,
@@ -411,6 +412,62 @@ module top #(parameter ISSIMU=0)
     wire lcd_on_int;
     wire lcd_off_overwrite;
 
+    // FlashGBX "LK" firmware
+    reg       lk_enabled = 1'b0;
+    wire      lk_disable;
+    wire      lk_tx_dval;
+    wire[7:0] lk_tx_data;
+    wire      lk_rx_dval;
+    wire[7:0] lk_rx_data;
+
+    wire [15:0] lk_cart_a;
+    wire lk_cart_clk;
+    wire lk_cart_cs;
+    wire [7:0] lk_cart_d_in;
+    wire [7:0] lk_cart_d_out;
+    wire lk_cart_rd;
+    wire lk_cart_rst_out;
+    wire lk_cart_wr;
+    wire lk_cart_data_dir_e;
+
+    wire [15:0] emu_cart_a;
+    wire emu_cart_clk;
+    wire emu_cart_cs;
+    wire [7:0] emu_cart_d_in;
+    wire [7:0] emu_cart_d_out;
+    wire emu_cart_rd;
+    wire emu_cart_rst_in;
+    wire emu_cart_wr;
+    wire emu_cart_data_dir_e;
+
+    // from upstream (ModRetro) emu_system_top.v:
+    //     assign CART_D = CART_DATA_DIR ? CART_DOUT_r1 : {8{1'bZ}};
+    //
+    // So, CART_DATA_DIR == write; however, we get CART_DATA_DIR_E which is ~CART_DATA_DIR, so,
+    // _DIR_E can be thought of as 'is read'
+
+    // LK/EMU MUX: output ----------------------------------------
+    assign CART_A = lk_enabled ? lk_cart_a : emu_cart_a;
+    assign CART_CLK = lk_enabled ? lk_cart_clk : emu_cart_clk;
+    assign CART_CS = lk_enabled ? lk_cart_cs : emu_cart_cs;
+    assign CART_RD = lk_enabled ? lk_cart_rd : emu_cart_rd;
+    assign CART_WR = lk_enabled ? lk_cart_wr : emu_cart_wr;
+    assign CART_DATA_DIR_E = lk_enabled ? lk_cart_data_dir_e : emu_cart_data_dir_e;
+
+    // LK only writes, emu only reads
+    assign CART_RST = (lk_enabled && !lk_cart_data_dir_e) ? lk_cart_rst_out : 1'bZ;
+    assign emu_cart_rst_in = lk_enabled ? 1'b0 : CART_RST;
+
+    // LK/EMU MUX: inout -----------------------------------------
+    wire [7:0] cart_d_in = CART_D;
+    wire [7:0] cart_d_out = lk_enabled ? lk_cart_d_out : emu_cart_d_out;
+
+    assign emu_cart_d_in = (emu_cart_data_dir_e && !lk_enabled) ? cart_d_in : 8'h00;
+    assign lk_cart_d_in = (lk_cart_data_dir_e && lk_enabled) ? cart_d_in : 8'h00;
+
+    assign CART_D = CART_DATA_DIR_E ? 8'hZZ : cart_d_out;
+    // END LK/EMU MUX
+
     wire [8:0] MCU_buttons;
 
     wire BTN_MENU_ored = BTN_MENU & ~MCU_buttons[8]; // BTN_MENU is low active
@@ -443,7 +500,7 @@ module top #(parameter ISSIMU=0)
     emu_system_top u_emu_system_top(
         .hclk(hClk),
         .pclk(pClk),
-        .reset_n(~memrst),//lock_o),
+        .reset_n(~memrst | lk_enabled),//lock_o),
         .POWER_GOOD(~POWER_ON_FPGA),
 
         .customPaletteEna(paletteBGIn[63]),
@@ -466,14 +523,15 @@ module top #(parameter ISSIMU=0)
         .BTN_START(BTN_START_filtered | MCU_buttons[0]),
         .MENU_CLOSED(menuDisabled & ~slideOutActive),
 
-        .CART_A(CART_A),
-        .CART_CLK(CART_CLK),
-        .CART_CS(CART_CS),
-        .CART_D(CART_D),
-        .CART_RD(CART_RD),
-        .CART_RST(CART_RST),
-        .CART_WR(CART_WR),
-        .CART_DATA_DIR_E(CART_DATA_DIR_E),
+        .CART_A(emu_cart_a),
+        .CART_CLK(emu_cart_clk),
+        .CART_CS(emu_cart_cs),
+        .CART_D_IN(emu_cart_d_in),
+        .CART_D_OUT(emu_cart_d_out),
+        .CART_DATA_DIR_E(emu_cart_data_dir_e),
+        .CART_RD(emu_cart_rd),
+        .CART_RST_IN(emu_cart_rst_in),
+        .CART_WR(emu_cart_wr),
 
         .IR_RX(IR_RX),
         .IR_LED(IR_LED),
@@ -642,7 +700,13 @@ module top #(parameter ISSIMU=0)
         .usb_rxdn_i(usb_rxdn_i),
         .usb_pullup_en_o(usb_pullup_en_o),
         .usb_term_dp_io(usb_term_dp_io),
-        .usb_term_dn_io(usb_term_dn_io)
+        .usb_term_dn_io(usb_term_dn_io),
+        .lk_enabled(lk_enabled),
+        .lk_disable(lk_disable),
+        .lk_tx_dval(lk_tx_dval),
+        .lk_tx_data(lk_tx_data),
+        .lk_rx_dval(lk_rx_dval),
+        .lk_rx_data(lk_rx_data)
     );
 
     wire [13:0] hAdcValue_r1;
@@ -741,4 +805,25 @@ module top #(parameter ISSIMU=0)
 
     assign I2S_BCLK = menuDisabled;
 
+    cart_reader #(.CLK_FREQ(60_000_000))
+    u_cart_reader(
+        .clk            (PHY_CLKOUT),
+        .reset          (~usblocked),
+        .lk_disable     (lk_disable),
+        .rx_valid       (lk_rx_dval),
+        .rx_data        (lk_rx_data),
+        .tx_valid       (lk_tx_dval),
+        .tx_data        (lk_tx_data),
+        .cart_a         (lk_cart_a),
+        .cart_clk       (lk_cart_clk),
+        .cart_cs        (lk_cart_cs),
+        .cart_rd        (lk_cart_rd),
+        .cart_wr        (lk_cart_wr),
+        .cart_rst_out   (lk_cart_rst_out),
+        .cart_data_dir_e(lk_cart_data_dir_e),
+        .cart_d_in      (lk_cart_d_in),
+        .cart_d_out     (lk_cart_d_out),
+        .cart_audio     (CART_AUDIN),
+        .cart_det       (CART_DET)
+    );
 endmodule

@@ -37,7 +37,17 @@ module usbuvcuart_top(
     input               usb_rxdn_i,
     output              usb_pullup_en_o,
     inout               usb_term_dp_io,
-    inout               usb_term_dn_io
+    inout               usb_term_dn_io,
+
+    // FlashGBX "LK" mode
+    output              lk_enabled,
+    input               lk_disable,
+
+    input               lk_tx_dval,
+    input[7:0]          lk_tx_data,
+
+    output              lk_rx_dval,
+    output[7:0]         lk_rx_data
 );
 
     wire yLineValid;
@@ -959,13 +969,8 @@ module usbuvcuart_top(
     wire [15:0] uart_rx_data    ;
     wire        uart_rx_data_val;
 
-
     wire uart_cts = 1'b0;
-    wire        ep3_rx_dval;
-    wire [7:0]  ep3_rx_data;
 
-    assign uart_tx_data     = {8'd0,ep3_rx_data};
-    assign uart_tx_data_val = ep3_rx_dval;
     UART  #(
         .CLK_FREQ     (30'd60000000)  // set system clock frequency in Hz
     )u_UART
@@ -990,6 +995,94 @@ module usbuvcuart_top(
     //==============================================================
     //======FIFO
 
+    // Support for the FlashGBX "LK" protocol
+
+    // Adjust YYYY.MM.DD.NN for releases
+    localparam LK_ID_STR_REV = "\0Chromatic Dumper FPGA FW L vYYYY.MM.DD.NN\r\0";
+    localparam [($bits(LK_ID_STR_REV) - 1):0] LK_ID_STR = {<<8{LK_ID_STR_REV}};
+    localparam LK_ID_LEN = $bits(LK_ID_STR) / 8;
+
+    typedef enum {
+        // passthrough to ESP via UART unless command bytes detected
+        // -> ESP_COUNTED on ESP v1 header (fixed number of bytes)
+        EP3_DEFAULT,
+        // pass through up to 3 bytes (len, payload0, payload1] to the ESP over UART
+        // Cancel and reset to EP3_DEFAULT if the header byte is seen again
+        EP3_ESP_V1_RX,
+        // read the address byte from a v2 packet (header, addr, len, payload[...], crc byte)
+        EP3_ESP_V2_RX_ADDR,
+        // read the length byte from a v2 packet
+        EP3_ESP_V2_RX_LEN,
+        // pass through a specific number of bytes to the UART, then revert to DEFAULT.
+        // Used for V2 packets once the length has been counted
+        EP3_ESP_RX_COUNTED,
+        EP3_ESP_WAIT_RX, // Wait for the ESP to process the input byte
+        EP3_55_WAIT_AA,
+        EP3_TX_LK_ID,
+        EP3_L_WAIT_K,
+        EP3_LK_WAIT_TX_ACK,
+        EP3_LK // passthrough to cart_reader
+    } ep3_state_t;
+    ep3_state_t ep3_state = EP3_DEFAULT;
+    ep3_state_t ep3_next_state;
+
+    enum {
+      EP3_PEER_UART,
+      EP3_PEER_SELF, // Handles TX_LK_ID
+      EP3_PEER_LK
+    } ep3_peer;
+    assign ep3_peer = (ep3_state == EP3_TX_LK_ID) ? EP3_PEER_SELF :
+                      (ep3_state == EP3_LK_WAIT_TX_ACK) ? EP3_PEER_SELF :
+                      (ep3_state == EP3_LK) ? EP3_PEER_LK :
+                      EP3_PEER_UART;
+    assign lk_enabled = (ep3_peer == EP3_PEER_LK);
+
+    wire      ep3_rx_dval;
+    wire[7:0] ep3_rx_data;
+    wire      ep3_rx_rdy;
+    wire      ep3_tx_dval;
+    wire[7:0] ep3_tx_data;
+    reg       ep3_self_tx_dval;
+    reg[7:0]  ep3_self_tx_data;
+
+    localparam LK_ID_ADDR_WIDTH = $clog2(LK_ID_LEN);
+    reg [LK_ID_ADDR_WIDTH-1:0] ep3_idx; //Used for TX_LK_ID, ESP_V1_RX, ESP_V2_RX_COUNTED
+
+    reg [7:0] lk_id_rom[0:LK_ID_LEN-1];
+    initial begin
+        for (integer i = 0; i < LK_ID_LEN; i = i + 1) begin
+            lk_id_rom[i] = LK_ID_STR[(i * 8) +: 8];
+        end
+    end
+
+    reg [7:0]                  ep3_lk_id_it;
+    reg                        ep3_lk_id_it_valid = 0;
+    reg                        ep3_lk_id_it_valid_next = 0;
+    reg [LK_ID_ADDR_WIDTH-1:0] ep3_lk_id_it_idx;
+
+    always @(posedge pClk) begin
+        ep3_lk_id_it_valid_next <= (ep3_idx == ep3_lk_id_it_idx);
+        ep3_lk_id_it_idx        <= ep3_idx;
+        ep3_lk_id_it            <= lk_id_rom[ep3_idx];
+    end
+
+    // TODO: the EP3_PEER_LK TX/RX data/dval need to be passed upwards
+
+    assign uart_tx_data = (ep3_peer == EP3_PEER_UART) ? {8'd0, ep3_rx_data} : 16'd0;
+    assign uart_tx_data_val = (ep3_peer == EP3_PEER_UART) ? ep3_rx_dval : 1'd0;
+
+    assign lk_rx_dval = (ep3_peer == EP3_PEER_LK) ? ep3_rx_dval : 1'b0;
+    assign lk_rx_data = (ep3_peer == EP3_PEER_LK) ? ep3_rx_data : 8'b0;
+
+    // 1 is fine for the cases handled by the FPGA, as the FPGA is always faster than the USB bus
+    assign ep3_rx_rdy  = (ep3_peer == EP3_PEER_UART) ? (!uart_tx_busy) : 1'b1;
+    assign ep3_tx_dval = (ep3_peer == EP3_PEER_UART) ? uart_rx_data_val :
+                         (ep3_peer == EP3_PEER_LK) ? lk_tx_dval :
+                         /* (ep3_peer == EP3_PEER_SELF) */ ep3_self_tx_dval;
+    assign ep3_tx_data = (ep3_peer == EP3_PEER_UART) ? uart_rx_data[7:0]:
+                         (ep3_peer == EP3_PEER_LK) ? lk_tx_data :
+                         /* (ep3_peer == EP3_PEER_SELF) */ ep3_self_tx_data;
+
     usb_fifo usb_fifo
     (
          .i_clk         (pClk   )//clock
@@ -1009,10 +1102,10 @@ module usbuvcuart_top(
         //Endpoint 3
         ,.i_ep3_tx_clk  (pClk             )
         ,.i_ep3_tx_max  (12'd64           )
-        ,.i_ep3_tx_dval (uart_rx_data_val )
-        ,.i_ep3_tx_data (uart_rx_data[7:0])
+        ,.i_ep3_tx_dval (ep3_tx_dval      )
+        ,.i_ep3_tx_data (ep3_tx_data      )
         ,.i_ep3_rx_clk  (pClk             )
-        ,.i_ep3_rx_rdy  (!uart_tx_busy    )
+        ,.i_ep3_rx_rdy  (ep3_rx_rdy       )
         ,.o_ep3_rx_dval (ep3_rx_dval      )
         ,.o_ep3_rx_data (ep3_rx_data      )
     );
@@ -1020,6 +1113,88 @@ module usbuvcuart_top(
     assign    E_UART_DTR = s_ctl_sig[0];
     assign    E_UART_RTS = s_ctl_sig[1];
 
+    always @(posedge pClk) begin
+        if (RESET_IN || usb_busreset) begin
+            ep3_state <= EP3_DEFAULT;
+            ep3_self_tx_dval <= 1'b0;
+            ep3_self_tx_data <= 8'b0;
+            ep3_idx <= 0;
+        end else begin
+            ep3_lk_id_it_valid <= ep3_lk_id_it_valid_next && (ep3_idx == ep3_lk_id_it_idx);
+            ep3_self_tx_data <= 8'h00;
+            ep3_self_tx_data <= 1'b0;
+
+            case (ep3_state)
+                EP3_DEFAULT: begin
+                    if (ep3_rx_dval) begin
+                        if (ep3_rx_data == 8'h55) begin
+                            ep3_next_state <= EP3_55_WAIT_AA;
+                            ep3_state <= EP3_ESP_WAIT_RX;
+                        end else if (ep3_rx_data == "L") begin
+                            ep3_next_state <= EP3_L_WAIT_K;
+                            ep3_state <= EP3_ESP_WAIT_RX;
+                        end
+                    end
+                end
+                EP3_ESP_WAIT_RX: begin
+                    if (!ep3_rx_dval) begin
+                        ep3_state <= ep3_next_state;
+                    end
+                end
+                EP3_55_WAIT_AA: begin
+                    if (ep3_rx_dval) begin
+                        if (ep3_rx_data == 8'hAA) begin
+                            ep3_idx <= 0;
+                            ep3_lk_id_it_valid <= 0;
+
+                            ep3_self_tx_dval <= 1'b0;
+                            ep3_state <= EP3_TX_LK_ID;
+                        end else if (ep3_rx_data == 8'h55) begin
+                            // Allow 0x55 0x55 .... 0xAA
+                            ep3_state <= EP3_ESP_WAIT_RX;
+                        end else ep3_state <= EP3_DEFAULT;
+                    end
+                end
+                EP3_TX_LK_ID: begin
+                    if (!ep3_self_tx_dval) begin
+                        ep3_self_tx_dval <= ep3_lk_id_it_valid;
+                        ep3_self_tx_data <= ep3_lk_id_it;
+                    end else begin
+                        ep3_self_tx_dval <= 1'b0;
+                        if (ep3_idx == (LK_ID_LEN - 1)) begin
+                            ep3_state <= EP3_DEFAULT;
+                        end else begin
+                            ep3_lk_id_it_valid <= 0;
+                            ep3_idx <= ep3_idx + 1'b1;
+                        end
+                    end
+                end
+                EP3_L_WAIT_K: begin
+                    if (ep3_rx_dval) begin
+                        if (ep3_rx_data == "K") begin
+                            ep3_self_tx_dval <= 1'b0;
+                            ep3_state <= EP3_LK_WAIT_TX_ACK;
+                        end else if (ep3_rx_data == "L") begin
+                            // Allow LLLLLL...K
+                            ep3_state <= EP3_ESP_WAIT_RX;
+                        end else ep3_state <= EP3_DEFAULT;
+                    end
+                end
+                EP3_LK_WAIT_TX_ACK: begin
+                    if (!ep3_self_tx_dval) begin
+                        ep3_self_tx_data <= 8'hFF;
+                        ep3_self_tx_dval <= 1'b1;
+                    end else ep3_state <= EP3_LK;
+                end
+                EP3_LK: begin
+                    if (lk_disable) begin
+                        ep3_state <= EP3_DEFAULT;
+                    end
+                end
+                default: ep3_state <= EP3_DEFAULT;
+            endcase
+        end
+    end
 endmodule
 
 module delay(input rst, input clk, input in, output out);
