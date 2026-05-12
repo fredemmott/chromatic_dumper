@@ -17,7 +17,7 @@
 //   0xA8 (SET_ADDR_INPUTS)→ ACK 0x01
 //   0xA9 (CLK_TOGGLE)     → count(4), ACK 0x01
 //   0xAE (GET_VAR_STATE)  → dump of all vars
-//   0xAF (SET_VAR_STATE)  → receive all vars (ignored)
+//   0xAF (SET_VAR_STATE)  → receive all vars
 //   0xB1 (DMG_CART_READ)  → read TRANSFER_SIZE bytes at ADDRESS from cart (or cache)
 //   0xB2 (DMG_CART_WRITE) → addr(4)+val(1), ACK 0x01, cache invalidated
 //   0xB3 (DMG_CART_WRITE_SRAM) → then recv TRANSFER_SIZE bytes, write each, ACK 0x01
@@ -76,79 +76,77 @@ module cart_reader #(
 // ============================================================
 // Firmware variable indices (match DEVICE_VAR in LK_Device.py)
 // ============================================================
-// 32-bit vars (index 0-based within 32-bit array)
-localparam VAR32_ADDRESS     = 1'd0;
-localparam VAR32_AUTOPTOFF   = 1'd1;
-localparam VAR32__MAX        = 1'd1;
-localparam VAR32__COUNT      = VAR32__MAX + 1;
-// 16-bit vars
-localparam VAR16_XFER_SIZE   = 3'd0;
-localparam VAR16_BUF_SIZE    = 3'd1;
-localparam VAR16_ROM_BANK    = 3'd2;
-localparam VAR16_STATUS_REG  = 3'd3;
-localparam VAR16_LAST_BANK   = 3'd4;
-localparam VAR16_SR_MASK     = 3'd5;
-localparam VAR16_SR_VALUE    = 3'd6;
-localparam VAR16__MAX        = 3'd6;
-localparam VAR16__COUNT      = VAR16__MAX + 1;
-// 8-bit vars
-localparam VAR8_CART_MODE    = 5'd0;
-localparam VAR8_ACCESS_MODE  = 5'd1;
-localparam VAR8_FLASH_CMDSET = 5'd2;
-localparam VAR8_FLASH_METHOD = 5'd3;
-localparam VAR8_FLASH_WEPIN  = 5'd4;
-localparam VAR8_FLASH_PULRST = 5'd5;
-localparam VAR8_FLASH_CMDB1  = 5'd6;
-localparam VAR8_FLASH_SHRPSR = 5'd7;
-localparam VAR8_DMG_READ_CS_PULSE  = 5'd8;
-localparam VAR8_DMG_WRITE_CS_PULSE  = 5'd9;
-localparam VAR8_FLASH_DDIE   = 5'd10;
-localparam VAR8_DMG_RD_METH  = 5'd11;
-localparam VAR8_AGB_RD_METH  = 5'd12;
-localparam VAR8_CART_PWRD    = 5'd13;
-localparam VAR8_PULLUPS_EN   = 5'd14;
-localparam VAR8_AUTO_PWROFF  = 5'd15;
-localparam VAR8_AGB_IRQ_EN   = 5'd16;
-localparam VAR8_DMG_AUD_EN   = 5'd17;
-localparam VAR8__MAX         = 5'd17;
-localparam VAR8__COUNT       = VAR8__MAX + 1;
 
-localparam VAR__COUNT        = VAR32__COUNT + VAR16__COUNT + VAR8__COUNT;
-localparam VAR__BYTES        = VAR__COUNT << 2;
+// { 3'byte_size, 3'key }
+localparam VAR_ID_ADDRESS = { 3'd4, 5'h00 };
+localparam VAR_ID_TRANSFER_SIZE = { 3'd2, 5'h00 };
+localparam VAR_ID_STATUS_REGISTER = { 3'd2, 5'h03 };
+localparam VAR_ID_CART_MODE = { 3'd1, 5'h00 };
+localparam VAR_ID_DMG_ACCESS_MODE = { 3'd1, 5'h01 };
+localparam VAR_ID_FLASH_WE_PIN = { 3'd1, 5'h04 };
+localparam VAR_ID_DMG_READ_CS_PULSE = { 3'd1, 5'h08 };
+localparam VAR_ID_DMG_WRITE_CS_PULSE = { 3'd1, 5'h09 };
 
-logic [((VAR__BYTES * 8) - 1):0] fw_vars;
+// variable storage ---------------------------------------------
+// some of these are a smaller number of bits than expected; this
+// is because they're signed for AGB, but we're DMG-only
+struct packed {
+    reg [15:0] var_address;
+    reg [15:0] var_transfer_size;
+    reg [7:0]  var_status_register;
+    reg [7:0]  var_cart_mode;
+    reg [7:0]  var_dmg_access_mode;
+    reg        var_flash_we_pin;
+    reg        var_dmg_read_cs_pulse;
+    reg        var_dmg_write_cs_pulse;
+    reg [4:0]  PAD_TO_BYTE;
+} vars;
+localparam VARS_BYTE_COUNT = $bits(vars) / 8;
 
-localparam VAR32__OFFSET = 0;
-localparam VAR16__OFFSET = VAR32__OFFSET + VAR32__COUNT;
-localparam VAR8__OFFSET  = VAR16__OFFSET + VAR16__COUNT;
+function [7:0] get_var32(
+  input [2:0] sz,
+  input [4:0] key
+);
+    get_var32 = 32'b0;
+    // Even though address is a 32-bit variable in the protocol, we only support DMG, not AGB
+    // so the first 2 bytes of all our variables are always 0
+    case ({sz, key})
+        VAR_ID_ADDRESS: get_var32 = { 16'b0, vars.var_address };
+        VAR_ID_TRANSFER_SIZE: get_var32 = { 16'b0, vars.var_transfer_size };
+        VAR_ID_STATUS_REGISTER: get_var32 = { 24'b0, vars.var_status_register };
+        VAR_ID_CART_MODE: get_var32 = { 24'b0, vars.var_cart_mode };
+        VAR_ID_DMG_ACCESS_MODE: get_var32 = { 24'b0, vars.var_dmg_access_mode };
+        VAR_ID_FLASH_WE_PIN: get_var32 = { 31'b0, vars.var_flash_we_pin };
+        VAR_ID_DMG_READ_CS_PULSE: get_var32 = { 31'b0, vars.var_dmg_read_cs_pulse };
+        VAR_ID_DMG_WRITE_CS_PULSE: get_var32 = { 31'b0, vars.var_dmg_write_cs_pulse };
+        default: get_var32 = 32'b0;
+    endcase
+endfunction
 
-`define VAR32_SLICE(key, count)   fw_vars[(VAR32__OFFSET + key) * 32 +: count]
-`define VAR16_SLICE(key, count)   fw_vars[(VAR16__OFFSET + key) * 32 +: count]
-`define VAR8_SLICE(key, count)    fw_vars[(VAR8__OFFSET  + key) * 32 +: count]
-`define VAR32(key) `VAR32_SLICE(key, 32)
-`define VAR16(key) `VAR16_SLICE(key, 16)
-`define VAR8(key)  `VAR8_SLICE(key, 8)
+task set_var16(
+  input [2:0] sz,
+  input [4:0] key,
+  input [15:0] data
+);
+    case ({sz, key})
+        VAR_ID_ADDRESS: vars.var_address <= data;
+        VAR_ID_TRANSFER_SIZE: vars.var_transfer_size <= data;
+        VAR_ID_STATUS_REGISTER: vars.var_status_register <= data[7:0];
+        VAR_ID_CART_MODE: vars.var_cart_mode <= data[7:0];
+        VAR_ID_DMG_ACCESS_MODE: vars.var_cart_mode <= data[7:0];
+        VAR_ID_FLASH_WE_PIN: vars.var_flash_we_pin <= data[0];
+        VAR_ID_DMG_READ_CS_PULSE: vars.var_dmg_read_cs_pulse <= data[0];
+        VAR_ID_DMG_WRITE_CS_PULSE: vars.var_dmg_write_cs_pulse <= data[0];
+        default: ;
+    endcase
+endtask
 
-// Convenience aliases
-`define ADDRESS            `VAR32_SLICE(VAR32_ADDRESS, 16)
-`define XFER_SIZE          `VAR16(VAR16_XFER_SIZE)
-`define CART_MODE_V        `VAR8(VAR8_CART_MODE)
-`define ACCESS_MODE        `VAR8(VAR8_ACCESS_MODE)
-`define DMG_READ_CS_PULSE  `VAR8_SLICE(VAR8_DMG_READ_CS_PULSE, 1)
-`define DMG_WRITE_CS_PULSE `VAR8_SLICE(VAR8_DMG_WRITE_CS_PULSE, 1)
-`define FLASH_WE_PIN       `VAR8_SLICE(VAR8_FLASH_WEPIN, 1)
-
-// These are 16-bit variables, but on DMG we only have an 8-bit data bus
-// Assuming 16-bit is for GBA support
-`define STATUS_REGISTER_MASK  `VAR16_SLICE(VAR16_SR_MASK, 8)
-`define STATUS_REGISTER_VALUE `VAR16_SLICE(VAR16_SR_VALUE, 8)
-`define STATUS_REGISTER       `VAR16_SLICE(VAR16_STATUS_REG, 8)
-
-localparam CART_WRITE_PULSE_PINS_NONE = 2'd0;
-localparam CART_WRITE_PULSE_PINS_WR = 2'd1;
-localparam CART_WRITE_PULSE_PINS_AUDIO = 2'd2;
-localparam CART_WRITE_PULSE_PINS_DEFAULT = 2'd3;
-reg [2:0] cart_write_pulse_pins = CART_WRITE_PULSE_PINS_DEFAULT;
+enum {
+    CART_WRITE_PULSE_PINS_NONE,
+    CART_WRITE_PULSE_PINS_WR,
+    CART_WRITE_PULSE_PINS_AUDIO,
+    CART_WRITE_PULSE_PINS_DEFAULT
+} cart_write_pulse_pins = CART_WRITE_PULSE_PINS_DEFAULT;
 
 // ============================================================
 // Protocol states
@@ -156,7 +154,7 @@ reg [2:0] cart_write_pulse_pins = CART_WRITE_PULSE_PINS_DEFAULT;
 typedef enum {
     P_CMD, // Waiting for command byte
     P_TX_ACK, // Send 0x01, return to CMD
-    P_TX_BYTES, // Send from tx_bytes_idx to tx_bytes_count , return to CMD
+    P_TX_BYTES, // Send ftx_bytes_count bytes, return to CMD
     P_FW_INFO, // QUERY_FW_INFO multi-byte send
     P_GET_VAR_INIT,
     P_GET_VAR_P, // GET_VARIABLE: collecting params
@@ -189,8 +187,9 @@ typedef enum {
     P_CLK_TOG_DO, // CLK_TOGGLE: toggling
     P_SET_PIN_INIT,
     P_SET_PIN_P, // SET_PIN: collecting 5 bytes
-    P_GET_VAR_ST, // GET_VAR_STATE: sending all vars
-    P_SET_VAR_ST, // SET_VAR_STATE: receiving (ignored)
+    P_GET_VAR_STATE, // GET_VAR_STATE: sending all vars
+    P_SET_VAR_STATE_INIT, // SET_VAR_STATE: receiving (ignored)
+    P_SET_VAR_STATE,
     P_SET_FLASH_CMD_INIT,
     P_SET_FLASH_CMD_P,
     P_SET_FLASH_CMD_E,
@@ -275,9 +274,6 @@ reg [7:0]  fcmd_entry_count; // number of entries remaining
 reg [7:0]  fcmd_par [0:6*16];
 reg [2:0]  fcmd_idx;
 
-// GET_VAR_STATE / SET_VAR_STATE index
-reg [$clog2(VAR__BYTES) - 1:0]  vstate_idx;
-
 // SET_PIN receive counter
 reg [2:0]  set_pin_p_idx;
 
@@ -319,8 +315,15 @@ reg [31:0] clk_tog_cnt;
 
 
 // TX mapping
+reg tx_enqueued = 0;
+// whether or not we can enqueue
+wire tx_queue_ready = !(tx_data_queued || tx_valid);
 
-reg [7:0] tx_bytes_idx;
+wire [7:0] tx_data_get_var = get_var_data[(4 - tx_bytes_count) * 8 +: 8];
+wire [7:0] tx_data_calc_crc = crc_state[(4 - tx_bytes_count) * 8 +: 8];
+wire [7:0] tx_data_fw_info = fwi_buf[fwi_pos];
+wire [7:0] tx_data_get_var_state = vars[(VARS_BYTE_COUNT - tx_bytes_count) * 8 +: 8];
+
 reg [7:0] tx_bytes_count;
 enum logic [3:0] {
     TXS_NONE,
@@ -329,31 +332,37 @@ enum logic [3:0] {
     TXS_CALC_CRC,
     TXS_GET_VAR,
     TXS_CART_IN,
-    TXS_FW_INFO
+    TXS_FW_INFO,
+    TXS_GET_VAR_STATE
 } tx_data_sel;
 always_comb begin
+    tx_data = 8'b0;
     case (tx_data_sel)
         TXS_NONE: begin
             tx_data = 8'h00;
         end
         TXS_CONSTANT_ONE: begin
-            tx_data = 8'h11;
+            tx_data = 8'h01;
         end
         TXS_CONSTANT_FF: begin
             tx_data = 8'hFF;
         end
         TXS_CALC_CRC: begin
-            tx_data = crc_state[tx_bytes_idx[1:0] * 8 +: 8];
+            tx_data = tx_data_calc_crc;
         end
         TXS_GET_VAR: begin
-            tx_data = set_get_var_data.as_bytes[tx_bytes_idx];
+            tx_data = tx_data_get_var;
         end
         TXS_CART_IN: begin
             tx_data = cart_din_r;
         end
         TXS_FW_INFO: begin
-            tx_data = fwi_buf[fwi_pos];
+            tx_data = tx_data_fw_info;
         end
+        TXS_GET_VAR_STATE: begin
+            tx_data = tx_data_get_var_state;
+        end
+        default: tx_data = 8'h00;
     endcase
 end
 
@@ -399,7 +408,7 @@ initial begin
     // bootloader_reset = 0
     fwi_buf[25] = 8'd0;
 
-    fw_vars = 0;
+    vars <= '{default:0};
 end
 
 // ============================================================
@@ -409,34 +418,25 @@ end
 // Value: par[5] ignored (size 1 or 2 or 4 all packed into 4-byte LE field in par[5..8])
 // Actually: SET_VARIABLE sends [size, key32_BE(4), value32_BE(4)] = 9 bytes total
 
-reg [3:0]  set_var_par_idx;
-reg [2:0]  get_var_par_idx;
+reg [2:0]  get_var_p_idx;
+reg [31:0] get_var_data;
+reg [2:0]  get_var_size;
 
-reg [7:0]  set_get_var_size;
-reg [7:0]  set_get_var_key;
-union packed {
-    logic [31:0]       as_bits;
-    logic [0:3]  [7:0] as_bytes;
-} set_get_var_data;
-reg [31:0] set_get_var_data;
-reg [$clog2(VAR__COUNT + 1) - 1:0] set_get_var_idx;
+reg [3:0]  set_var_p_idx;
+reg [2:0]  set_var_size;
+reg [4:0]  set_var_key;
+reg [15:0] set_var_data;
+reg        set_var_rdy = 0;
 
-reg [1:0] get_var_tx_idx;
-
-function automatic logic [$clog2(VAR__COUNT + 1) - 1:0] var32_idx(logic [7:0] sz, logic[7:0] k);
-    case (sz)
-        8'd4: return (k <= VAR32__MAX) ? (VAR32__OFFSET + k) : 0;
-        8'd2: return (k <= VAR16__MAX) ? (VAR16__OFFSET + k) : 0;
-        8'd1: return (k <= VAR8__MAX) ? (VAR8__OFFSET + k) : 0;
-        default: return 0;
-    endcase
-endfunction
+reg                                   set_var_state_rdy = 0;
+reg [$clog2(VARS_BYTE_COUNT) - 1 : 0] set_var_state_idx;
+reg [7:0]                             set_var_state_data;
+reg [$clog2(VARS_BYTE_COUNT) - 1 : 0] set_var_state_remaining;
 
 // ============================================================
 // Main state machine
 // ============================================================
 integer i;
-reg cmd_rcv;
 
 always @(posedge clk) begin
     tx_valid <= 1'b0;
@@ -455,14 +455,25 @@ always @(posedge clk) begin
         cart_done       <= 1'b0;
         cart_pullups_enabled <= 1'b0;
 
-        fw_vars <= 0;
         tx_data_sel <= TXS_NONE;
-        cmd_rcv <= 1'b0;
+
+        set_var_rdy <= 0;
+        set_var_state_rdy <= 0;
+
+        vars <= '{default:0};
     end else begin
         // Defaults
         cart_done <= 1'b0;
         lk_disable <= 1'b0;
-        cmd_rcv <= 1'b0;
+
+        if (set_var_rdy) begin
+            set_var_rdy <= 0;
+            set_var16(set_var_size, set_var_key, set_var_data);
+        end
+        if (set_var_state_rdy) begin
+            set_var_state_rdy <= 0;
+            vars[(set_var_state_idx * 8) +: 8] <= set_var_state_data;
+        end
 
         // ─────────────────────────────────────────────────────────────────
         // Cart access state machine (runs every cycle, driven by pstate)
@@ -482,11 +493,11 @@ always @(posedge clk) begin
                 cart_wait_cnt <= cart_wait_cnt - 5'd1;
             end else begin
                 if (cart_write_r) begin
-                    if (`DMG_WRITE_CS_PULSE) cart_cs <= 1'b0;
+                    if (vars.var_dmg_write_cs_pulse) cart_cs <= 1'b0;
                     cart_wait_cnt <= CART_WR_HOLD[4:0] - 5'd1;
                     cart_state    <= C_WR_LOW;
                 end else begin
-                    if (`DMG_READ_CS_PULSE) cart_cs <= 1'b0;
+                    if (vars.var_dmg_read_cs_pulse) cart_cs <= 1'b0;
                     cart_rd       <= 1'b0;
                     cart_wait_cnt <= CART_RD_HOLD[4:0] - 5'd1;
                     cart_state    <= C_WAIT;
@@ -578,7 +589,6 @@ always @(posedge clk) begin
         // ── Main command dispatcher ─────────────────────────────────────
         P_CMD: begin
             if (rx_valid) begin
-                cmd_rcv   <= 1'b1;
                 tx_data_sel <= TXS_NONE;
 
                 case (rx_data)
@@ -650,13 +660,11 @@ always @(posedge clk) begin
                 end
 
                 8'hAE: begin // GET_VAR_STATE
-                    vstate_idx <= 7'd0;
-                    pstate <= P_GET_VAR_ST;
+                    pstate <= P_GET_VAR_STATE;
                 end
 
                 8'hAF: begin // SET_VAR_STATE: receive VSTATE_LEN bytes (ignored)
-                    vstate_idx <= 7'd0;
-                    pstate <= P_SET_VAR_ST;
+                    pstate <= P_SET_VAR_STATE_INIT;
                 end
 
                 8'hA9: begin // CLK_TOGGLE: count(4 bytes BE)
@@ -687,13 +695,13 @@ always @(posedge clk) begin
                 end
 
                 8'hB3: begin // DMG_CART_WRITE_SRAM: receive XFER_SIZE bytes then write
-                    xfer_remain <= `XFER_SIZE;
+                    xfer_remain <= vars.var_transfer_size;
                     blob_idx    <= 0;
                     pstate      <= P_SRAM_WR_RX;
                 end
 
                 8'hD3: begin // FLASH_PROGRAM: receive XFER_SIZE bytes, write each
-                    xfer_remain <= `XFER_SIZE;
+                    xfer_remain <= vars.var_transfer_size;
                     blob_idx <= 16'd0;
                     pstate      <= P_FLASH_PROGRAM_RX;
                 end
@@ -718,7 +726,7 @@ always @(posedge clk) begin
         end
 
         P_CALC_CRC_P: begin
-            // We have `ADDRESS already set via SET_FW_VARIABLE
+            // We have vars.var_address already set via SET_FW_VARIABLE
             // Now we need to get the 4-byte BE chunk length
             if (rx_valid) begin
                 case (crc_p_idx)
@@ -732,7 +740,7 @@ always @(posedge clk) begin
         end
 
         P_CALC_CRC_RD: begin
-            cart_a <= `ADDRESS + crc_idx + (cart_done ? 16'd1 : 16'd0);
+            cart_a <= vars.var_address + crc_idx + (cart_done ? 16'd1 : 16'd0);
             cart_data_dir_e <= 1'b1;
             cart_write_r <= 1'b0;
             cart_state <= C_SETUP;
@@ -751,7 +759,6 @@ always @(posedge clk) begin
                     crc_state <= next_crc(crc_state, cart_din_r) ^ 32'hFFFFFFFF;
 
                     tx_data_sel    <= TXS_CALC_CRC;
-                    tx_bytes_idx   <= 0;
                     tx_bytes_count <= 4;
                     pstate         <= P_TX_BYTES;
                 end else begin
@@ -792,12 +799,12 @@ always @(posedge clk) begin
             // 3 bytes: command set, method (buffered/unbuffered/... weird), pins.
             // We only support no-command-set (direct writes), unbuffered
             // TODO: byte 3 is 'pins'. For now, we just treat this as a set of
-            // `FLASH_WE_PIN`; however we don't support 4 == WR_RESET, which conflicts
+            // vars.var_flash_we_pin`; however we don't support 4 == WR_RESET, which conflicts
             // with 'DEFAULT' for the override register. However, mapping 'unsupported'
             // to default seems reasonable for now.
             if (rx_valid) begin
                 if (flash_command_rx_idx == 2) begin
-                    `FLASH_WE_PIN        <= rx_data;
+                    vars.var_flash_we_pin        <= rx_data;
                     flash_command_count  <= FLASH_COMMANDS_MAX;
                     flash_command_rx_idx <= 0;
                     pstate <= P_SET_FLASH_CMD_E;
@@ -840,8 +847,8 @@ always @(posedge clk) begin
         P_TX_BYTES: begin
             if (!tx_valid) begin
                 tx_valid <= 1'b1;
-                tx_bytes_idx <= tx_bytes_idx + 1'b1;
-                if (tx_bytes_idx == tx_bytes_count - 1'b1) begin
+                tx_bytes_count <= tx_bytes_count - 1'b1;
+                if (tx_bytes_count == 0) begin
                     pstate <= P_CMD;
                 end
             end
@@ -863,74 +870,76 @@ always @(posedge clk) begin
         // ── SET_VARIABLE: read size(1)+key(4)+value(4) = 9 bytes ───────
         // par[0]=size, par[1..4]=key BE, par[5..8]=value BE
         // par_cnt starts at 8 and counts down; fires when par_cnt==0 (9th byte).
-        /*
         P_SET_VAR_INIT: begin
-            set_var_par_idx <= 0;
+            set_var_p_idx <= 0;
             pstate <= P_SET_VAR_P;
         end
         P_SET_VAR_P: begin
             if (rx_valid) begin
-                case (set_var_par_idx)
-                    4'd0: set_get_var_size <= rx_data;
-                    4'd1, 4'd2, 4'd3: /* unused key MSB * / ;
-                    4'd4: set_get_var_key <= rx_data;
-                    4'd5, 4'd6, 4'd7:
-                        set_get_var_data.as_bits <= { set_get_var_data.as_bits[23:0], rx_data};
+                case (set_var_p_idx)
+                    4'd0: set_var_size <= rx_data[2:0];
+                    4'd1, 4'd2, 4'd3: /* unused key MSB */ ;
+                    4'd4: set_var_key <= rx_data[4:0];
+                    4'd5, 4'd6: /* unused data MSB */ ;
+                    4'd7:
+                        set_var_data[15:8] <= rx_data;
                     4'd8: begin
-                        `VAR32(var32_idx(set_get_var_size, set_get_var_key)) <= { set_get_var_data.as_bits[23:0], rx_data };
+                        set_var_data[7:0] <= rx_data;
+                        set_var_rdy <= 1'b1;
                         pstate <= P_TX_ACK;
                     end
                 endcase
-                set_var_par_idx <= set_var_par_idx + 4'd1;
+                set_var_p_idx <= set_var_p_idx + 1;
             end
         end
-
         // ── GET_VARIABLE: read size(1)+key(4) = 5 bytes ─────────────────
         P_GET_VAR_INIT: begin
-            get_var_par_idx <= 0;
+            get_var_p_idx <= 0;
             pstate <= P_GET_VAR_P;
         end
         P_GET_VAR_P: begin
             if (rx_valid) begin
-                case (get_var_par_idx)
-                    3'd0: set_get_var_size <= rx_data;
-                    3'd1, 3'd2, 3'd3: /* unused key MSB * / ;
+                case (get_var_p_idx)
+                    3'd0: get_var_size <= rx_data[2:0];
+                    3'd1, 3'd2, 3'd3: /* unused key MSB */ ;
                     3'd4: begin
-                        set_get_var_key <= rx_data;
+                        get_var_data    <= get_var32(get_var_size, rx_data[4:0]);
                         tx_data_sel     <= TXS_GET_VAR;
-                        tx_bytes_idx    <= 0;
                         tx_bytes_count  <= 4;
                         pstate          <= P_TX_BYTES;
                     end
                 endcase
-                get_var_par_idx <= get_var_par_idx + 3'd1;
+                get_var_p_idx <= get_var_p_idx + 1;
             end
         end
-        */
-
-        /* FIXME
 
         // ── GET_VAR_STATE: dump all variables ──────────────────────────
-        P_GET_VAR_ST: begin
-            if (!tx_valid) begin
-                // Emit bytes in order: var32[0] BE, var32[1] BE, var16[0..6] BE, var8[0..17]
-                tx_valid <= 1'b1;
-                tx_data <= fw_vars[vstate_idx * 8 +: 8];
-                vstate_idx <= vstate_idx + 7'd1;
-                if (vstate_idx == VAR__BYTES - 1'd1) pstate <= P_CMD;
-            end
+        // This is used to save/restore state around a power cycle or USB replug, and
+        // the format is opaque to the protocol peer.
+        //
+        // So, order/encoding doesn't matter, just needs to be consistent between
+        // GET_VAR_STATE and SET_VAR_STATE
+        P_GET_VAR_STATE: begin
+            tx_data_sel <= TXS_GET_VAR_STATE;
+            tx_bytes_count <= VARS_BYTE_COUNT;
+            pstate <= P_TX_BYTES;
         end
 
-        // ── SET_VAR_STATE: receive all variables ───
-        P_SET_VAR_ST: begin
+        P_SET_VAR_STATE_INIT: begin
+            set_var_state_remaining <= VARS_BYTE_COUNT;
+            pstate <= P_SET_VAR_STATE;
+        end
+
+        P_SET_VAR_STATE: begin
             if (rx_valid) begin
-                fw_vars[vstate_idx * 8 +: 8] <= rx_data;
-                vstate_idx <= vstate_idx + 7'd1;
-                if (vstate_idx == VAR__BYTES - 1'd1)
-                    pstate <= P_CMD;
+                set_var_state_data <= rx_data;
+                set_var_state_rdy <= 1;
+                set_var_state_idx <= VARS_BYTE_COUNT - set_var_state_remaining;
+
+                if (set_var_state_remaining == 1) pstate <= P_CMD;
+                set_var_state_remaining <= set_var_state_remaining - 1;
             end
         end
-        FIXME */
 
         // ── CLK_TOGGLE ──────────────────────────────────────────────────
         P_CLK_TOG_INIT: begin
@@ -973,8 +982,8 @@ always @(posedge clk) begin
 
         // ── DMG_CART_READ / DMG_CART_READ_MEASURE ──────────────────────
         P_CART_RD: begin
-            xfer_remain <= `XFER_SIZE;
-            cart_a          <= `ADDRESS;
+            xfer_remain <= vars.var_transfer_size;
+            cart_a          <= vars.var_address;
             cart_data_dir_e <= 1'b1;
             cart_write_r    <= 1'b0;
             cart_state      <= C_SETUP;
@@ -987,13 +996,13 @@ always @(posedge clk) begin
             if (cart_done) begin
                 tx_data_sel <= TXS_CART_IN;
                 tx_valid <= 1'b1;
-                `ADDRESS    <= `ADDRESS + 32'd1;
+                vars.var_address    <= vars.var_address + 32'd1;
                 xfer_remain <= xfer_remain - 16'd1;
                 if (xfer_remain == 16'd1) begin
                     pstate <= P_CMD;
                 end else begin
                     // Kick off next byte
-                    cart_a          <= `ADDRESS + 16'd1;
+                    cart_a          <= vars.var_address + 16'd1;
                     cart_data_dir_e <= 1'b1;
                     cart_write_r    <= 1'b0;
                     cart_state      <= C_SETUP;
@@ -1039,7 +1048,7 @@ always @(posedge clk) begin
         P_SRAM_WR_RX: begin
             if (rx_valid) begin
                 blob[blob_idx] <= rx_data;
-                if (blob_idx == `XFER_SIZE - 1) begin
+                if (blob_idx == vars.var_transfer_size - 1) begin
                     blob_idx <= 0;
                     pstate   <= P_SRAM_WR_DO;
                 end else begin
@@ -1049,7 +1058,7 @@ always @(posedge clk) begin
         end
 
         P_SRAM_WR_DO: begin
-                cart_a          <= `ADDRESS;
+                cart_a          <= vars.var_address;
                 cart_d_out      <= blob[blob_idx];
                 cart_data_dir_e <= 1'b0;
                 cart_write_r    <= 1'b1;
@@ -1059,8 +1068,8 @@ always @(posedge clk) begin
 
         P_SRAM_WR_WAIT: begin
             if (cart_done) begin
-                `ADDRESS <= `ADDRESS + 16'd1;
-                if (blob_idx == `XFER_SIZE - 1) begin
+                vars.var_address <= vars.var_address + 16'd1;
+                if (blob_idx == vars.var_transfer_size - 1) begin
                     pstate <= P_TX_ACK;
                 end else begin
                     blob_idx <= blob_idx + 1;
@@ -1082,7 +1091,7 @@ always @(posedge clk) begin
         end
 
         P_FLASH_PROGRAM_WR_COMMANDS: begin
-            flash_commands.as_struct[flash_command_count].address <= `ADDRESS + blob_idx;
+            flash_commands.as_struct[flash_command_count].address <= vars.var_address + blob_idx;
             flash_commands.as_struct[flash_command_count].data <= blob[blob_idx];
             flash_command_written_data <= blob[blob_idx];
 
@@ -1091,7 +1100,7 @@ always @(posedge clk) begin
         end
 
         P_FLASH_PROGRAM_WR_DO: begin
-            cart_write_pulse_pins <= `FLASH_WE_PIN;
+            cart_write_pulse_pins <= vars.var_flash_we_pin ? CART_WRITE_PULSE_PINS_WR : CART_WRITE_PULSE_PINS_NONE;
             cart_a <= flash_commands.as_struct[flash_command_do_idx].address;
             cart_d_out <= flash_commands.as_struct[flash_command_do_idx].data;
             cart_data_dir_e <= 1'b0;
@@ -1118,17 +1127,17 @@ always @(posedge clk) begin
 
         P_FLASH_PROGRAM_WR_WAIT_STATUS: begin
             logic last_byte;
-            last_byte = (blob_idx == `XFER_SIZE - 16'd1);
+            last_byte = (blob_idx == vars.var_transfer_size - 16'd1);
 
             if (cart_done) begin
-                `STATUS_REGISTER <= cart_d_in;
+                vars.var_status_register <= cart_d_in;
                 if (cart_d_in[7] == flash_command_written_data[7]) begin
                     if (last_byte) begin
                         cart_write_pulse_pins <= CART_WRITE_PULSE_PINS_DEFAULT;
                         pstate <= P_TX_ACK;
                         // LK_Device::WriteROM only sets ADDRESS on the first chunk,
                         // so we need to increment it before the next one.
-                        `ADDRESS <= `ADDRESS + `XFER_SIZE;
+                        vars.var_address <= vars.var_address + vars.var_transfer_size;
                     end else begin
                         blob_idx <= blob_idx + 1;
                         pstate <= P_FLASH_PROGRAM_WR_COMMANDS;
@@ -1150,7 +1159,7 @@ always @(posedge clk) begin
                         flb_wr_a = { flb_wr_a[7:0], rx_data};
                     end
                     3'd4: begin
-                        cart_write_pulse_pins <= `FLASH_WE_PIN;
+                        cart_write_pulse_pins <= vars.var_flash_we_pin ? CART_WRITE_PULSE_PINS_WR : CART_WRITE_PULSE_PINS_NONE;
                         cart_a          <= flb_wr_a;
                         cart_d_out      <= rx_data;
                         cart_data_dir_e <= 1'b0;
@@ -1214,16 +1223,16 @@ always @(posedge clk) begin
                 end else begin
                     // Entry complete
                     // DMG only has 16-bit addresses
-                    cart_a          <= {fcmd_par[fcmd_idx+2], fcmd_par[fcmd_idx+3]};
+                    cart_a <= {fcmd_par[fcmd_idx+2], fcmd_par[fcmd_idx+3]};
                     // entry[4]: MSB
                     // entry[5]: LSB, on next cycle
                     // Ignore MSB: it is unused for DMG, only for AGB
                     // rx_data also contains the LSB, and is available this cycle
-                    cart_d_out      <= fcmd_par[fcmd_idx+5];
+                    cart_d_out <= fcmd_par[fcmd_idx+5];
                     cart_data_dir_e <= 1'b0;
-                    cart_write_r    <= 1'b1;
-                    cart_write_pulse_pins <= `FLASH_WE_PIN;
-                    cart_state      <= C_SETUP;
+                    cart_write_r <= 1'b1;
+                    cart_write_pulse_pins <= vars.var_flash_we_pin ? CART_WRITE_PULSE_PINS_WR : CART_WRITE_PULSE_PINS_NONE;
+                    cart_state <= C_SETUP;
 
                     fcmd_entry_count <= fcmd_entry_count - 8'd1;
                     fcmd_idx <= fcmd_idx + 8'd6;
@@ -1234,7 +1243,7 @@ always @(posedge clk) begin
 
         P_CART_WRITE_FLASH_CMD_WAIT_STATUS: begin
             if (cart_done) begin
-                `STATUS_REGISTER <= cart_d_in;
+                vars.var_status_register <= cart_d_in;
                 pstate <= P_TX_ACK;
             end
         end
