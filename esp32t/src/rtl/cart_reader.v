@@ -313,18 +313,8 @@ endfunction
 reg [1:0]  clk_tog_p_idx;
 reg [31:0] clk_tog_cnt;
 
-
-// TX mapping
-reg tx_enqueued = 0;
-// whether or not we can enqueue
-wire tx_queue_ready = !(tx_data_queued || tx_valid);
-
-wire [7:0] tx_data_get_var = get_var_data[(4 - tx_bytes_count) * 8 +: 8];
-wire [7:0] tx_data_calc_crc = crc_state[(4 - tx_bytes_count) * 8 +: 8];
-wire [7:0] tx_data_fw_info = fwi_buf[fwi_pos];
-wire [7:0] tx_data_get_var_state = vars[(VARS_BYTE_COUNT - tx_bytes_count) * 8 +: 8];
-
 reg [7:0] tx_bytes_count;
+
 enum logic [3:0] {
     TXS_NONE,
     TXS_CONSTANT_ONE,
@@ -348,19 +338,19 @@ always_comb begin
             tx_data = 8'hFF;
         end
         TXS_CALC_CRC: begin
-            tx_data = tx_data_calc_crc;
+            tx_data = crc_state[(4 - tx_bytes_count) * 8 +: 8];
         end
         TXS_GET_VAR: begin
-            tx_data = tx_data_get_var;
+            tx_data = get_var_data[(4 - tx_bytes_count) * 8 +: 8];
         end
         TXS_CART_IN: begin
             tx_data = cart_din_r;
         end
         TXS_FW_INFO: begin
-            tx_data = tx_data_fw_info;
+            tx_data = fwi_buf[fwi_pos];
         end
         TXS_GET_VAR_STATE: begin
-            tx_data = tx_data_get_var_state;
+            tx_data = vars[(VARS_BYTE_COUNT - tx_bytes_count) * 8 +: 8];
         end
         default: tx_data = 8'h00;
     endcase
