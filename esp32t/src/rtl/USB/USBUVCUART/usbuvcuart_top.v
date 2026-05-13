@@ -997,11 +997,6 @@ module usbuvcuart_top(
 
     // Support for the FlashGBX "LK" protocol
 
-    // Adjust YYYY.MM.DD.NN for releases
-    localparam LK_ID_STR_REV = "\0Chromatic Dumper FPGA FW L vYYYY.MM.DD.NN\r\0";
-    localparam [($bits(LK_ID_STR_REV) - 1):0] LK_ID_STR = {<<8{LK_ID_STR_REV}};
-    localparam LK_ID_LEN = $bits(LK_ID_STR) / 8;
-
     typedef enum {
         // passthrough to ESP via UART unless command bytes detected
         // -> ESP_COUNTED on ESP v1 header (fixed number of bytes)
@@ -1045,25 +1040,34 @@ module usbuvcuart_top(
     reg       ep3_self_tx_dval;
     reg[7:0]  ep3_self_tx_data;
 
+    localparam LK_ID_LEN = 22;
     localparam LK_ID_ADDR_WIDTH = $clog2(LK_ID_LEN);
+    reg [7:0] lk_id[0:LK_ID_LEN - 1];
     reg [LK_ID_ADDR_WIDTH-1:0] ep3_idx; //Used for TX_LK_ID, ESP_V1_RX, ESP_V2_RX_COUNTED
 
-    reg [7:0] lk_id_rom[0:LK_ID_LEN-1];
     initial begin
-        for (integer i = 0; i < LK_ID_LEN; i = i + 1) begin
-            lk_id_rom[i] = LK_ID_STR[(i * 8) +: 8];
-        end
-    end
-
-    reg [7:0]                  ep3_lk_id_it;
-    reg                        ep3_lk_id_it_valid = 0;
-    reg                        ep3_lk_id_it_valid_next = 0;
-    reg [LK_ID_ADDR_WIDTH-1:0] ep3_lk_id_it_idx;
-
-    always @(posedge pClk) begin
-        ep3_lk_id_it_valid_next <= (ep3_idx == ep3_lk_id_it_idx);
-        ep3_lk_id_it_idx        <= ep3_idx;
-        ep3_lk_id_it            <= lk_id_rom[ep3_idx];
+        lk_id[0] = 8'h00;
+        lk_id[1] = "C";
+        lk_id[2] = "h";
+        lk_id[3] = "r";
+        lk_id[4] = "o";
+        lk_id[5] = "m";
+        lk_id[6] = "a";
+        lk_id[7] = "t";
+        lk_id[8] = "i";
+        lk_id[9] = "c";
+        lk_id[10] = " ";
+        lk_id[11] = "C";
+        lk_id[12] = "a";
+        lk_id[13] = "r";
+        lk_id[14] = "t";
+        lk_id[15] = " ";
+        lk_id[16] = "F";
+        lk_id[17] = "W";
+        lk_id[18] = " ";
+        lk_id[19] = "L";
+        lk_id[20] = "\r";
+        lk_id[21] = 8'h00;
     end
 
     // TODO: the EP3_PEER_LK TX/RX data/dval need to be passed upwards
@@ -1081,7 +1085,7 @@ module usbuvcuart_top(
                          /* (ep3_peer == EP3_PEER_SELF) */ ep3_self_tx_dval;
     assign ep3_tx_data = (ep3_peer == EP3_PEER_UART) ? uart_rx_data[7:0]:
                          (ep3_peer == EP3_PEER_LK) ? lk_tx_data :
-                         /* (ep3_peer == EP3_PEER_SELF) */ ep3_self_tx_data;
+                         /* (ep3_peer == EP3_PEER_SELF) */ lk_id[ep3_idx];
 
     usb_fifo usb_fifo
     (
@@ -1117,12 +1121,9 @@ module usbuvcuart_top(
         if (RESET_IN || usb_busreset) begin
             ep3_state <= EP3_DEFAULT;
             ep3_self_tx_dval <= 1'b0;
-            ep3_self_tx_data <= 8'b0;
             ep3_idx <= 0;
         end else begin
-            ep3_lk_id_it_valid <= ep3_lk_id_it_valid_next && (ep3_idx == ep3_lk_id_it_idx);
-            ep3_self_tx_data <= 8'h00;
-            ep3_self_tx_data <= 1'b0;
+            ep3_self_tx_dval <= 1'b0;
 
             case (ep3_state)
                 EP3_DEFAULT: begin
@@ -1145,8 +1146,6 @@ module usbuvcuart_top(
                     if (ep3_rx_dval) begin
                         if (ep3_rx_data == 8'hAA) begin
                             ep3_idx <= 0;
-                            ep3_lk_id_it_valid <= 0;
-
                             ep3_self_tx_dval <= 1'b0;
                             ep3_state <= EP3_TX_LK_ID;
                         end else if (ep3_rx_data == 8'h55) begin
@@ -1157,14 +1156,12 @@ module usbuvcuart_top(
                 end
                 EP3_TX_LK_ID: begin
                     if (!ep3_self_tx_dval) begin
-                        ep3_self_tx_dval <= ep3_lk_id_it_valid;
-                        ep3_self_tx_data <= ep3_lk_id_it;
+                        ep3_self_tx_dval <= 1'b1;
                     end else begin
                         ep3_self_tx_dval <= 1'b0;
                         if (ep3_idx == (LK_ID_LEN - 1)) begin
                             ep3_state <= EP3_DEFAULT;
                         end else begin
-                            ep3_lk_id_it_valid <= 0;
                             ep3_idx <= ep3_idx + 1'b1;
                         end
                     end
