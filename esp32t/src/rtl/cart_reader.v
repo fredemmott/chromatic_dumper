@@ -197,10 +197,9 @@ typedef enum {
     P_SET_BANK_CHANGE_CMD_INIT,
     P_SET_BANK_CHANGE_CMD_P,
     P_SET_BANK_CHANGE_CMD_E,
-    P_CALC_CRC_INIT,
     P_CALC_CRC_P,
     P_CALC_CRC_RD,
-    P_CALC_CRC_DO,
+    P_CALC_CRC,
     P_BYE_WAIT_L // Got 'L', waiting for 'L'
 } pstate_t;
 
@@ -239,15 +238,12 @@ reg [7:0]  fwi_buf [0:FWI_LEN-1];
 reg [4:0]  fwi_pos;
 
 // Cart access working registers
-reg [15:0] cart_addr_r;   // current 16-bit cart address
-reg [7:0]  cart_dout_r;   // byte to write
 reg [7:0]  cart_din_r;    // latched read result
 reg        cart_done;     // pulses for one cycle when cart access complete
 reg [4:0]  cart_wait_cnt;
 
 // Transfer counters
 reg [15:0] xfer_remain;   // bytes remaining in current transfer
-reg [13:0] send_offset;   // offset within cache for current send
 
 // SET_FLASH_CMD working registers
 localparam FLASH_COMMANDS_MAX = 6;
@@ -288,10 +284,10 @@ reg [2:0]  flb_wr_p_idx;
 reg [15:0] flb_wr_a;
 
 // CALC_CRC32 working registers
-reg [2:0]  crc_p_idx;
-reg [15:0] crc_idx;
+reg [1:0]  crc_p_remaining;
 reg [15:0] crc_remaining;
 reg [31:0] crc_state;
+reg [15:0] crc_address;
 
 function [31:0] next_crc;
     input [31:0] current_crc;
@@ -617,7 +613,11 @@ always @(posedge clk) begin
                 end
 
                 8'hD5: begin // CALC_CRC32
-                    pstate <= P_CALC_CRC_INIT;
+                    crc_address <= vars.var_address;
+                    crc_p_remaining <= 2'd3;
+                    crc_state <= ~32'd0;
+
+                    pstate <= P_CALC_CRC_P;
                 end
 
                 8'hA7: begin // SET_FLASH_CMD
@@ -712,39 +712,28 @@ always @(posedge clk) begin
             end
         end // P_CMD
 
-        P_CALC_CRC_INIT: begin
-            crc_p_idx <= 3'd0;
-            crc_idx   <= 16'd0;
-            crc_state <= ~32'd0;
-            pstate <= P_CALC_CRC_P;
-        end
-
         P_CALC_CRC_P: begin
             // We have vars.var_address already set via SET_FW_VARIABLE
             // Now we need to get the 4-byte BE chunk length
             if (rx_valid) begin
-                case (crc_p_idx)
-                    3'd0, 3'd1: /* GBA-only MSB */ ;
-                    3'd2, 3'd3: crc_remaining <= { crc_remaining[15:0], rx_data };
-                endcase
-                if (crc_p_idx == 3'd3) begin
-                    pstate <= P_CALC_CRC_RD;
-                end else crc_p_idx <= crc_p_idx + 1;
+                // we'll end up discarding the 2 MSB, but they're only for AGB,
+                // and always 0 on DMG
+                crc_remaining <= { crc_remaining[7:0], rx_data };
+                if (crc_p_remaining == 0) pstate <= P_CALC_CRC_RD;
+                crc_p_remaining <= crc_p_remaining - 2'd1;
             end
         end
 
         P_CALC_CRC_RD: begin
-            cart_a <= vars.var_address + crc_idx + (cart_done ? 16'd1 : 16'd0);
+            cart_a <= crc_address;
             cart_data_dir_e <= 1'b1;
             cart_state <= C_SETUP;
-            pstate <= P_CALC_CRC_DO;
+            pstate <= P_CALC_CRC;
         end
 
-        P_CALC_CRC_DO: begin
-            pstate <= P_CALC_CRC_DO;
-
+        P_CALC_CRC: begin
             if (cart_done) begin
-                if (crc_idx == crc_remaining - 16'd1) begin
+                if (crc_remaining == 16'd1) begin
                     // Like most LK commands, FlashGBX does the MB <-> LE conversion
                     crc_state <= next_crc(crc_state, cart_din_r) ^ 32'hFFFFFFFF;
 
@@ -753,8 +742,9 @@ always @(posedge clk) begin
                     pstate         <= P_TX_BYTES;
                 end else begin
                     crc_state <= next_crc(crc_state, cart_din_r);
-                    crc_idx   <= crc_idx + 16'd1;
-                    pstate    <= P_CALC_CRC_RD;
+                    crc_remaining <= crc_remaining - 16'd1;
+                    crc_address <= crc_address + 16'd1;
+                    pstate <= P_CALC_CRC_RD;
                 end
             end
         end
