@@ -423,12 +423,6 @@ reg [$clog2(VARS_BYTE_COUNT) - 1 : 0] set_var_state_remaining;
 // ============================================================
 integer i;
 
-struct packed {
-    reg        is_write;
-    reg [15:0] address;
-    reg [7:0]  data;
-} cart_req;
-
 always @(posedge clk) begin
     tx_valid <= 1'b0;
     if (reset) begin
