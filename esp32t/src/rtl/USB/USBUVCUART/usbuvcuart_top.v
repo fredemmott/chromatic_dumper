@@ -1030,7 +1030,7 @@ module usbuvcuart_top(
                       (ep3_state == EP3_LK_WAIT_TX_ACK) ? EP3_PEER_SELF :
                       (ep3_state == EP3_LK) ? EP3_PEER_LK :
                       EP3_PEER_UART;
-    assign lk_enabled = (ep3_peer == EP3_PEER_LK) && E_UART_DTR;
+    assign lk_enabled = (ep3_peer == EP3_PEER_LK);
 
     wire      ep3_rx_dval;
     wire[7:0] ep3_rx_data;
@@ -1117,9 +1117,18 @@ module usbuvcuart_top(
     assign    E_UART_DTR = s_ctl_sig[0];
     assign    E_UART_RTS = s_ctl_sig[1];
 
+    reg ep3_reset = 1;
+
+    always @(posedge pClk) begin
+        // If we have a USB connection, the DTR bit indicates if the host is connected to the USB
+        // serial device. If we have no USB connection, the flag is not updated
+        ep3_reset <= lk_disable || RESET_IN || usb_busreset || (!usb_online)|| (!E_UART_DTR);
+    end
+
     always @(posedge pClk) begin
         ep3_self_tx_dval <= 1'b0;
-        if (RESET_IN || usb_busreset) begin
+
+        if (ep3_reset) begin
             ep3_state <= EP3_DEFAULT;
             ep3_idx <= 0;
         end else begin
@@ -1177,11 +1186,7 @@ module usbuvcuart_top(
                         ep3_self_tx_dval <= 1'b1;
                     end else ep3_state <= EP3_LK;
                 end
-                EP3_LK: begin
-                    if (lk_disable) begin
-                        ep3_state <= EP3_DEFAULT;
-                    end
-                end
+                EP3_LK: /* handled with ep3_reset */ ;
                 default: ep3_state <= EP3_DEFAULT;
             endcase
         end
