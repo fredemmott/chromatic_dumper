@@ -809,6 +809,7 @@ module top #(parameter ISSIMU=0)
     u_cart_reader(
         .clk            (PHY_CLKOUT),
         .reset          (~usblocked),
+        .lk_enabled     (lk_enabled),
         .lk_disable     (lk_disable),
         .rx_valid       (lk_rx_dval),
         .rx_data        (lk_rx_data),

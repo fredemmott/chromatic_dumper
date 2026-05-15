@@ -1030,7 +1030,7 @@ module usbuvcuart_top(
                       (ep3_state == EP3_LK_WAIT_TX_ACK) ? EP3_PEER_SELF :
                       (ep3_state == EP3_LK) ? EP3_PEER_LK :
                       EP3_PEER_UART;
-    assign lk_enabled = (ep3_peer == EP3_PEER_LK);
+    assign lk_enabled = (ep3_peer == EP3_PEER_LK) && E_UART_DTR;
 
     wire      ep3_rx_dval;
     wire[7:0] ep3_rx_data;
@@ -1038,7 +1038,6 @@ module usbuvcuart_top(
     wire      ep3_tx_dval;
     wire[7:0] ep3_tx_data;
     reg       ep3_self_tx_dval;
-    reg[7:0]  ep3_self_tx_data;
 
     localparam LK_ID_LEN = 22;
     localparam LK_ID_ADDR_WIDTH = $clog2(LK_ID_LEN);
@@ -1085,7 +1084,8 @@ module usbuvcuart_top(
                          /* (ep3_peer == EP3_PEER_SELF) */ ep3_self_tx_dval;
     assign ep3_tx_data = (ep3_peer == EP3_PEER_UART) ? uart_rx_data[7:0]:
                          (ep3_peer == EP3_PEER_LK) ? lk_tx_data :
-                         /* (ep3_peer == EP3_PEER_SELF) */ lk_id[ep3_idx];
+                         (ep3_state == EP3_LK_WAIT_TX_ACK) ? 8'hFF :
+                         /* (ep3_state == EP3_TX_LK_ID ) */ lk_id[ep3_idx];
 
     usb_fifo usb_fifo
     (
@@ -1118,13 +1118,11 @@ module usbuvcuart_top(
     assign    E_UART_RTS = s_ctl_sig[1];
 
     always @(posedge pClk) begin
+        ep3_self_tx_dval <= 1'b0;
         if (RESET_IN || usb_busreset) begin
             ep3_state <= EP3_DEFAULT;
-            ep3_self_tx_dval <= 1'b0;
             ep3_idx <= 0;
         end else begin
-            ep3_self_tx_dval <= 1'b0;
-
             case (ep3_state)
                 EP3_DEFAULT: begin
                     if (ep3_rx_dval) begin
@@ -1146,7 +1144,6 @@ module usbuvcuart_top(
                     if (ep3_rx_dval) begin
                         if (ep3_rx_data == 8'hAA) begin
                             ep3_idx <= 0;
-                            ep3_self_tx_dval <= 1'b0;
                             ep3_state <= EP3_TX_LK_ID;
                         end else if (ep3_rx_data == 8'h55) begin
                             // Allow 0x55 0x55 .... 0xAA
@@ -1158,7 +1155,6 @@ module usbuvcuart_top(
                     if (!ep3_self_tx_dval) begin
                         ep3_self_tx_dval <= 1'b1;
                     end else begin
-                        ep3_self_tx_dval <= 1'b0;
                         if (ep3_idx == (LK_ID_LEN - 1)) begin
                             ep3_state <= EP3_DEFAULT;
                         end else begin
@@ -1169,7 +1165,6 @@ module usbuvcuart_top(
                 EP3_L_WAIT_K: begin
                     if (ep3_rx_dval) begin
                         if (ep3_rx_data == "K") begin
-                            ep3_self_tx_dval <= 1'b0;
                             ep3_state <= EP3_LK_WAIT_TX_ACK;
                         end else if (ep3_rx_data == "L") begin
                             // Allow LLLLLL...K
@@ -1179,7 +1174,6 @@ module usbuvcuart_top(
                 end
                 EP3_LK_WAIT_TX_ACK: begin
                     if (!ep3_self_tx_dval) begin
-                        ep3_self_tx_data <= 8'hFF;
                         ep3_self_tx_dval <= 1'b1;
                     end else ep3_state <= EP3_LK;
                 end
