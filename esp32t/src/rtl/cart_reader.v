@@ -83,13 +83,16 @@ function [9:0] make_var16_id(
     input [7:0] key
 );
     // Give all sizes are 1, 2, or 4, the lowest bit doesn't actually give us any information...
-    // size: 1 -> 001 -> 00
-    // size: 2 -> 010 -> 01
-    // size: 4 -> 100 -> 10
+    // strip it off, then negate it so we can use null as a sentinel
+    // size: 1 -> 001 -> 00 -> ~ 11
+    // size: 2 -> 010 -> 01 -> ~ 10
+    // size: 4 -> 100 -> 10 -> ~ 01
     begin
-        make_var16_id = {size[2:1], key[7:0]};
+        make_var16_id = {~size[2:1], key[7:0]};
     end
 endfunction
+
+localparam VAR_ID_NONE = 0;
 
 localparam VAR_ID_ADDRESS = make_var16_id(3'd4, 8'h00);
 localparam VAR_ID_TRANSFER_SIZE = make_var16_id(3'd2, 8'h00);
@@ -103,13 +106,9 @@ localparam VAR_ID_DMG_WRITE_CS_PULSE = make_var16_id(3'd1, 8'h09);
 module vars_t(
     input wire clk,
     input wire reset,
-    input wire [9:0] read_id,
-    output reg [15:0] read_data,
-    input wire write_valid,
-    input wire [9:0] write_id,
-    input wire [15:0] write_data
+    output wire var_dmg_read_cs_pulse,
+    output wire var_dmg_write_cs_pulse
 );
-
     struct packed {
         reg [15:0] var_address;
         reg [15:0] var_transfer_size;
@@ -121,58 +120,21 @@ module vars_t(
         reg        var_dmg_write_cs_pulse;
         reg [4:0]  padding;
     } storage = '{default:0};
-
-    always @(posedge clk) begin
-        read_data <= 16'd0;
-        case (read_id)
-            VAR_ID_ADDRESS: read_data <= storage.var_address;
-            VAR_ID_TRANSFER_SIZE: read_data <= storage.var_transfer_size;
-            VAR_ID_CART_MODE: read_data[7:0] <= storage.var_cart_mode;
-            VAR_ID_DMG_ACCESS_MODE: read_data[7:0] <= storage.var_dmg_access_mode;
-            VAR_ID_FLASH_WE_PIN: read_data[0] <= storage.var_flash_we_pin;
-            VAR_ID_DMG_READ_CS_PULSE: read_data[0] <= storage.var_dmg_read_cs_pulse;
-            VAR_ID_DMG_WRITE_CS_PULSE: read_data[0] <= storage.var_dmg_write_cs_pulse;
-            default: ;
-        endcase
-    end
-
-    always @(posedge clk) begin
-        if (reset) begin
-            storage <= '{default:0};
-        end else if (write_valid) begin
-            case (read_id)
-                VAR_ID_ADDRESS: storage.var_address <= write_data;
-                VAR_ID_TRANSFER_SIZE: storage.var_transfer_size <= write_data;
-                VAR_ID_CART_MODE: storage.var_cart_mode <= write_data;
-                VAR_ID_DMG_ACCESS_MODE: storage.var_dmg_access_mode <= write_data;
-                VAR_ID_FLASH_WE_PIN: storage.var_flash_we_pin <= write_data;
-                VAR_ID_DMG_READ_CS_PULSE: storage.var_dmg_read_cs_pulse <= write_data;
-                VAR_ID_DMG_WRITE_CS_PULSE: storage.var_dmg_write_cs_pulse <= write_data;
-                default: ;
-            endcase
-        end
-    end
+    assign var_dmg_read_cs_pulse = storage.var_dmg_read_cs_pulse;
+    assign var_dmg_write_cs_pulse = storage.var_dmg_read_cs_pulse;
 endmodule
 
 reg vars_reset = 0;
-reg [9:0] get_var16_id;
-reg [15:0] get_var16_data;
-reg set_var16_valid = 0;
-reg [9:0] set_var16_id;
-reg [15:0] set_var16_data;
+
+wire var_dmg_read_cs_pulse;
+wire var_dmg_write_cs_pulse;
 
 vars_t vars(
     .clk(clk),
     .reset(vars_reset),
-    .read_id(get_var16_id),
-    .read_data(get_var16_data),
-    .write_valid(set_var16_valid),
-    .write_id(set_var16_id),
-    .write_data(set_var16_data)
+    .var_dmg_read_cs_pulse(var_dmg_read_cs_pulse),
+    .var_dmg_write_cs_pulse(var_dmg_read_cs_pulse)
 );
-
-reg cart_var16_read = 0;
-reg [9:0] cart_var16_id;
 
 enum {
     CART_WRITE_PULSE_PINS_NONE,
@@ -299,248 +261,6 @@ endfunction
 reg [1:0]  clk_tog_p_idx;
 reg [31:0] clk_tog_cnt;
 
-reg [7:0] tx_bytes_count;
-reg [7:0] tx_pos;
-
-
-`ifdef NOPE
-enum logic [3:0] {
-    TXS_NONE,
-    TXS_CONSTANT_ZERO,
-    TXS_CONSTANT_ONE,
-    TXS_CONSTANT_FF,
-    TXS_CALC_CRC,
-    TXS_GET_VAR,
-    TXS_CART_IN,
-    TXS_QUERY_FW_INFO,
-    TXS_GET_VAR_STATE
-} tx_data_sel;
-always_comb begin
-    tx_data = 8'b01010101; // 8'h55, 8'd85, ascii uppercase U
-    case (tx_data_sel)
-        TXS_NONE, TXS_CONSTANT_ZERO: begin
-            tx_data = 8'h00;
-        end
-        TXS_CONSTANT_ONE: begin
-            tx_data = 8'h01;
-        end
-        TXS_CONSTANT_FF: begin
-            tx_data = 8'hFF;
-        end
-        TXS_CALC_CRC: begin
-            tx_data = crc_state[(4 - tx_bytes_count) * 8 +: 8];
-        end
-        TXS_GET_VAR: begin
-            tx_data = get_var_data[(4 - tx_bytes_count) * 8 +: 8];
-        end
-        TXS_CART_IN: begin
-            tx_data = cart_din_r;
-        end
-        TXS_QUERY_FW_INFO: begin
-            tx_data = fwi_buf[tx_pos];
-        end
-        TXS_GET_VAR_STATE: begin
-            tx_data = vars[(VARS_BYTE_COUNT - tx_bytes_count) * 8 +: 8];
-        end
-        default: ;
-    endcase
-end
-`endif
-
-
-// ============================================================
-// SET_VARIABLE / GET_VARIABLE helpers
-// ============================================================
-// Key encoding: size(1 byte in par[0]) + key_id(4 bytes par[1..4] big-endian)
-// Value: par[5] ignored (size 1 or 2 or 4 all packed into 4-byte LE field in par[5..8])
-// Actually: SET_VARIABLE sends [size, key32_BE(4), value32_BE(4)] = 9 bytes total
-
-always @(posedge clk) begin
-    get_var16_id <= '{default:0};
-    if (cart_var16_read) begin
-        get_var16_id <= cart_var16_id;
-    end else begin
-        case (command)
-            CMD_GET_VARIABLE: get_var16_id <= cmd_get_variable_var16_id;
-            default: ;
-        endcase
-    end
-end
-
-always @(posedge clk) begin
-    set_var16_valid <= 0;
-    set_var16_id <= '{default:0};
-    set_var16_data <= 16'd0;
-
-    case (command)
-        CMD_SET_VARIABLE: begin
-            set_var16_valid <= cmd_set_variable_complete;
-            set_var16_id <= cmd_set_variable_var16_id;
-            set_var16_data <= cmd_set_variable_var16_data;
-        end
-        default: ;
-    endcase
-end
-
-module cmd_get_variable_t(
-    input wire clk,
-    input wire en,
-    output wire complete,
-    input wire rx_valid,
-    input wire [7:0] rx_data,
-    output reg tx_valid,
-    output reg [7:0] tx_data,
-
-    output reg [9:0] var_id,
-    input reg [15:0] var_data
-);
-    enum {
-        S_RX,
-        S_WAIT,
-        S_TX,
-        S_COMPLETE
-    } state = S_RX;
-    assign complete = (state == S_COMPLETE);
-
-    reg [7:0] size;
-    reg [2:0] idx;
-
-    always @(posedge clk) begin
-        tx_valid <= 1'b0;
-        tx_data <= 8'h00;
-
-        if (!en) begin
-            state <= S_RX;
-            idx <= '{default:0};
-        end else begin
-            case (state)
-                S_RX: begin
-                    if (rx_valid) begin
-                        idx <= idx + 1'd1;
-
-                        case (idx)
-                            3'd0: size <= rx_data;
-                            3'd1, 3'd2, 3'd3: /* unused key MSB */ ;
-                            3'd4: begin
-                                var_id <= make_var16_id(size, rx_data);
-                                idx <= '{default:0};
-                                state <= S_WAIT;
-                            end
-                        endcase
-                    end
-                end
-                // one cycle for the get_var16 infra to work
-                S_WAIT: state <= S_TX;
-                S_TX: begin
-                    tx_valid <= 1;
-                    tx_data <= 8'h00;
-                    idx[1:0] <= idx[1:0] + 1;
-
-                    case (idx[1:0])
-                        2'd0, 2'd1: ;
-                        2'd2: tx_data <= var_data[15:8];
-                        2'd3: begin
-                            tx_data <= var_data[7:0];
-                            state <= S_COMPLETE;
-                        end
-                    endcase
-                end
-                default: ;
-            endcase
-        end
-    end
-endmodule
-
-wire cmd_get_variable_complete;
-wire cmd_get_variable_tx_valid;
-wire [7:0] cmd_get_variable_tx_data;
-wire [9:0] cmd_get_variable_var16_id;
-
-cmd_get_variable_t cmd_get_variable(
-    .clk(clk),
-    .en(command == CMD_GET_VARIABLE),
-    .complete(cmd_get_variable_complete),
-    .rx_valid(rx_valid),
-    .rx_data(rx_data),
-    .tx_valid(cmd_get_variable_tx_valid),
-    .tx_data(cmd_get_variable_tx_data),
-    .var_id(cmd_get_variable_var16_id),
-    .var_data(get_var16_data)
-);
-
-module cmd_set_variable_t(
-    input wire clk,
-    input wire en,
-    output wire complete,
-    input wire rx_valid,
-    input wire [7:0] rx_data,
-    output reg tx_valid,
-    output reg [7:0] tx_data,
-
-    output reg[9:0] var_id,
-    output reg[15:0] var_data
-);
-    enum {
-        S_RX,
-        S_COMPLETE
-    } state = S_RX;
-    assign complete = (state == S_COMPLETE);
-    reg [3:0] idx;
-    reg [7:0] size;
-
-    // The only thing we TX is an ack
-    assign tx_data = 8'h01;
-
-    always @(posedge clk) begin
-        tx_valid <= 1'b0;
-
-        if (!en) begin
-            state <= S_RX;
-            idx <= '{default:0};
-        end else begin
-            case (state)
-                S_RX: begin
-                    idx <= idx + 1'd1;
-
-                    if (rx_valid) begin
-                        case (idx)
-                            4'd0: size <= rx_data;
-                            4'd1, 4'd2, 4'd3: /* unused key MSB */ ;
-                            4'd4: var_id <= make_var16_id(size, rx_data);
-                            4'd5, 4'd6: /* unused data MSB */ ;
-                            4'd7: var_data[15:8] <= rx_data;
-                            4'd8: begin
-                                var_data[7:0] <= rx_data;
-                                state <= S_COMPLETE;
-                                tx_valid <= 1'b1;
-                            end
-                        endcase
-                    end
-                end
-                S_COMPLETE: ;
-            endcase
-        end
-    end
-endmodule
-
-wire cmd_set_variable_complete;
-wire cmd_set_variable_tx_valid;
-wire [7:0] cmd_set_variable_tx_data;
-wire [9:0] cmd_set_variable_var16_id;
-wire [15:0] cmd_set_variable_var16_data;
-
-cmd_set_variable_t cmd_set_variable(
-    .clk(clk),
-    .en(command == CMD_SET_VARIABLE),
-    .complete(cmd_set_variable_complete),
-    .rx_valid(rx_valid),
-    .rx_data(rx_data),
-    .tx_valid(cmd_set_variable_tx_valid),
-    .tx_data(cmd_set_variable_tx_data),
-    .var_id(cmd_set_variable_var16_id),
-    .var_data(cmd_set_variable_var16_data)
-);
-
 reg vars_cleaned = 0;
 always @(posedge clk) begin
     if (reset || !lk_enabled) begin
@@ -625,7 +345,7 @@ module cmd_query_fw_info_t(
     output wire complete,
     input wire rx_valid,
     input wire [7:0] rx_data,
-    output reg tx_valid,
+    output wire tx_valid,
     output reg [7:0] tx_data
 );
     localparam ROM_LEN = 26;
@@ -633,10 +353,11 @@ module cmd_query_fw_info_t(
     reg [4:0] index = 0;
 
     wire valid_index = (index < ROM_LEN);
+    assign tx_valid = valid_index;
+    assign tx_data = valid_index ? rom[index] : 8'd0;
     assign complete = !valid_index;
 
     initial begin
-        tx_valid = 0;
         // FW info buffer
         // size=8
         rom[0]  = 8'd8;
@@ -675,16 +396,10 @@ module cmd_query_fw_info_t(
     end
 
     always @(posedge clk) begin
-        tx_valid <= 0;
-        tx_data <= 8'd0;
         if (!en) begin
             index <= 0;
         end else if (valid_index) begin
-            if (!tx_valid) begin
-                tx_valid <= 1;
-                tx_data <= rom[index];
-                index <= index + 1;
-            end
+            index <= index + 1;
         end
     end
 endmodule
@@ -703,40 +418,14 @@ cmd_query_fw_info_t cmd_query_fw_info(
     .tx_data(cmd_query_fw_info_tx_data)
 );
 
-module cmd_idle_t(
-    input wire clk,
-    output command_t next_command,
-    input wire rx_valid,
-    input wire [7:0] rx_data
-);
-    initial begin
-        next_command <= CMD_IDLE;
-    end
-
-    always @(posedge clk) begin
-        next_command <= rx_valid ? rx_data : CMD_IDLE;
-    end
-endmodule
-
-command_t cmd_idle_next_command;
-
-cmd_idle_t cmd_idle(
-    .clk(clk),
-    .next_command(cmd_idle_next_command),
-    .rx_valid(rx_valid),
-    .rx_data(rx_data)
-);
-
 command_t next_command;
 
 always_comb begin
     next_command = CMD_IDLE;
     if (lk_enabled && !reset) begin
         case (command)
-            CMD_IDLE: next_command = cmd_idle_next_command;
-            CMD_QUERY_FW_INFO: next_command = cmd_get_variable_complete ? CMD_IDLE : CMD_GET_VARIABLE;
-            CMD_GET_VARIABLE: next_command = cmd_get_variable_complete ? CMD_IDLE : CMD_GET_VARIABLE;
-            CMD_SET_VARIABLE: next_command = cmd_set_variable_complete ? CMD_IDLE : CMD_SET_VARIABLE;
+            CMD_IDLE: next_command = rx_valid ? rx_data : CMD_IDLE;
+            CMD_QUERY_FW_INFO: next_command = cmd_query_fw_info_complete ? CMD_IDLE : CMD_QUERY_FW_INFO;
             CMD_BYE: next_command = cmd_bye_complete ? CMD_IDLE : CMD_BYE;
             default: ;
         endcase
@@ -746,7 +435,7 @@ end
 
 always_comb begin
     tx_valid = 1'b0;
-    tx_data = 8'b01010101; // 8'h55, 8'd85, ascii uppercase U
+    tx_data = 8'd0; // 8'h55, 8'd85, ascii uppercase U
 
     if (lk_enabled && !reset) begin
         case (command)
@@ -755,24 +444,11 @@ always_comb begin
                 tx_valid = cmd_query_fw_info_tx_valid;
                 tx_data = cmd_query_fw_info_tx_data;
             end
-            CMD_GET_VARIABLE: begin
-                tx_valid = cmd_get_variable_tx_valid;
-                tx_data = cmd_get_variable_tx_data;
-            end
-            CMD_SET_VARIABLE: begin
-                tx_valid = cmd_set_variable_tx_valid;
-                tx_data = cmd_set_variable_tx_data;
-            end
             CMD_BYE: begin
                 tx_valid = cmd_bye_tx_valid;
                 tx_data = cmd_bye_tx_data;
             end
-            default: begin
-                // Unrecognized? do not ack
-                tx_valid = 1'b1;
-                //tx_data = 8'hFF;
-                tx_data = command; // FIXME
-            end
+            default: ;
         endcase
     end // if (lk_enabled && !reset)
 end
@@ -789,7 +465,6 @@ always @(posedge clk) begin
     // Pulses
     cart_done <= 1'b0;
     command <= next_command;
-    cart_var16_read <= 0;
 
     if (reset || !lk_enabled) begin
         cart_state      <= C_IDLE;
@@ -814,14 +489,6 @@ always @(posedge clk) begin
             // Address and direction already set by caller one cycle ago.
             // Now assert CS with setup delay.
             cart_wait_cnt <= CART_SETUP[4:0] - 5'd1;
-            cart_var16_read <= 1;
-            cart_var16_id <= (cart_data_dir_e == 1'b0) ?
-                VAR_ID_DMG_WRITE_CS_PULSE :
-                VAR_ID_DMG_READ_CS_PULSE;
-            cart_state <= C_READ_PULSE_VAR;
-        end
-
-        C_READ_PULSE_VAR: begin
             cart_state <= C_CSRD;
         end
 
@@ -829,12 +496,12 @@ always @(posedge clk) begin
             if (cart_wait_cnt != 0) begin
                 cart_wait_cnt <= cart_wait_cnt - 5'd1;
             end else begin
-                 // DMG_READ_CS_PULSE or DMG_WRITE_CS_PULSE
-                 cart_cs <= ~get_var16_data[0];
                 if (cart_data_dir_e == 1'b0) begin
+                    cart_cs       <= ~var_dmg_write_cs_pulse;
                     cart_wait_cnt <= CART_WR_HOLD[4:0] - 5'd1;
                     cart_state    <= C_WR_LOW;
                 end else begin
+                    cart_cs       <= ~var_dmg_read_cs_pulse;
                     cart_rd       <= 1'b0;
                     cart_wait_cnt <= CART_RD_HOLD[4:0] - 5'd1;
                     cart_state    <= C_WAIT;
