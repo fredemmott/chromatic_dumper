@@ -91,7 +91,6 @@ function [9:0] make_var16_id(
     end
 endfunction
 
-// 3 bits for size (1, 2, or 4), 8 for key
 localparam VAR_ID_ADDRESS = make_var16_id(3'd4, 8'h00);
 localparam VAR_ID_TRANSFER_SIZE = make_var16_id(3'd2, 8'h00);
 localparam VAR_ID_STATUS_REGISTER = make_var16_id(3'd2, 8'h03);
@@ -228,13 +227,6 @@ typedef enum logic [3:0] {
 // ============================================================
 command_t command = CMD_IDLE;
 cart_state_t cart_state;
-
-// buffer for DMG_CART_WRITE_SRAM and FLASH_PROGRAM
-localparam BLOB_SIZE = 16 * 1024;
-reg [7:0]  blob [0:BLOB_SIZE - 1];
-localparam BLOB_IDX_WIDTH = $clog2(BLOB_SIZE);
-reg [(BLOB_IDX_WIDTH - 1):0] blob_idx;
-
 
 // Cart access working registers
 reg [7:0]  cart_din_r;    // latched read result
@@ -633,60 +625,59 @@ module cmd_query_fw_info_t(
     output wire complete,
     input wire rx_valid,
     input wire [7:0] rx_data,
-    output reg tx_valid,
-    output reg [7:0] tx_data
+    output wire tx_valid,
+    output wire [7:0] tx_data
 );
-    localparam FWI_LEN = 26;
-    reg [7:0] fwi_buf [0:FWI_LEN-1];
-
-    reg [4:0] idx = 0;
-    assign complete = (idx == FWI_LEN[4:0]);
-    assign tx_valid = (!complete);
-    assign tx_data = fwi_buf[idx];
+    localparam ROM_LEN = 26;
+    reg [7:0] rom [0:ROM_LEN-1];
+    reg [4:0] index = 0;
+    assign tx_valid = (index < ROM_LEN);
+    assign tx_data = (index < ROM_LEN) ? rom[index] : 8'h00;
+    assign complete = (index == ROM_LEN);
 
     initial begin
         // FW info buffer
         // size=8
-        fwi_buf[0]  = 8'd8;
+        rom[0]  = 8'd8;
         // cfw_id = 'L'  (uses LK protocol, but pcb_ver 0x42 ∉ Joey-Jr PCB_VERSIONS)
-        fwi_buf[1]  = "L";
+        rom[1]  = "L";
         // fw_ver = 12  (big-endian 16-bit)
-        fwi_buf[2]  = 8'd0;
-        fwi_buf[3]  = 8'd12;
+        rom[2]  = 8'd0;
+        rom[3]  = 8'd12;
         // pcb_ver = 0x42  (not in Joey-Jr's PCB_VERSIONS → rejected by hw_JoeyJr.py)
-        fwi_buf[4]  = 8'h42;
+        rom[4]  = 8'h42;
         // fw_ts = 0x69FB3C8C
-        fwi_buf[5]  = 8'h69;
-        fwi_buf[6]  = 8'hFB;
-        fwi_buf[7]  = 8'h3C;
-        fwi_buf[8]  = 8'h8C;
+        rom[5]  = 8'h69;
+        rom[6]  = 8'hFB;
+        rom[7]  = 8'h3C;
+        rom[8]  = 8'h8C;
         // name_len = 14  ("Chromatic Cart")
-        fwi_buf[9]  = 8'd14;
-        fwi_buf[10] = "C";
-        fwi_buf[11] = "h";
-        fwi_buf[12] = "r";
-        fwi_buf[13] = "o";
-        fwi_buf[14] = "m";
-        fwi_buf[15] = "a";
-        fwi_buf[16] = "t";
-        fwi_buf[17] = "i";
-        fwi_buf[18] = "c";
-        fwi_buf[19] = " ";
-        fwi_buf[20] = "C";
-        fwi_buf[21] = "a";
-        fwi_buf[22] = "r";
-        fwi_buf[23] = "t";
+        rom[9]  = 8'd14;
+        rom[10] = "C";
+        rom[11] = "h";
+        rom[12] = "r";
+        rom[13] = "o";
+        rom[14] = "m";
+        rom[15] = "a";
+        rom[16] = "t";
+        rom[17] = "i";
+        rom[18] = "c";
+        rom[19] = " ";
+        rom[20] = "C";
+        rom[21] = "a";
+        rom[22] = "r";
+        rom[23] = "t";
         // cart_power_ctrl = 0
-        fwi_buf[24] = 8'd0;
+        rom[24] = 8'd0;
         // bootloader_reset = 0
-        fwi_buf[25] = 8'd0;
+        rom[25] = 8'd0;
     end
 
     always @(posedge clk) begin
         if (!en) begin
-            idx <= 0;
-        end else if (!complete) begin
-            idx <= idx + 1'b1;
+            index <= 0;
+        end else if (index < ROM_LEN) begin
+            index <= index + 1;
         end
     end
 endmodule
@@ -730,8 +721,6 @@ cmd_idle_t cmd_idle(
 );
 
 command_t next_command;
-reg next_tx_valid;
-reg [7:0] next_tx_data;
 
 always_comb begin
     next_command = CMD_IDLE;
@@ -772,7 +761,7 @@ always_comb begin
                 tx_data = cmd_bye_tx_data;
             end
             default: begin
-                // Unrecognized? blindly ack
+                // Unrecognized? do not ack
                 tx_valid = 1'b1;
                 //tx_data = 8'hFF;
                 tx_data = command; // FIXME
