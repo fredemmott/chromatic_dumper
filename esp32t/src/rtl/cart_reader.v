@@ -82,8 +82,12 @@ function [9:0] make_var16_id(
     input [7:0] size,
     input [7:0] key
 );
+    // Give all sizes are 1, 2, or 4, the lowest bit doesn't actually give us any information...
+    // size: 1 -> 001 -> 00
+    // size: 2 -> 010 -> 01
+    // size: 4 -> 100 -> 10
     begin
-        make_var16_id = { size[2:0], key[7:0] };
+        make_var16_id = {size[2:1], key[7:0]};
     end
 endfunction
 
@@ -100,34 +104,76 @@ localparam VAR_ID_DMG_WRITE_CS_PULSE = make_var16_id(3'd1, 8'h09);
 module vars_t(
     input wire clk,
     input wire reset,
-    input wire [10:0] read_id,
+    input wire [9:0] read_id,
     output reg [15:0] read_data,
-    input reg write_valid,
-    input wire [10:0] write_id,
+    input wire write_valid,
+    input wire [9:0] write_id,
     input wire [15:0] write_data
 );
-    reg [15:0] storage [0:~11'b0];
-    reg [10:0] reset_remaining = 0;
+
+    struct packed {
+        reg [15:0] var_address;
+        reg [15:0] var_transfer_size;
+        reg [7:0]  var_status_register;
+        reg [7:0]  var_cart_mode;
+        reg [7:0]  var_dmg_access_mode;
+        reg        var_flash_we_pin;
+        reg        var_dmg_read_cs_pulse;
+        reg        var_dmg_write_cs_pulse;
+        reg [4:0]  padding;
+    } storage = '{default:0};
 
     always @(posedge clk) begin
-        read_data <= storage[read_id];
+        read_data <= 16'd0;
+        case (read_id)
+            VAR_ID_ADDRESS: read_data <= storage.var_address;
+            VAR_ID_TRANSFER_SIZE: read_data <= storage.var_transfer_size;
+            VAR_ID_CART_MODE: read_data[7:0] <= storage.var_cart_mode;
+            VAR_ID_DMG_ACCESS_MODE: read_data[7:0] <= storage.var_dmg_access_mode;
+            VAR_ID_FLASH_WE_PIN: read_data[0] <= storage.var_flash_we_pin;
+            VAR_ID_DMG_READ_CS_PULSE: read_data[0] <= storage.var_dmg_read_cs_pulse;
+            VAR_ID_DMG_WRITE_CS_PULSE: read_data[0] <= storage.var_dmg_write_cs_pulse;
+            default: ;
+        endcase
+    end
 
-        if (reset) reset_remaining <= ~11'b0;
-        if (reset || reset_remaining) begin
-            // we'll reset byte 0 first, then count down from the top
-            storage[reset_remaining] <= 16'd0;
-        end else if (write_valid) storage[write_id] <= write_data;
+    always @(posedge clk) begin
+        if (reset) begin
+            storage <= '{default:0};
+        end else if (write_valid) begin
+            case (read_id)
+                VAR_ID_ADDRESS: storage.var_address <= write_data;
+                VAR_ID_TRANSFER_SIZE: storage.var_transfer_size <= write_data;
+                VAR_ID_CART_MODE: storage.var_cart_mode <= write_data;
+                VAR_ID_DMG_ACCESS_MODE: storage.var_dmg_access_mode <= write_data;
+                VAR_ID_FLASH_WE_PIN: storage.var_flash_we_pin <= write_data;
+                VAR_ID_DMG_READ_CS_PULSE: storage.var_dmg_read_cs_pulse <= write_data;
+                VAR_ID_DMG_WRITE_CS_PULSE: storage.var_dmg_write_cs_pulse <= write_data;
+                default: ;
+            endcase
+        end
     end
 endmodule
 
-reg [10:0] get_var16_id;
+reg vars_reset = 0;
+reg [9:0] get_var16_id;
 reg [15:0] get_var16_data;
 reg set_var16_valid = 0;
-reg [10:0] set_var16_id;
+reg [9:0] set_var16_id;
 reg [15:0] set_var16_data;
 
+vars_t vars(
+    .clk(clk),
+    .reset(vars_reset),
+    .read_id(get_var16_id),
+    .read_data(get_var16_data),
+    .write_valid(set_var16_valid),
+    .write_id(set_var16_id),
+    .write_data(set_var16_data)
+);
+
 reg cart_var16_read = 0;
-reg [10:0] cart_var16_id;
+reg [9:0] cart_var16_id;
 
 enum {
     CART_WRITE_PULSE_PINS_NONE,
@@ -347,13 +393,13 @@ end
 module cmd_get_variable_t(
     input wire clk,
     input wire en,
-    output reg complete,
+    output wire complete,
     input wire rx_valid,
     input wire [7:0] rx_data,
     output reg tx_valid,
     output reg [7:0] tx_data,
 
-    output reg [10:0] var_id,
+    output reg [9:0] var_id,
     input reg [15:0] var_data
 );
     enum {
@@ -377,9 +423,9 @@ module cmd_get_variable_t(
         end else begin
             case (state)
                 S_RX: begin
-                    idx <= idx + 1'd1;
-
                     if (rx_valid) begin
+                        idx <= idx + 1'd1;
+
                         case (idx)
                             3'd0: size <= rx_data;
                             3'd1, 3'd2, 3'd3: /* unused key MSB */ ;
@@ -407,7 +453,7 @@ module cmd_get_variable_t(
                         end
                     endcase
                 end
-                S_COMPLETE: ;
+                default: ;
             endcase
         end
     end
@@ -416,7 +462,7 @@ endmodule
 wire cmd_get_variable_complete;
 wire cmd_get_variable_tx_valid;
 wire [7:0] cmd_get_variable_tx_data;
-wire [7:0] cmd_get_variable_var16_id;
+wire [9:0] cmd_get_variable_var16_id;
 
 cmd_get_variable_t cmd_get_variable(
     .clk(clk),
@@ -433,13 +479,13 @@ cmd_get_variable_t cmd_get_variable(
 module cmd_set_variable_t(
     input wire clk,
     input wire en,
-    output reg complete,
+    output wire complete,
     input wire rx_valid,
     input wire [7:0] rx_data,
     output reg tx_valid,
     output reg [7:0] tx_data,
 
-    output reg[10:0] var_id,
+    output reg[9:0] var_id,
     output reg[15:0] var_data
 );
     enum {
@@ -488,7 +534,7 @@ endmodule
 wire cmd_set_variable_complete;
 wire cmd_set_variable_tx_valid;
 wire [7:0] cmd_set_variable_tx_data;
-wire [7:0] cmd_set_variable_var16_id;
+wire [9:0] cmd_set_variable_var16_id;
 wire [15:0] cmd_set_variable_var16_data;
 
 cmd_set_variable_t cmd_set_variable(
@@ -519,7 +565,7 @@ end
 module cmd_bye_t(
     input wire clk,
     input wire en,
-    output reg complete,
+    output wire complete,
     input wire rx_valid,
     input wire [7:0] rx_data,
     output reg tx_valid,
@@ -584,7 +630,7 @@ cmd_bye_t cmd_bye(
 module cmd_query_fw_info_t(
     input wire clk,
     input wire en,
-    output reg complete,
+    output wire complete,
     input wire rx_valid,
     input wire [7:0] rx_data,
     output reg tx_valid,
@@ -637,8 +683,6 @@ module cmd_query_fw_info_t(
     end
 
     always @(posedge clk) begin
-        idx <= idx;
-
         if (!en) begin
             idx <= 0;
         end else if (!complete) begin
@@ -689,32 +733,41 @@ command_t next_command;
 reg next_tx_valid;
 reg [7:0] next_tx_data;
 
+always_comb begin
+    next_command = CMD_IDLE;
+    if (lk_enabled && !reset) begin
+        case (command)
+            CMD_IDLE: next_command = cmd_idle_next_command;
+            CMD_QUERY_FW_INFO: next_command = cmd_get_variable_complete ? CMD_IDLE : CMD_GET_VARIABLE;
+            CMD_GET_VARIABLE: next_command = cmd_get_variable_complete ? CMD_IDLE : CMD_GET_VARIABLE;
+            CMD_SET_VARIABLE: next_command = cmd_set_variable_complete ? CMD_IDLE : CMD_SET_VARIABLE;
+            CMD_BYE: next_command = cmd_bye_complete ? CMD_IDLE : CMD_BYE;
+            default: ;
+        endcase
+    end
+end
+
 
 always_comb begin
     tx_valid = 1'b0;
     tx_data = 8'b01010101; // 8'h55, 8'd85, ascii uppercase U
-    next_command = CMD_IDLE;
 
     if (lk_enabled && !reset) begin
         case (command)
-            CMD_IDLE: next_command = cmd_idle_next_command;
+            CMD_IDLE: ;
             CMD_QUERY_FW_INFO: begin
-                next_command = cmd_query_fw_info_complete ? CMD_IDLE : CMD_QUERY_FW_INFO;
                 tx_valid = cmd_query_fw_info_tx_valid;
                 tx_data = cmd_query_fw_info_tx_data;
             end
             CMD_GET_VARIABLE: begin
-                next_command = cmd_get_variable_complete ? CMD_IDLE : CMD_GET_VARIABLE;
                 tx_valid = cmd_get_variable_tx_valid;
                 tx_data = cmd_get_variable_tx_data;
             end
             CMD_SET_VARIABLE: begin
-                next_command = cmd_set_variable_complete ? CMD_IDLE : CMD_SET_VARIABLE;
                 tx_valid = cmd_set_variable_tx_valid;
                 tx_data = cmd_set_variable_tx_data;
             end
             CMD_BYE: begin
-                next_command = cmd_bye_complete ? CMD_IDLE : CMD_BYE;
                 tx_valid = cmd_bye_tx_valid;
                 tx_data = cmd_bye_tx_data;
             end
