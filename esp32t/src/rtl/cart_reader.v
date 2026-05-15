@@ -625,17 +625,18 @@ module cmd_query_fw_info_t(
     output wire complete,
     input wire rx_valid,
     input wire [7:0] rx_data,
-    output wire tx_valid,
-    output wire [7:0] tx_data
+    output reg tx_valid,
+    output reg [7:0] tx_data
 );
     localparam ROM_LEN = 26;
     reg [7:0] rom [0:ROM_LEN-1];
     reg [4:0] index = 0;
-    assign tx_valid = (index < ROM_LEN);
-    assign tx_data = (index < ROM_LEN) ? rom[index] : 8'h00;
-    assign complete = (index == ROM_LEN);
+
+    wire valid_index = (index < ROM_LEN);
+    assign complete = !valid_index;
 
     initial begin
+        tx_valid = 0;
         // FW info buffer
         // size=8
         rom[0]  = 8'd8;
@@ -674,10 +675,16 @@ module cmd_query_fw_info_t(
     end
 
     always @(posedge clk) begin
+        tx_valid <= 0;
+        tx_data <= 8'd0;
         if (!en) begin
             index <= 0;
-        end else if (index < ROM_LEN) begin
-            index <= index + 1;
+        end else if (valid_index) begin
+            if (!tx_valid) begin
+                tx_valid <= 1;
+                tx_data <= rom[index];
+                index <= index + 1;
+            end
         end
     end
 endmodule
