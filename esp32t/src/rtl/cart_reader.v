@@ -94,34 +94,113 @@ endfunction
 
 localparam VAR_ID_NONE = 0;
 
-localparam VAR_ID_ADDRESS = make_var16_id(3'd4, 8'h00);
-localparam VAR_ID_TRANSFER_SIZE = make_var16_id(3'd2, 8'h00);
-localparam VAR_ID_STATUS_REGISTER = make_var16_id(3'd2, 8'h03);
-localparam VAR_ID_CART_MODE = make_var16_id(3'd1, 8'h00);
-localparam VAR_ID_DMG_ACCESS_MODE = make_var16_id(3'd1, 8'h01);
-localparam VAR_ID_FLASH_WE_PIN = make_var16_id(3'd1, 8'h04);
-localparam VAR_ID_DMG_READ_CS_PULSE = make_var16_id(3'd1, 8'h08);
-localparam VAR_ID_DMG_WRITE_CS_PULSE = make_var16_id(3'd1, 8'h09);
+localparam VAR_ID_ADDRESS = make_var16_id(8'd4, 8'h00);
+localparam VAR_ID_TRANSFER_SIZE = make_var16_id(8'd2, 8'h00);
+localparam VAR_ID_STATUS_REGISTER = make_var16_id(8'd2, 8'h03);
+localparam VAR_ID_CART_MODE = make_var16_id(8'd1, 8'h00);
+localparam VAR_ID_DMG_ACCESS_MODE = make_var16_id(8'd1, 8'h01);
+localparam VAR_ID_FLASH_WE_PIN = make_var16_id(8'd1, 8'h04);
+localparam VAR_ID_DMG_READ_CS_PULSE = make_var16_id(8'd1, 8'h08);
+localparam VAR_ID_DMG_WRITE_CS_PULSE = make_var16_id(8'd1, 8'h09);
 
 module vars_t(
     input wire clk,
     input wire reset,
+    input wire rx_valid,
+    input wire [7:0] rx_data,
+    output reg tx_valid,
+    output reg [7:0] tx_data,
+    input wire get_variable_en,
+    output reg get_variable_complete,
     output wire var_dmg_read_cs_pulse,
     output wire var_dmg_write_cs_pulse
 );
     struct packed {
-        reg [15:0] var_address;
-        reg [15:0] var_transfer_size;
-        reg [7:0]  var_status_register;
-        reg [7:0]  var_cart_mode;
-        reg [7:0]  var_dmg_access_mode;
-        reg        var_flash_we_pin;
-        reg        var_dmg_read_cs_pulse;
-        reg        var_dmg_write_cs_pulse;
-        reg [4:0]  padding;
+        reg [15:0] address;
+        reg [15:0] transfer_size;
+        reg [7:0]  status_register;
+        reg [7:0]  cart_mode;
+        reg [7:0]  dmg_access_mode;
+        reg        flash_we_pin;
+        reg        dmg_read_cs_pulse;
+        reg        dmg_write_cs_pulse;
+        reg [4:0]  PADDING;
     } storage = '{default:0};
-    assign var_dmg_read_cs_pulse = storage.var_dmg_read_cs_pulse;
-    assign var_dmg_write_cs_pulse = storage.var_dmg_read_cs_pulse;
+    assign var_dmg_read_cs_pulse = storage.dmg_read_cs_pulse;
+    assign var_dmg_write_cs_pulse = storage.dmg_read_cs_pulse;
+
+    function [15:0] get_var16(
+        reg [7:0] size,
+        reg [7:0] key
+    );
+        begin
+            get_var16 = 16'd0;
+            case(make_var16_id(size, key))
+                VAR_ID_ADDRESS: get_var16 = storage.address;
+                VAR_ID_TRANSFER_SIZE: get_var16 = storage.transfer_size;
+                VAR_ID_STATUS_REGISTER: get_var16[7:0] = storage.status_register;
+                VAR_ID_CART_MODE: get_var16[7:0] = storage.cart_mode;
+                VAR_ID_DMG_ACCESS_MODE: get_var16[7:0] = storage.dmg_access_mode;
+                VAR_ID_FLASH_WE_PIN: get_var16[0] = storage.flash_we_pin;
+                VAR_ID_DMG_READ_CS_PULSE: get_var16[0] = storage.dmg_read_cs_pulse;
+                VAR_ID_DMG_WRITE_CS_PULSE: get_var16[0] = storage.dmg_write_cs_pulse;
+                default: ;
+            endcase
+        end
+    endfunction
+
+    enum {
+        GS_RX,
+        GS_TX,
+        GS_COMPLETE
+    } get_state = GS_RX;
+    assign get_variable_complete = (get_state == GS_COMPLETE);
+
+    reg [2:0] get_idx = 0;
+    reg [7:0] get_size;
+    reg [15:0] get_value;
+
+    always @(posedge clk) begin
+        tx_valid <= 1;
+        tx_data <= 123;
+        if (!get_variable_en) begin
+            get_idx <= 0;
+            get_state <= GS_RX;
+        end else begin
+            case (get_state)
+                GS_RX: begin
+                    if (rx_valid) begin
+                        get_idx <= get_idx + 1;
+                        case (get_idx)
+                            0: get_size <= rx_data;
+                            1, 2, 3: /* unused MSB */ ;
+                            4: begin
+                                get_idx <= 0;
+                                get_value <= get_var16(get_size, rx_data);
+                                get_state <= GS_TX;
+                            end
+                            default: get_state <= GS_COMPLETE;
+                        endcase
+                    end
+                end
+                GS_TX: begin
+                    tx_valid <= 1;
+                    get_idx <= get_idx + 1;
+                    case(get_idx)
+                        0, 1: ;
+                        2: tx_data <= get_value[15:8];
+                        3: begin
+                            tx_data <= get_value[7:0];
+                            get_state <= GS_COMPLETE;
+                         end
+                        default: get_state <= GS_COMPLETE;
+                    endcase
+                end
+                GS_COMPLETE: ;
+                default: get_state <= GS_COMPLETE;
+            endcase
+        end
+    end
 endmodule
 
 reg vars_reset = 0;
@@ -129,9 +208,19 @@ reg vars_reset = 0;
 wire var_dmg_read_cs_pulse;
 wire var_dmg_write_cs_pulse;
 
+wire       cmd_get_variable_tx_valid;
+wire [7:0] cmd_get_variable_tx_data;
+wire       cmd_get_variable_complete;
+
 vars_t vars(
     .clk(clk),
     .reset(vars_reset),
+    .rx_valid(rx_valid),
+    .rx_data(rx_data),
+    .tx_valid(cmd_get_variable_tx_valid),
+    .tx_data(cmd_get_variable_tx_data),
+    .get_variable_en(command == CMD_GET_VARIABLE),
+    .get_variable_complete(cmd_get_variable_complete),
     .var_dmg_read_cs_pulse(var_dmg_read_cs_pulse),
     .var_dmg_write_cs_pulse(var_dmg_read_cs_pulse)
 );
@@ -425,6 +514,7 @@ always_comb begin
     if (lk_enabled && !reset) begin
         case (command)
             CMD_IDLE: next_command = rx_valid ? rx_data : CMD_IDLE;
+            CMD_GET_VARIABLE: next_command = cmd_get_variable_complete ? CMD_IDLE : CMD_GET_VARIABLE;
             CMD_QUERY_FW_INFO: next_command = cmd_query_fw_info_complete ? CMD_IDLE : CMD_QUERY_FW_INFO;
             CMD_BYE: next_command = cmd_bye_complete ? CMD_IDLE : CMD_BYE;
             default: ;
@@ -437,20 +527,21 @@ always_comb begin
     tx_valid = 1'b0;
     tx_data = 8'd0; // 8'h55, 8'd85, ascii uppercase U
 
-    if (lk_enabled && !reset) begin
-        case (command)
-            CMD_IDLE: ;
-            CMD_QUERY_FW_INFO: begin
-                tx_valid = cmd_query_fw_info_tx_valid;
-                tx_data = cmd_query_fw_info_tx_data;
-            end
-            CMD_BYE: begin
-                tx_valid = cmd_bye_tx_valid;
-                tx_data = cmd_bye_tx_data;
-            end
-            default: ;
-        endcase
-    end // if (lk_enabled && !reset)
+    case (command)
+        CMD_QUERY_FW_INFO: begin
+            tx_valid = cmd_query_fw_info_tx_valid;
+            tx_data = cmd_query_fw_info_tx_data;
+        end
+        CMD_GET_VARIABLE: begin
+            tx_valid = cmd_get_variable_tx_valid;
+            tx_data = cmd_get_variable_tx_data;
+        end
+        CMD_BYE: begin
+            tx_valid = cmd_bye_tx_valid;
+            tx_data = cmd_bye_tx_data;
+        end
+        default: ;
+    endcase
 end
 
 // ============================================================
