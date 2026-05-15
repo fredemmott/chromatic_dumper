@@ -50,6 +50,7 @@ module cart_reader #(
 )(
     input  wire        clk,
     input  wire        reset,
+    input reg          lk_enabled,
     output reg         lk_disable = 1'b0,
 
     // Parallel byte interface (EP3 via usbuvcuart_top)
@@ -77,7 +78,7 @@ module cart_reader #(
 // Firmware variable indices (match DEVICE_VAR in LK_Device.py)
 // ============================================================
 
-// { 3'byte_size, 3'key }
+// { 3'byte_size, 5'key }
 localparam VAR_ID_ADDRESS = { 3'd4, 5'h00 };
 localparam VAR_ID_TRANSFER_SIZE = { 3'd2, 5'h00 };
 localparam VAR_ID_STATUS_REGISTER = { 3'd2, 5'h03 };
@@ -90,38 +91,18 @@ localparam VAR_ID_DMG_WRITE_CS_PULSE = { 3'd1, 5'h09 };
 // variable storage ---------------------------------------------
 // some of these are a smaller number of bits than expected; this
 // is because they're signed for AGB, but we're DMG-only
-struct packed {
+typedef struct packed {
     reg [15:0] var_address;
     reg [15:0] var_transfer_size;
     reg [7:0]  var_status_register;
-    reg [7:0]  var_cart_mode;
     reg [7:0]  var_dmg_access_mode;
     reg        var_flash_we_pin;
     reg        var_dmg_read_cs_pulse;
     reg        var_dmg_write_cs_pulse;
     reg [4:0]  PAD_TO_BYTE;
-} vars;
+} vars_t;
+vars_t vars;
 localparam VARS_BYTE_COUNT = $bits(vars) / 8;
-
-function [7:0] get_var32(
-  input [2:0] sz,
-  input [4:0] key
-);
-    get_var32 = 32'b0;
-    // Even though address is a 32-bit variable in the protocol, we only support DMG, not AGB
-    // so the first 2 bytes of all our variables are always 0
-    case ({sz, key})
-        VAR_ID_ADDRESS: get_var32 = { 16'b0, vars.var_address };
-        VAR_ID_TRANSFER_SIZE: get_var32 = { 16'b0, vars.var_transfer_size };
-        VAR_ID_STATUS_REGISTER: get_var32 = { 24'b0, vars.var_status_register };
-        VAR_ID_CART_MODE: get_var32 = { 24'b0, vars.var_cart_mode };
-        VAR_ID_DMG_ACCESS_MODE: get_var32 = { 24'b0, vars.var_dmg_access_mode };
-        VAR_ID_FLASH_WE_PIN: get_var32 = { 31'b0, vars.var_flash_we_pin };
-        VAR_ID_DMG_READ_CS_PULSE: get_var32 = { 31'b0, vars.var_dmg_read_cs_pulse };
-        VAR_ID_DMG_WRITE_CS_PULSE: get_var32 = { 31'b0, vars.var_dmg_write_cs_pulse };
-        default: get_var32 = 32'b0;
-    endcase
-endfunction
 
 task set_var16(
   input [2:0] sz,
@@ -132,8 +113,6 @@ task set_var16(
         VAR_ID_ADDRESS: vars.var_address <= data;
         VAR_ID_TRANSFER_SIZE: vars.var_transfer_size <= data;
         VAR_ID_STATUS_REGISTER: vars.var_status_register <= data[7:0];
-        VAR_ID_CART_MODE: vars.var_cart_mode <= data[7:0];
-        VAR_ID_DMG_ACCESS_MODE: vars.var_cart_mode <= data[7:0];
         VAR_ID_FLASH_WE_PIN: vars.var_flash_we_pin <= data[0];
         VAR_ID_DMG_READ_CS_PULSE: vars.var_dmg_read_cs_pulse <= data[0];
         VAR_ID_DMG_WRITE_CS_PULSE: vars.var_dmg_write_cs_pulse <= data[0];
@@ -151,58 +130,28 @@ enum {
 // ============================================================
 // Protocol states
 // ============================================================
-typedef enum {
-    P_CMD, // Waiting for command byte
-    P_TX_ACK, // Send 0x01, return to CMD
-    P_TX_BYTES, // Send ftx_bytes_count bytes, return to CMD
-    P_FW_INFO, // QUERY_FW_INFO multi-byte send
-    P_GET_VAR_INIT,
-    P_GET_VAR_P, // GET_VARIABLE: collecting params
-    P_SET_VAR_INIT,
-    P_SET_VAR_P, // SET_VARIABLE: collecting params
-    P_CART_RD, // DMG_CART_READ
-    P_CART_RD_TX, // Sending cached bytes to host
-    P_CART_WR_INIT,
-    P_CART_WR_P, // DMG_CART_WRITE: collecting 5 bytes
-    P_CART_WR_DO, // DMG_CART_WRITE: doing the write
-    P_SRAM_WR_RX, // DMG_CART_WRITE_SRAM: receiving data
-    P_SRAM_WR_DO, // Performing SRAM write
-    P_SRAM_WR_WAIT, // Wait for SRAM write to finish
-    P_FLASH_PROGRAM_RX, // FLASH_PROGRAM / SRAM WR: receive data byte
-    P_FLASH_PROGRAM_WR_COMMANDS, // populate flash_program_commands for one data byte
-    P_FLASH_PROGRAM_WR_DO, // write one command byte to cart
-    P_FLASH_PROGRAM_WR_WAIT_WRITE, // Wait for `cart_done` on the actual right, then switch to reading the status
-    P_FLASH_PROGRAM_WR_WAIT_STATUS, // Wait for (status & mask == value), then go back to P_CALC_FLASH_WR_DO
-    P_FLB_WR_INIT,
-    P_FLB_WR_P, // DMG_FLASH_WRITE_BYTE: param collection
-    P_FLB_WR_DO, // DMG_FLASH_WRITE_BYTE: write
-    P_CART_WRITE_FLASH_CMD_INIT,
-    P_CART_WRITE_FLASH_CMD_P, // CART_WRITE_FLASH_CMD: collecting header
-    P_CART_WRITE_FLASH_CMD_E, // CART_WRITE_FLASH_CMD: entry bytes
-    P_CART_WRITE_FLASH_CMD_W, // CART_WRITE_FLASH_CMD: write one entry
-    P_CART_WRITE_FLASH_CMD_W_NOWAIT,
-    P_CART_WRITE_FLASH_CMD_WAIT_STATUS,
-    P_CLK_TOG_INIT,
-    P_CLK_TOG_P, // CLK_TOGGLE: collecting count
-    P_CLK_TOG_DO, // CLK_TOGGLE: toggling
-    P_SET_PIN_INIT,
-    P_SET_PIN_P, // SET_PIN: collecting 5 bytes
-    P_GET_VAR_STATE, // GET_VAR_STATE: sending all vars
-    P_SET_VAR_STATE_INIT, // SET_VAR_STATE: receiving (ignored)
-    P_SET_VAR_STATE,
-    P_SET_FLASH_CMD_INIT,
-    P_SET_FLASH_CMD_P,
-    P_SET_FLASH_CMD_E,
-    P_SET_FLASH_CMD_UPDATE_COUNT,
-    P_SET_BANK_CHANGE_CMD_INIT,
-    P_SET_BANK_CHANGE_CMD_P,
-    P_SET_BANK_CHANGE_CMD_E,
-    P_CALC_CRC_P,
-    P_CALC_CRC_RD,
-    P_CALC_CRC,
-    P_BYE_WAIT_L // Got 'L', waiting for 'L'
-} pstate_t;
-
+// We can't use an enum as we want to be able to directly assign from rx_data in cmd_idle_t
+typedef reg[7:0] command_t;
+localparam CMD_IDLE = 8'h00;
+localparam CMD_QUERY_FW_INFO = 8'hA1;
+localparam CMD_SET_VARIABLE = 8'hA6;
+localparam CMD_SET_FLASH_CMD = 8'hA7;
+localparam CMD_CLK_TOGGLE = 8'hA9;
+localparam CMD_GET_VARIABLE = 8'hAD;
+localparam CMD_GET_VAR_STATE = 8'hAE;
+localparam CMD_SET_VAR_STATE = 8'hAF;
+localparam CMD_DMG_CART_READ = 8'hB1;
+localparam CMD_DMG_CART_WRITE = 8'hB2;
+localparam CMD_DMG_CART_WRITE_SRAM = 8'hB3;
+localparam CMD_DMG_MBC_RESET = 8'hB4;
+localparam CMD_DMG_SET_BANK_CHANGE_CMD = 8'hB8;
+localparam CMD_DMG_CART_READ_MEASURE = 8'hBA;
+localparam CMD_DMG_FLASH_WRITE_BYTE = 8'hD1;
+localparam CMD_FLASH_PROGRAM = 8'hD3;
+localparam CMD_CART_WRITE_FLASH_CMD = 8'hD4;
+localparam CMD_CALC_CRC32 = 8'hD5;
+localparam CMD_DMG_SET_PIN = 8'hF5;
+localparam CMD_BYE = "K"; // followed by "L"
 
 // ============================================================
 // Cart access states
@@ -221,7 +170,7 @@ typedef enum logic [3:0] {
 // ============================================================
 // Registers
 // ============================================================
-pstate_t     pstate;
+command_t command = CMD_IDLE;
 cart_state_t cart_state;
 
 // buffer for DMG_CART_WRITE_SRAM and FLASH_PROGRAM
@@ -230,12 +179,6 @@ reg [7:0]  blob [0:BLOB_SIZE - 1];
 localparam BLOB_IDX_WIDTH = $clog2(BLOB_SIZE);
 reg [(BLOB_IDX_WIDTH - 1):0] blob_idx;
 
-// FW info bytes (sent after QUERY_FW_INFO 0xA1)
-// Format: size(1)=0x08, then 8 bytes: cfw_id='L'(1), fw_ver=12(2BE), pcb_ver=0x42(1), fw_ts(4BE)
-// Then: name_len(1), name(N), cart_power_ctrl(1)=0, bootloader_reset(1)=0
-localparam FWI_LEN = 26;
-reg [7:0]  fwi_buf [0:FWI_LEN-1];
-reg [4:0]  fwi_pos;
 
 // Cart access working registers
 reg [7:0]  cart_din_r;    // latched read result
@@ -309,21 +252,25 @@ reg [1:0]  clk_tog_p_idx;
 reg [31:0] clk_tog_cnt;
 
 reg [7:0] tx_bytes_count;
+reg [7:0] tx_pos;
 
+
+`ifdef NOPE
 enum logic [3:0] {
     TXS_NONE,
+    TXS_CONSTANT_ZERO,
     TXS_CONSTANT_ONE,
     TXS_CONSTANT_FF,
     TXS_CALC_CRC,
     TXS_GET_VAR,
     TXS_CART_IN,
-    TXS_FW_INFO,
+    TXS_QUERY_FW_INFO,
     TXS_GET_VAR_STATE
 } tx_data_sel;
 always_comb begin
-    tx_data = 8'b0;
+    tx_data = 8'b01010101; // 8'h55, 8'd85, ascii uppercase U
     case (tx_data_sel)
-        TXS_NONE: begin
+        TXS_NONE, TXS_CONSTANT_ZERO: begin
             tx_data = 8'h00;
         end
         TXS_CONSTANT_ONE: begin
@@ -341,60 +288,17 @@ always_comb begin
         TXS_CART_IN: begin
             tx_data = cart_din_r;
         end
-        TXS_FW_INFO: begin
-            tx_data = fwi_buf[fwi_pos];
+        TXS_QUERY_FW_INFO: begin
+            tx_data = fwi_buf[tx_pos];
         end
         TXS_GET_VAR_STATE: begin
             tx_data = vars[(VARS_BYTE_COUNT - tx_bytes_count) * 8 +: 8];
         end
-        default: tx_data = 8'h00;
+        default: ;
     endcase
 end
+`endif
 
-// ============================================================
-// ID string initialisation (combinational ROM)
-// ============================================================
-integer k;
-initial begin
-    cart_audio = 1'b0;
-    // FW info buffer
-    // size=8
-    fwi_buf[0]  = 8'd8;
-    // cfw_id = 'L'  (uses LK protocol, but pcb_ver 0x42 ∉ Joey-Jr PCB_VERSIONS)
-    fwi_buf[1]  = "L";
-    // fw_ver = 12  (big-endian 16-bit)
-    fwi_buf[2]  = 8'd0;
-    fwi_buf[3]  = 8'd12;
-    // pcb_ver = 0x42  (not in Joey-Jr's PCB_VERSIONS → rejected by hw_JoeyJr.py)
-    fwi_buf[4]  = 8'h42;
-    // fw_ts = 0x69FB3C8C
-    fwi_buf[5]  = 8'h69;
-    fwi_buf[6]  = 8'hFB;
-    fwi_buf[7]  = 8'h3C;
-    fwi_buf[8]  = 8'h8C;
-    // name_len = 14  ("Chromatic Cart")
-    fwi_buf[9]  = 8'd14;
-    fwi_buf[10] = "C";
-    fwi_buf[11] = "h";
-    fwi_buf[12] = "r";
-    fwi_buf[13] = "o";
-    fwi_buf[14] = "m";
-    fwi_buf[15] = "a";
-    fwi_buf[16] = "t";
-    fwi_buf[17] = "i";
-    fwi_buf[18] = "c";
-    fwi_buf[19] = " ";
-    fwi_buf[20] = "C";
-    fwi_buf[21] = "a";
-    fwi_buf[22] = "r";
-    fwi_buf[23] = "t";
-    // cart_power_ctrl = 0
-    fwi_buf[24] = 8'd0;
-    // bootloader_reset = 0
-    fwi_buf[25] = 8'd0;
-
-    vars <= '{default:0};
-end
 
 // ============================================================
 // SET_VARIABLE / GET_VARIABLE helpers
@@ -418,17 +322,354 @@ reg [$clog2(VARS_BYTE_COUNT) - 1 : 0] set_var_state_idx;
 reg [7:0]                             set_var_state_data;
 reg [$clog2(VARS_BYTE_COUNT) - 1 : 0] set_var_state_remaining;
 
+module cmd_get_variable_t(
+    input wire clk,
+    input wire en,
+    output reg complete,
+    input wire rx_valid,
+    input wire [7:0] rx_data,
+    output reg tx_valid,
+    output reg [7:0] tx_data,
+
+    input reg [15:0] var_address,
+    input reg [15:0] var_transfer_size,
+    input reg [7:0]  var_status_register,
+    input reg [7:0]  var_dmg_access_mode,
+    input reg        var_flash_we_pin,
+    input reg        var_dmg_read_cs_pulse,
+    input reg        var_dmg_write_cs_pulse
+);
+    enum {
+        S_RX,
+        S_TX,
+        S_COMPLETE
+    } state = S_RX;
+    assign complete = (state == S_COMPLETE);
+    reg [2:0] size;
+    reg [4:0] key;
+    reg [2:0] idx;
+    reg [15:0] data;
+
+    function [7:0] get_var16(
+      input [2:0] sz,
+      input [4:0] key
+    );
+        get_var16 = 16'b0;
+        // Even though address is a 32-bit variable in the protocol, we only support DMG, not AGB
+        // so the first 2 bytes of all our variables are always 0
+        case ({sz, key})
+            VAR_ID_ADDRESS: get_var16 = var_address;
+            VAR_ID_TRANSFER_SIZE: get_var16 = var_transfer_size;
+            VAR_ID_STATUS_REGISTER: get_var16 = { 8'b0, var_status_register };
+            VAR_ID_CART_MODE: get_var16 = { 16'd1 }; // Always DMG, never AGB
+            VAR_ID_DMG_ACCESS_MODE: get_var16 = { 8'b0, var_dmg_access_mode };
+            VAR_ID_FLASH_WE_PIN: get_var16 = { 8'b0, var_flash_we_pin };
+            VAR_ID_DMG_READ_CS_PULSE: get_var16 = { 8'b0, var_dmg_read_cs_pulse };
+            VAR_ID_DMG_WRITE_CS_PULSE: get_var16 = { 8'b0, var_dmg_write_cs_pulse };
+            default: get_var16 = 16'b0;
+        endcase
+    endfunction
+
+    always @(posedge clk) begin
+        idx <= idx;
+        state <= state;
+        size <= size;
+        key <= key;
+        data <= data;
+
+        tx_valid <= 1'b0;
+        tx_data <= 8'h00;
+
+        if (!en) begin
+            state <= S_RX;
+            idx <= '{default:0};
+        end else begin
+            case (state)
+                S_RX: begin
+                    idx <= idx + 1'd1;
+
+                    if (rx_valid) begin
+                        case (idx)
+                            3'd0: size <= rx_data[2:0];
+                            3'd1, 3'd2, 3'd3: /* unused key MSB */ ;
+                            3'd4: begin
+                                data <= get_var16(size, key);
+                                idx <= '{default:0};
+                                state <= S_TX;
+                            end
+                        endcase
+                    end
+                end
+                S_TX: begin
+                    tx_valid <= 1;
+                    tx_data <= 8'h00;
+                    idx[1:0] <= idx[1:0] + 1;
+
+                    case (idx[1:0])
+                        2'd0, 2'd1: ;
+                        2'd2: tx_data <= data[15:8];
+                        2'd3: begin
+                            tx_data <= data[7:0];
+                            state <= S_COMPLETE;
+                        end
+                    endcase
+                end
+                S_COMPLETE: ;
+            endcase
+        end
+    end
+endmodule
+
+wire cmd_get_variable_complete;
+wire cmd_get_variable_tx_valid;
+wire [7:0] cmd_get_variable_tx_data;
+
+cmd_get_variable_t cmd_get_variable(
+    .clk(clk),
+    .en(command == CMD_GET_VARIABLE),
+    .complete(cmd_get_variable_complete),
+    .rx_valid(rx_valid),
+    .rx_data(rx_data),
+    .tx_valid(cmd_get_variable_tx_valid),
+    .tx_data(cmd_get_variable_tx_data),
+	.var_address(vars.var_address),
+	.var_transfer_size(vars.var_transfer_size),
+	.var_status_register(vars.var_status_register),
+	.var_dmg_access_mode(vars.var_dmg_access_mode),
+	.var_flash_we_pin(vars.var_flash_we_pin),
+	.var_dmg_read_cs_pulse(vars.var_dmg_read_cs_pulse),
+	.var_dmg_write_cs_pulse(vars.var_dmg_write_cs_pulse)
+);
+
+// ============================================================
+// BYE ("KL") helpers
+// ============================================================
+
+
+module cmd_bye_t(
+    input wire clk,
+    input wire en,
+    output reg complete,
+    input wire rx_valid,
+    input wire [7:0] rx_data,
+    output reg tx_valid,
+    output reg [7:0] tx_data,
+    output reg lk_disable
+);
+
+    enum {
+        BYE_RX,
+        BYE_EXEC,
+        BYE_COMPLETE
+    } state = BYE_RX;
+    assign complete = (state == BYE_COMPLETE);
+
+    always @(posedge clk) begin
+        tx_valid <= 1'b0;
+        tx_data <= 8'd0;
+        lk_disable <= 0;
+        state <= state;
+
+        if (!en) begin
+            state <= BYE_RX;
+        end else begin
+            case (state)
+                BYE_RX: begin
+                    if (rx_valid) begin
+                        tx_valid <= 1;
+                        if (rx_data == "L") begin
+                            tx_data <= 8'hFF;
+                            state <= BYE_EXEC;
+                        end else begin
+                            tx_data <= 8'h00;
+                            state <= BYE_COMPLETE;
+                        end
+                    end
+                end
+                BYE_EXEC: begin
+                    lk_disable <= 1;
+                    state <= BYE_COMPLETE;
+                end
+                BYE_COMPLETE: ;
+            endcase
+        end // if (en)
+    end // always @(posedge clk)
+endmodule
+
+wire cmd_bye_complete;
+wire cmd_bye_tx_valid;
+wire [7:0] cmd_bye_tx_data;
+
+cmd_bye_t cmd_bye(
+    .clk(clk),
+    .en(command == CMD_BYE),
+    .complete(cmd_bye_complete),
+    .rx_valid(rx_valid),
+    .rx_data(rx_data),
+    .tx_valid(cmd_bye_tx_valid),
+    .tx_data(cmd_bye_tx_data),
+    .lk_disable(lk_disable)
+);
+
+module cmd_query_fw_info_t(
+    input wire clk,
+    input wire en,
+    output reg complete,
+    input wire rx_valid,
+    input wire [7:0] rx_data,
+    output reg tx_valid,
+    output reg [7:0] tx_data
+);
+    localparam FWI_LEN = 26;
+    reg [7:0] fwi_buf [0:FWI_LEN-1];
+
+    reg [4:0] idx = 0;
+    assign complete = (idx == FWI_LEN[4:0]);
+    assign tx_valid = (!complete);
+    assign tx_data = fwi_buf[idx];
+
+    initial begin
+        // FW info buffer
+        // size=8
+        fwi_buf[0]  = 8'd8;
+        // cfw_id = 'L'  (uses LK protocol, but pcb_ver 0x42 ∉ Joey-Jr PCB_VERSIONS)
+        fwi_buf[1]  = "L";
+        // fw_ver = 12  (big-endian 16-bit)
+        fwi_buf[2]  = 8'd0;
+        fwi_buf[3]  = 8'd12;
+        // pcb_ver = 0x42  (not in Joey-Jr's PCB_VERSIONS → rejected by hw_JoeyJr.py)
+        fwi_buf[4]  = 8'h42;
+        // fw_ts = 0x69FB3C8C
+        fwi_buf[5]  = 8'h69;
+        fwi_buf[6]  = 8'hFB;
+        fwi_buf[7]  = 8'h3C;
+        fwi_buf[8]  = 8'h8C;
+        // name_len = 14  ("Chromatic Cart")
+        fwi_buf[9]  = 8'd14;
+        fwi_buf[10] = "C";
+        fwi_buf[11] = "h";
+        fwi_buf[12] = "r";
+        fwi_buf[13] = "o";
+        fwi_buf[14] = "m";
+        fwi_buf[15] = "a";
+        fwi_buf[16] = "t";
+        fwi_buf[17] = "i";
+        fwi_buf[18] = "c";
+        fwi_buf[19] = " ";
+        fwi_buf[20] = "C";
+        fwi_buf[21] = "a";
+        fwi_buf[22] = "r";
+        fwi_buf[23] = "t";
+        // cart_power_ctrl = 0
+        fwi_buf[24] = 8'd0;
+        // bootloader_reset = 0
+        fwi_buf[25] = 8'd0;
+    end
+
+    always @(posedge clk) begin
+        idx <= idx;
+
+        if (!en) begin
+            idx <= 0;
+        end else if (!complete) begin
+            idx <= idx + 1'b1;
+        end
+    end
+endmodule
+
+wire cmd_query_fw_info_complete;
+wire cmd_query_fw_info_tx_valid;
+wire [7:0] cmd_query_fw_info_tx_data;
+
+cmd_query_fw_info_t cmd_query_fw_info(
+    .clk(clk),
+    .en(command == CMD_QUERY_FW_INFO),
+    .complete(cmd_query_fw_info_complete),
+    .rx_valid(rx_valid),
+    .rx_data(rx_data),
+    .tx_valid(cmd_query_fw_info_tx_valid),
+    .tx_data(cmd_query_fw_info_tx_data)
+);
+
+module cmd_idle_t(
+    input wire clk,
+    output command_t next_command,
+    input wire rx_valid,
+    input wire [7:0] rx_data
+);
+    initial begin
+        next_command <= CMD_IDLE;
+    end
+
+    always @(posedge clk) begin
+        next_command <= rx_valid ? rx_data : CMD_IDLE;
+    end
+endmodule
+
+command_t cmd_idle_next_command;
+
+cmd_idle_t cmd_idle(
+    .clk(clk),
+    .next_command(cmd_idle_next_command),
+    .rx_valid(rx_valid),
+    .rx_data(rx_data)
+);
+
+command_t next_command;
+reg next_tx_valid;
+reg [7:0] next_tx_data;
+
+
+always_comb begin
+    tx_valid = 1'b0;
+    tx_data = 8'b01010101; // 8'h55, 8'd85, ascii uppercase U
+    next_command = CMD_IDLE;
+
+    if (lk_enabled && !reset) begin
+        case (command)
+            CMD_IDLE: next_command = cmd_idle_next_command;
+            CMD_QUERY_FW_INFO: begin
+                next_command = cmd_query_fw_info_complete ? CMD_IDLE : CMD_QUERY_FW_INFO;
+                tx_valid = cmd_query_fw_info_tx_valid;
+                tx_data = cmd_query_fw_info_tx_data;
+            end
+            CMD_GET_VARIABLE: begin
+                next_command = cmd_get_variable_complete ? CMD_IDLE : CMD_GET_VARIABLE;
+                tx_valid = cmd_get_variable_tx_valid;
+                tx_data = cmd_get_variable_tx_data;
+            end
+            CMD_BYE: begin
+                next_command = cmd_bye_complete ? CMD_IDLE : CMD_BYE;
+                tx_valid = cmd_bye_tx_valid;
+                tx_data = cmd_bye_tx_data;
+            end
+            default: begin
+                // Unrecognized? blindly ack
+                tx_valid = 1'b1;
+                //tx_data = 8'hFF;
+                tx_data = command; // FIXME
+            end
+        endcase
+    end // if (lk_enabled && !reset)
+end
+
 // ============================================================
 // Main state machine
 // ============================================================
-integer i;
+
+initial begin
+    cart_audio = 1'b0;
+    vars <= '{default:0};
+end
 
 always @(posedge clk) begin
-    tx_valid <= 1'b0;
-    if (reset) begin
-        pstate          <= P_CMD;
+    // Pulses
+    cart_done <= 1'b0;
+
+    command <= next_command;
+
+    if (reset || !lk_enabled) begin
         cart_state      <= C_IDLE;
-        tx_valid        <= 1'b0;
         cart_a          <= 16'hFFFF;
         cart_clk        <= 1'b1;
         cart_cs         <= 1'b1;
@@ -440,16 +681,14 @@ always @(posedge clk) begin
         cart_done       <= 1'b0;
         cart_pullups_enabled <= 1'b0;
 
-        tx_data_sel <= TXS_NONE;
+        vars <= '{default:0};
 
+        // SET_VARIABLE state
         set_var_rdy <= 0;
         set_var_state_rdy <= 0;
 
-        vars <= '{default:0};
     end else begin
         // Defaults
-        cart_done <= 1'b0;
-        lk_disable <= 1'b0;
 
         if (set_var_rdy) begin
             set_var_rdy <= 0;
@@ -555,23 +794,50 @@ always @(posedge clk) begin
         end
         endcase // cart_state
 
-        // ─────────────────────────────────────────────────────────────────
-        // Protocol state machine
-        // ─────────────────────────────────────────────────────────────────
-        case (pstate)
+`ifdef NOT_DEFINED
+        case (command)
+            CMD_IDLE: if (rx_valid) command <= command_t'{rx_data};
+            CMD_BYE: begin
+                case (bye_state)
+                    BYE_RX: begin
+                        if (rx_valid) begin
+                            tx_valid <= 1;
+                            // Got K, is this a 'KL'?
+                            if (rx_data == "L") begin
+                                tx_data_sel <= TXS_CONSTANT_FF;
+                                bye_state <= BYE_EXEC;
+                            end else begin
+                                tx_data_sel <= TXS_CONSTANT_ZERO;
+                                reset_bye();
+                                command <= CMD_IDLE;
+                            end
+                        end
+                    end // BYE_RX
+                    BYE_EXEC: begin
+                        lk_disable <= 1;
+                        reset_bye();
+                        command <= CMD_IDLE;
+                    end // BYE_EXEC
+                    default: ;
+                endcase
+            end // CMD_BYE
 
-        P_BYE_WAIT_L: begin
-            if (rx_valid) begin
-                pstate <= P_CMD;
-                if (rx_data == "L") begin
-                    tx_data_sel <= TXS_CONSTANT_FF;
-                    tx_valid <= 1'b1;
-                    lk_disable <= 1'b1;
+            CMD_QUERY_FW_INFO: begin
+                tx_valid <= 1;
+                tx_data_sel <= TXS_QUERY_FW_INFO;
+                tx_pos <= tx_pos + 1;
+                if (tx_pos == FWI_LEN[4:0] - 5'd1) begin
+                    command <= CMD_IDLE;
                 end
-            end
-        end
+            end // CMD_QUERY_FW_INFO
 
-        // ── Main command dispatcher ─────────────────────────────────────
+            default: begin
+                tx_data_sel <= TXS_CONSTANT_FF;
+                tx_valid <= 1;
+                command <= CMD_IDLE;
+            end // default
+        endcase
+
         P_CMD: begin
             if (rx_valid) begin
                 tx_data_sel <= TXS_NONE;
@@ -705,6 +971,17 @@ always @(posedge clk) begin
                 endcase
             end
         end // P_CMD
+
+        P_BYE_WAIT_L: begin
+            if (rx_valid) begin
+                pstate <= P_CMD;
+                if (rx_data == "L") begin
+                    tx_data_sel <= TXS_CONSTANT_FF;
+                    tx_valid <= 1'b1;
+                    lk_disable <= 1'b1;
+                end
+            end
+        end // P_BYE_WAIT_L
 
         P_CALC_CRC_P: begin
             // We have vars.var_address already set via SET_FW_VARIABLE
@@ -1232,6 +1509,7 @@ always @(posedge clk) begin
 
         default: pstate <= P_CMD;
         endcase // pstate
+`endif // ifdef old paste
 
     end // ~reset
 end // always
