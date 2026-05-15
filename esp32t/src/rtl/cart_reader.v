@@ -457,11 +457,11 @@ module cmd_query_fw_info_t(
         rom[3]  = 8'd12;
         // pcb_ver = 0x42  (not in Joey-Jr's PCB_VERSIONS → rejected by hw_JoeyJr.py)
         rom[4]  = 8'h42;
-        // fw_ts = 0x69FB3C8C
-        rom[5]  = 8'h69;
-        rom[6]  = 8'hFB;
-        rom[7]  = 8'h3C;
-        rom[8]  = 8'h8C;
+        // fw_ts = 0x6A07ACAC (2026-05-15)
+        rom[5]  = 8'h6A;
+        rom[6]  = 8'h07;
+        rom[7]  = 8'hAC;
+        rom[8]  = 8'hAC;
         // name_len = 14  ("Chromatic Cart")
         rom[9]  = 8'd14;
         rom[10] = "C";
