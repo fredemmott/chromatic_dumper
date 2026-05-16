@@ -805,8 +805,9 @@ module top #(parameter ISSIMU=0)
 
     assign I2S_BCLK = menuDisabled;
 
-    cart_reader #(.CLK_FREQ(60_000_000))
-    u_cart_reader(
+    // FlashGBX "LK" protocol
+    lk_top #(.CLK_FREQ(60_000_000))
+    u_lk(
         .clk            (PHY_CLKOUT),
         .reset          (~usblocked),
         .lk_enabled     (lk_enabled),
