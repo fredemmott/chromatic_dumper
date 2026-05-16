@@ -4,11 +4,8 @@ module lk_cmd_dmg_cart_read_t(
     output wire complete,
     input wire [15:0] var_address,
     input wire [15:0] var_transfer_size,
-    output reg tx_valid,
-    output reg [7:0] tx_data,
     output reg cart_req,
     output reg [15:0] cart_a,
-    input wire [7:0] cart_d_in,
     input wire cart_complete
 );
 
@@ -26,8 +23,6 @@ reg [15:0] remaining;
 
 always @(posedge clk) begin
     cart_req <= 0;
-    tx_valid <= 0;
-    tx_data <= 8'd0;
 
     if (!en) begin
         cart_a <= ~16'd0;
@@ -47,9 +42,7 @@ always @(posedge clk) begin
                 end
             end
             S_TX: if (cart_complete) begin
-                tx_valid <= 1;
-                tx_data <= cart_d_in;
-
+                // lk_top directly transmits the cartridge data
                 address <= address + 1'b1;
                 state <= remaining ? S_EXEC : S_COMPLETE;
             end

@@ -159,8 +159,6 @@ wire cart_complete = (cart_state == C_DONE);
 
 
 // Cart access working registers
-reg [7:0]  cart_d_in_r;    // latched read result
-reg        cart_done;     // pulses for one cycle when cart access complete
 reg [4:0]  cart_wait_cnt;
 
 // Transfer counters
@@ -278,8 +276,6 @@ lk_cmd_dmg_mbc_reset_t lk_dmg_cmd_reset(
 );
 
 wire cmd_dmg_cart_read_complete;
-wire cmd_dmg_cart_read_tx_valid;
-wire [7:0] cmd_dmg_cart_read_tx_data;
 wire cmd_dmg_cart_read_cart_req;
 wire [15:0] cmd_dmg_cart_read_cart_a;
 
@@ -289,11 +285,8 @@ lk_cmd_dmg_cart_read_t cmd_cart_read(
     .complete(cmd_dmg_cart_read_complete),
     .var_address(var_address),
     .var_transfer_size(var_transfer_size),
-    .tx_valid(cmd_dmg_cart_read_tx_valid),
-    .tx_data(cmd_dmg_cart_read_tx_data),
     .cart_req(cmd_dmg_cart_read_cart_req),
     .cart_a(cmd_dmg_cart_read_cart_a),
-    .cart_d_in(cart_d_in_r),
     .cart_complete(cart_complete)
 );
 
@@ -303,7 +296,7 @@ enum {
     TXS_ACK_ON_COMPLETION,
     TXS_QUERY_FW_INFO,
     TXS_VARIABLES,
-    TXS_DMG_CART_READ
+    TXS_CART
 } tx_source;
 
 enum {
@@ -336,7 +329,7 @@ always_comb begin
             end
             CMD_DMG_CART_READ: begin
                 cmd_complete = cmd_dmg_cart_read_complete;
-                tx_source = TXS_DMG_CART_READ;
+                tx_source = TXS_CART;
                 cart_peer = CP_DMG_CART_READ;
             end
             CMD_DMG_MBC_RESET: begin
@@ -389,9 +382,9 @@ always @(posedge clk) begin
             tx_valid_r <= vars_tx_valid;
             tx_data_r <= vars_tx_data;
         end
-        TXS_DMG_CART_READ: begin
-            tx_valid_r <= cmd_dmg_cart_read_tx_valid;
-            tx_data_r <= cmd_dmg_cart_read_tx_data;
+        TXS_CART: begin
+            tx_valid_r <= cart_complete;
+            tx_data_r <= cart_d_in;
         end
         default: ;
     endcase
@@ -472,7 +465,6 @@ always @(posedge clk) begin
             if (cart_wait_cnt != 0) begin
                 cart_wait_cnt <= cart_wait_cnt - 5'd1;
             end else begin
-                cart_d_in_r <= cart_d_in;
                 cart_rd    <= 1'b1;
                 cart_cs    <= 1'b1;
                 cart_state <= C_DONE;
@@ -527,7 +519,6 @@ always @(posedge clk) begin
         end
 
         C_DONE: begin
-            cart_done  <= 1'b1;
             cart_state <= C_IDLE;
         end
         endcase // cart_state
