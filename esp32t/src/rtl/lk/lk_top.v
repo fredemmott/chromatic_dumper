@@ -112,30 +112,64 @@ enum {
 // ============================================================
 // Protocol states
 // ============================================================
-// We can't use an enum as we want to be able to directly assign from rx_data in cmd_idle_t
-typedef reg[7:0] command_t;
-localparam CMD_IDLE = 8'h00;
-localparam CMD_QUERY_FW_INFO = 8'hA1;
-localparam CMD_SET_MODE_DMG = 8'hA3;
-localparam CMD_SET_VOLTAGE_5V = 8'hA5;
-localparam CMD_SET_VARIABLE = 8'hA6;
-localparam CMD_SET_FLASH_CMD = 8'hA7;
-localparam CMD_CLK_TOGGLE = 8'hA9;
-localparam CMD_DISABLE_PULLUPS = 8'hAC;
-localparam CMD_GET_VARIABLE = 8'hAD;
-localparam CMD_GET_VAR_STATE = 8'hAE;
-localparam CMD_SET_VAR_STATE = 8'hAF;
-localparam CMD_DMG_CART_READ = 8'hB1;
-localparam CMD_DMG_CART_WRITE = 8'hB2;
-localparam CMD_DMG_CART_WRITE_SRAM = 8'hB3;
-localparam CMD_DMG_MBC_RESET = 8'hB4;
-localparam CMD_DMG_SET_BANK_CHANGE_CMD = 8'hB8;
-localparam CMD_DMG_CART_READ_MEASURE = 8'hBA;
-localparam CMD_DMG_FLASH_WRITE_BYTE = 8'hD1;
-localparam CMD_FLASH_PROGRAM = 8'hD3;
-localparam CMD_CART_WRITE_FLASH_CMD = 8'hD4;
-localparam CMD_CALC_CRC32 = 8'hD5;
-localparam CMD_SET_PIN = 8'hF5;
+typedef enum {
+    CMD_IDLE,
+    CMD_QUERY_FW_INFO,
+    CMD_SET_MODE_DMG,
+    CMD_SET_VOLTAGE_5V,
+    CMD_SET_VARIABLE,
+    CMD_SET_FLASH_CMD,
+    CMD_SET_ADDR_AS_INPUTS,
+    CMD_CLK_TOGGLE,
+    CMD_DISABLE_PULLUPS,
+    CMD_GET_VARIABLE,
+    CMD_GET_VAR_STATE,
+    CMD_SET_VAR_STATE,
+    CMD_DMG_CART_READ,
+    CMD_DMG_CART_WRITE,
+    CMD_DMG_CART_WRITE_SRAM,
+    CMD_DMG_MBC_RESET,
+    CMD_DMG_SET_BANK_CHANGE_CMD,
+    CMD_DMG_CART_READ_MEASURE,
+    CMD_DMG_FLASH_WRITE_BYTE,
+    CMD_FLASH_PROGRAM,
+    CMD_CART_WRITE_FLASH_CMD,
+    CMD_CALC_CRC32,
+    CMD_SET_PIN
+} command_t;
+command_t command = CMD_IDLE;
+command_t rx_data_as_command;
+
+always_comb begin
+    rx_data_as_command = CMD_IDLE;
+    case (rx_data)
+        // Must match `DEVICE_CMD` in `LK_Device.py`
+        8'h00: rx_data_as_command = CMD_IDLE;
+        8'hA1: rx_data_as_command = CMD_QUERY_FW_INFO;
+        8'hA3: rx_data_as_command = CMD_SET_MODE_DMG;
+        8'hA5: rx_data_as_command = CMD_SET_VOLTAGE_5V;
+        8'hA6: rx_data_as_command = CMD_SET_VARIABLE;
+        8'hA7: rx_data_as_command = CMD_SET_FLASH_CMD;
+        8'hA8: rx_data_as_command = CMD_SET_ADDR_AS_INPUTS;
+        8'hA9: rx_data_as_command = CMD_CLK_TOGGLE;
+        8'hAC: rx_data_as_command = CMD_DISABLE_PULLUPS;
+        8'hAD: rx_data_as_command = CMD_GET_VARIABLE;
+        8'hAE: rx_data_as_command = CMD_GET_VAR_STATE;
+        8'hAF: rx_data_as_command = CMD_SET_VAR_STATE;
+        8'hB1: rx_data_as_command = CMD_DMG_CART_READ;
+        8'hB2: rx_data_as_command = CMD_DMG_CART_WRITE;
+        8'hB3: rx_data_as_command = CMD_DMG_CART_WRITE_SRAM;
+        8'hB4: rx_data_as_command = CMD_DMG_MBC_RESET;
+        8'hB8: rx_data_as_command = CMD_DMG_SET_BANK_CHANGE_CMD;
+        8'hBA: rx_data_as_command = CMD_DMG_CART_READ_MEASURE;
+        8'hD1: rx_data_as_command = CMD_DMG_FLASH_WRITE_BYTE;
+        8'hD3: rx_data_as_command = CMD_FLASH_PROGRAM;
+        8'hD4: rx_data_as_command = CMD_CART_WRITE_FLASH_CMD;
+        8'hD5: rx_data_as_command = CMD_CALC_CRC32;
+        8'hF5: rx_data_as_command = CMD_SET_PIN;
+        default: ;
+    endcase
+end
 
 // ============================================================
 // Cart access states
@@ -354,7 +388,7 @@ always_comb begin
     next_command = CMD_IDLE;
     if (lk_enabled && !reset) begin
         if (command == CMD_IDLE && rx_valid) begin
-            next_command = rx_data;
+            next_command = rx_data_as_command;
         end else next_command = cmd_complete ? CMD_IDLE : command;
     end
 end
