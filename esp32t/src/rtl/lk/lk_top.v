@@ -273,19 +273,29 @@ lk_cmd_dmg_mbc_reset_t lk_dmg_cmd_reset(
     .cart_complete(cart_complete)
 );
 
+reg cmd_complete;
+always_comb begin
+    cmd_complete = 1; // default to going back to CMD_IDLE
+    if (lk_enabled && !reset) begin
+        case (command)
+            CMD_IDLE: cmd_complete = rx_valid;
+            CMD_GET_VARIABLE,
+            CMD_SET_VARIABLE: cmd_complete = vars_cmd_complete;
+            CMD_QUERY_FW_INFO: cmd_complete = cmd_query_fw_info_complete;
+            CMD_SET_PIN: cmd_complete = cmd_set_pin_complete;
+            CMD_DMG_MBC_RESET: cmd_complete = cmd_dmg_mbc_reset_complete;
+            default: ;
+        endcase
+    end
+end
+
 command_t next_command;
 always_comb begin
     next_command = CMD_IDLE;
     if (lk_enabled && !reset) begin
-        case (command)
-            CMD_IDLE: next_command = rx_valid ? rx_data : CMD_IDLE;
-            CMD_GET_VARIABLE: next_command = vars_cmd_complete ? CMD_IDLE : CMD_GET_VARIABLE;
-            CMD_SET_VARIABLE: next_command = vars_cmd_complete ? CMD_IDLE : CMD_SET_VARIABLE;
-            CMD_QUERY_FW_INFO: next_command = cmd_query_fw_info_complete ? CMD_IDLE : CMD_QUERY_FW_INFO;
-            CMD_SET_PIN: next_command = cmd_set_pin_complete ? CMD_IDLE : CMD_SET_PIN;
-            CMD_DMG_MBC_RESET: next_command = cmd_dmg_mbc_reset_complete ? CMD_IDLE : CMD_DMG_MBC_RESET;
-            default: ;
-        endcase
+        if (command == CMD_IDLE && rx_valid) begin
+            next_command = rx_data;
+        end else next_command = cmd_complete ? CMD_IDLE : command;
     end
 end
 
@@ -306,10 +316,10 @@ always_comb begin
         // Completion acks
         CMD_DMG_MBC_RESET,
         CMD_SET_PIN: begin
-            tx_valid = (next_command != command);
+            tx_valid = cmd_complete;
             tx_data = 8'd1;
         end
-        // Basic acks
+        // Always-acks
         //
         // These are mostly commands that are unneeded for devices that only support DMG
         // but not AGB.
