@@ -296,18 +296,56 @@ lk_cmd_dmg_cart_read_t cmd_cart_read(
     .cart_complete(cart_complete)
 );
 
+enum {
+    TXS_NONE,
+    TXS_ACK_ALWAYS,
+    TXS_ACK_ON_COMPLETION,
+    TXS_QUERY_FW_INFO,
+    TXS_VARIABLES,
+    TXS_DMG_CART_READ
+} tx_source;
+
+enum {
+    CP_NONE,
+    CP_DMG_CART_READ,
+    CP_DMG_MBC_RESET
+} cart_peer;
+
 reg cmd_complete;
 always_comb begin
     cmd_complete = 1; // default to going back to CMD_IDLE
+    tx_source = TXS_NONE;
+    cart_peer = CP_NONE;
+
     if (lk_enabled && !reset) begin
         case (command)
             CMD_IDLE: cmd_complete = rx_valid;
             CMD_GET_VARIABLE,
-            CMD_SET_VARIABLE: cmd_complete = vars_cmd_complete;
-            CMD_QUERY_FW_INFO: cmd_complete = cmd_query_fw_info_complete;
-            CMD_SET_PIN: cmd_complete = cmd_set_pin_complete;
-            CMD_DMG_CART_READ: cmd_complete = cmd_dmg_cart_read_complete;
-            CMD_DMG_MBC_RESET: cmd_complete = cmd_dmg_mbc_reset_complete;
+            CMD_SET_VARIABLE: begin
+                cmd_complete = vars_cmd_complete;
+                tx_source = TXS_VARIABLES;
+            end
+            CMD_QUERY_FW_INFO: begin
+                cmd_complete = cmd_query_fw_info_complete;
+                tx_source = TXS_QUERY_FW_INFO;
+            end
+            CMD_SET_PIN: begin
+                cmd_complete = cmd_set_pin_complete;
+                tx_source = TXS_ACK_ON_COMPLETION;
+            end
+            CMD_DMG_CART_READ: begin
+                cmd_complete = cmd_dmg_cart_read_complete;
+                tx_source = TXS_DMG_CART_READ;
+                cart_peer = CP_DMG_CART_READ;
+            end
+            CMD_DMG_MBC_RESET: begin
+                cmd_complete = cmd_dmg_mbc_reset_complete;
+                tx_source = TXS_ACK_ON_COMPLETION;
+                cart_peer = CP_DMG_MBC_RESET;
+            end
+            CMD_DISABLE_PULLUPS,
+            CMD_SET_MODE_DMG,
+            CMD_SET_VOLTAGE_5V: tx_source = TXS_ACK_ALWAYS;
             default: ;
         endcase
     end
@@ -332,42 +370,27 @@ always @(posedge clk) begin
     tx_valid_r <= 1'b0;
     tx_data_r <= 8'd0; // 8'h55, 8'd85, ascii uppercase U
 
-    case (command)
-        CMD_QUERY_FW_INFO: begin
-            tx_valid_r <= cmd_query_fw_info_tx_valid;
-            tx_data_r <= cmd_query_fw_info_tx_data;
+    case (tx_source)
+        TXS_NONE: ;
+        TXS_ACK_ALWAYS: begin
+            tx_valid_r <= 1;
+            tx_data_r <= 8'd1;
         end
-        CMD_GET_VARIABLE,
-        CMD_SET_VARIABLE: begin
-            tx_valid_r <= vars_tx_valid;
-            tx_data_r <= vars_tx_data;
-        end
-        CMD_DMG_CART_READ: begin
-            tx_valid_r <= cmd_dmg_cart_read_tx_valid;
-            tx_data_r <= cmd_dmg_cart_read_tx_data;
-        end
-        // Completion acks
-        CMD_DMG_MBC_RESET,
-        CMD_SET_PIN: begin
+        TXS_ACK_ON_COMPLETION: begin
             tx_valid_r <= cmd_complete;
             tx_data_r <= 8'd1;
         end
-        // Always-acks
-        //
-        // These are mostly commands that are unneeded for devices that only support DMG
-        // but not AGB.
-        //
-        // FlashGBX invokes `DISABLE_PULLUPS` even for DMG, however, `ENABLE_PULLUPS` depends on
-        // the cartridge type, and as of 2026-05-16, every cartridge that requires it is an AGB
-        // cartridge.
-        //
-        // So for now, we need to ack `DISABLE_PULLUPS`, and we don't need to handle `ENABLE_PULLUPS` as
-        // it should never be invoked
-        CMD_DISABLE_PULLUPS,
-        CMD_SET_MODE_DMG,
-        CMD_SET_VOLTAGE_5V: begin
-            tx_valid_r <= 1;
-            tx_data_r <= 8'd1;
+        TXS_QUERY_FW_INFO: begin
+            tx_valid_r <= cmd_query_fw_info_tx_valid;
+            tx_data_r <= cmd_query_fw_info_tx_data;
+        end
+        TXS_VARIABLES: begin
+            tx_valid_r <= vars_tx_valid;
+            tx_data_r <= vars_tx_data;
+        end
+        TXS_DMG_CART_READ: begin
+            tx_valid_r <= cmd_dmg_cart_read_tx_valid;
+            tx_data_r <= cmd_dmg_cart_read_tx_data;
         end
         default: ;
     endcase
@@ -381,12 +404,13 @@ always @(posedge clk) begin
     cart_a <= 16'hFFFF;
     cart_d_out <= 8'd0;
 
-    case (command)
-        CMD_DMG_CART_READ: begin
+    case (cart_peer)
+        CP_NONE: ;
+        CP_DMG_CART_READ: begin
             cart_req <= cmd_dmg_cart_read_cart_req;
             cart_a <= cmd_dmg_cart_read_cart_a;
         end
-        CMD_DMG_MBC_RESET: begin
+        CP_DMG_MBC_RESET: begin
             cart_req <= cmd_dmg_mbc_reset_cart_req;
             cart_data_dir_e <= 1'b0; // always a write;
             cart_a <= cmd_dmg_mbc_reset_cart_a;
