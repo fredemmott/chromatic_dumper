@@ -7,7 +7,7 @@ module lk_cmd_query_fw_info_t(
     output wire tx_valid,
     output reg [7:0] tx_data
 );
-    localparam ROM_LEN = 26;
+    localparam ROM_LEN = 14;
     reg [7:0] rom [0:ROM_LEN-1];
     reg [4:0] index = 0;
 
@@ -22,36 +22,22 @@ module lk_cmd_query_fw_info_t(
         rom[0]  = 8'd8;
         // cfw_id = 'L'  (uses LK protocol, but pcb_ver 0x42 ∉ Joey-Jr PCB_VERSIONS)
         rom[1]  = "L";
-        // fw_ver = 12  (big-endian 16-bit)
+        // fw_ver = 12  (big-endian 16-bit) - "LK" protocol version
         rom[2]  = 8'd0;
         rom[3]  = 8'd12;
-        // pcb_ver = 0x42  (not in Joey-Jr's PCB_VERSIONS → rejected by hw_JoeyJr.py)
-        rom[4]  = 8'h42;
-        // fw_ts = 0x6A07ACAC (2026-05-15)
+        // pcb_ver
+        rom[4]  = 8'd1;
+        // fw_ts - unix timestamp, 1778887852 == 0x6A07ACAC (2026-05-15)
         rom[5]  = 8'h6A;
         rom[6]  = 8'h07;
         rom[7]  = 8'hAC;
         rom[8]  = 8'hAC;
-        // name_len = 14  ("Chromatic Cart")
-        rom[9]  = 8'd14;
-        rom[10] = "C";
-        rom[11] = "h";
-        rom[12] = "r";
-        rom[13] = "o";
-        rom[14] = "m";
-        rom[15] = "a";
-        rom[16] = "t";
-        rom[17] = "i";
-        rom[18] = "c";
-        rom[19] = " ";
-        rom[20] = "C";
-        rom[21] = "a";
-        rom[22] = "r";
-        rom[23] = "t";
-        // cart_power_ctrl = 0
-        rom[24] = 8'd0;
-        // bootloader_reset = 0
-        rom[25] = 8'd0;
+        // BCD readable version - 0xYYYY_MM_DD_NN
+        rom[9]  = 8'h20;
+        rom[10] = 8'h26;
+        rom[11] = 8'h05;
+        rom[12] = 8'h15;
+        rom[13] = 8'h01;
     end
 
     always @(posedge clk) begin
