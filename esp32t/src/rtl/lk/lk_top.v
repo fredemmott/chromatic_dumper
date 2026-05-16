@@ -359,36 +359,31 @@ always_comb begin
     end
 end
 
-reg       tx_valid_r;
-reg [7:0] tx_data_r;
-assign tx_valid = tx_valid_r;
-assign tx_data  = tx_data_r;
-
 always @(posedge clk) begin
-    tx_valid_r <= 1'b0;
-    tx_data_r <= 8'd0; // 8'h55, 8'd85, ascii uppercase U
+    tx_valid <= 1'b0;
+    tx_data <= 8'd0; // 8'h55, 8'd85, ascii uppercase U
 
     case (tx_source)
         TXS_NONE: ;
         TXS_ACK_ALWAYS: begin
-            tx_valid_r <= 1;
-            tx_data_r <= 8'd1;
+            tx_valid <= 1;
+            tx_data <= 8'd1;
         end
         TXS_ACK_ON_COMPLETION: begin
-            tx_valid_r <= cmd_complete;
-            tx_data_r <= 8'd1;
+            tx_valid <= cmd_complete;
+            tx_data <= 8'd1;
         end
         TXS_QUERY_FW_INFO: begin
-            tx_valid_r <= cmd_query_fw_info_tx_valid;
-            tx_data_r <= cmd_query_fw_info_tx_data;
+            tx_valid <= cmd_query_fw_info_tx_valid;
+            tx_data <= cmd_query_fw_info_tx_data;
         end
         TXS_VARIABLES: begin
-            tx_valid_r <= vars_tx_valid;
-            tx_data_r <= vars_tx_data;
+            tx_valid <= vars_tx_valid;
+            tx_data <= vars_tx_data;
         end
         TXS_CART: begin
-            tx_valid_r <= cart_complete;
-            tx_data_r <= cart_d_in;
+            tx_valid <= cart_complete;
+            tx_data <= cart_d_in;
         end
         default: ;
     endcase
