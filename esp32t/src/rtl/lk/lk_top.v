@@ -151,6 +151,8 @@ typedef enum logic [3:0] {
 // ============================================================
 command_t command = CMD_IDLE;
 cart_state_t cart_state;
+wire cart_complete = (cart_state == C_DONE);
+
 
 // Cart access working registers
 reg [7:0]  cart_din_r;    // latched read result
@@ -256,8 +258,22 @@ lk_cmd_set_pin_t lk_cmd_set_pin(
     .cart_audio(cart_audio)
 );
 
-command_t next_command;
+wire cmd_dmg_mbc_reset_complete;
+wire [15:0] cmd_dmg_mbc_reset_cart_a;
+wire [7:0] cmd_dmg_mbc_reset_cart_d_out;
+wire cmd_dmg_mbc_reset_cart_req;
 
+lk_cmd_dmg_mbc_reset_t lk_dmg_cmd_reset(
+    .clk(clk),
+    .en(command == CMD_DMG_MBC_RESET),
+    .complete(cmd_dmg_mbc_reset_complete),
+    .cart_a(cmd_dmg_mbc_reset_cart_a),
+    .cart_d_out(cmd_dmg_mbc_reset_cart_d_out),
+    .cart_req(cmd_dmg_mbc_reset_cart_req),
+    .cart_complete(cart_complete)
+);
+
+command_t next_command;
 always_comb begin
     next_command = CMD_IDLE;
     if (lk_enabled && !reset) begin
@@ -267,11 +283,11 @@ always_comb begin
             CMD_SET_VARIABLE: next_command = vars_cmd_complete ? CMD_IDLE : CMD_SET_VARIABLE;
             CMD_QUERY_FW_INFO: next_command = cmd_query_fw_info_complete ? CMD_IDLE : CMD_QUERY_FW_INFO;
             CMD_SET_PIN: next_command = cmd_set_pin_complete ? CMD_IDLE : CMD_SET_PIN;
+            CMD_DMG_MBC_RESET: next_command = cmd_dmg_mbc_reset_complete ? CMD_IDLE : CMD_DMG_MBC_RESET;
             default: ;
         endcase
     end
 end
-
 
 always_comb begin
     tx_valid = 1'b0;
@@ -288,10 +304,9 @@ always_comb begin
             tx_data = vars_tx_data;
         end
         // Completion acks
+        CMD_DMG_MBC_RESET,
         CMD_SET_PIN: begin
-            // If we have more completion acks here:
-            // tx_valid = (next_command != command);
-            tx_valid = cmd_set_pin_complete;
+            tx_valid = (next_command != command);
             tx_data = 8'd1;
         end
         // Basic acks
@@ -315,31 +330,52 @@ always_comb begin
     endcase
 end
 
+struct packed {
+    reg valid;
+    reg data_dir_e;
+    reg a;
+    reg d_out;
+} cart_req;
+
+always_comb begin
+    cart_req = '{default:0};
+
+    case (command)
+        CMD_DMG_MBC_RESET: begin
+            cart_req = '{
+                valid: cmd_dmg_mbc_reset_cart_req,
+                data_dir_e: 1'b0, // always a write
+                a: cmd_dmg_mbc_reset_cart_a,
+                d_out: cmd_dmg_mbc_reset_cart_d_out
+            };
+        end
+        default: ;
+    endcase
+end
+
 // ============================================================
 // Main state machine
 // ============================================================
 
-initial begin
-    cart_audio = 1'b0;
-end
-
 always @(posedge clk) begin
     // Pulses
-    cart_done <= 1'b0;
     command <= next_command;
-
     if (reset || !lk_enabled) begin
-        cart_state      <= C_IDLE;
         cart_a          <= 16'hFFFF;
+        cart_data_dir_e <= 1'b1; // read
+        cart_state      <= C_IDLE;
         cart_clk        <= 1'b1;
         cart_cs         <= 1'b1;
         cart_rd         <= 1'b1;
         cart_wr         <= 1'b1;
         cart_rst_out    <= 1'b1;
-        cart_data_dir_e <= 1'b1;
-        cart_d_out      <= 8'hFF;
-        cart_done       <= 1'b0;
     end else begin
+        if (cart_req.valid) begin
+            cart_data_dir_e <= cart_req.data_dir_e;
+            cart_a <= cart_req.a;
+            cart_d_out <= cart_req.d_out;
+            cart_state <= C_SETUP;
+        end
         // ─────────────────────────────────────────────────────────────────
         // Cart access state machine (runs every cycle, driven by pstate)
         // ─────────────────────────────────────────────────────────────────
@@ -424,7 +460,6 @@ always @(posedge clk) begin
             if (cart_wait_cnt != 0) begin
                 cart_wait_cnt <= cart_wait_cnt - 5'd1;
             end else begin
-                cart_data_dir_e <= 1'b1;
                 cart_state      <= C_DONE;
             end
         end
