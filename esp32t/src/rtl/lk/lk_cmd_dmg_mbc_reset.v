@@ -31,8 +31,8 @@ module lk_cmd_dmg_mbc_reset_t(
         S_CART_WAIT,
         S_COMPLETE
     } state_t;
-    `define S_INIT S_RAM_DISABLE;
-    state_t state = `S_INIT;
+    localparam state_t S_INIT = S_RAM_DISABLE;
+    state_t state = S_INIT;
     // Used for S_CART_WAIT
     state_t state_on_cart_complete = S_COMPLETE;
     assign complete = (state == S_COMPLETE);
@@ -60,7 +60,7 @@ module lk_cmd_dmg_mbc_reset_t(
         if (!en) begin
             cart_a <= 16'd0;
             cart_d_out <= 8'd0;
-            state <= `S_INIT;
+            state <= S_INIT;
             state_on_cart_complete <= S_COMPLETE;
         end else begin
             case(state)

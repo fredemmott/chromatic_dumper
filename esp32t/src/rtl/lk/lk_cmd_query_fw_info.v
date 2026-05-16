@@ -5,7 +5,7 @@ module lk_cmd_query_fw_info_t(
     input wire rx_valid,
     input wire [7:0] rx_data,
     output wire tx_valid,
-    output reg [7:0] tx_data
+    output wire [7:0] tx_data
 );
     localparam ROM_LEN = 14;
     reg [7:0] rom [0:ROM_LEN-1];

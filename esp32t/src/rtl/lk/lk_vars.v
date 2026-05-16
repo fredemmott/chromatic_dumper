@@ -2,6 +2,8 @@ module lk_vars_t(
     input wire clk,
     input wire reset,
     output reg complete,
+    output wire [15:0] var_address,
+    output wire [15:0] var_transfer_size,
     output wire var_dmg_read_cs_pulse,
     output wire var_dmg_write_cs_pulse,
     input wire rx_valid,
@@ -55,6 +57,8 @@ struct packed {
     reg        dmg_read_cs_pulse;
     reg        dmg_write_cs_pulse;
 } storage = '{default:0};
+assign var_address = storage.address;
+assign var_transfer_size = storage.transfer_size;
 assign var_dmg_read_cs_pulse = storage.dmg_read_cs_pulse;
 assign var_dmg_write_cs_pulse = storage.dmg_read_cs_pulse;
 
@@ -98,11 +102,11 @@ task set_var16(
     end
 endtask
 
-reg get_complete;
+wire get_complete;
 reg get_tx_valid;
 reg [7:0] get_tx_data;
 
-reg set_complete;
+wire set_complete;
 reg set_tx_valid;
 reg [7:0] set_tx_data;
 

@@ -75,6 +75,8 @@ module lk_top #(
 
 reg vars_reset = 0;
 
+wire [15:0] var_address;
+wire [15:0] var_transfer_size;
 wire var_dmg_read_cs_pulse;
 wire var_dmg_write_cs_pulse;
 
@@ -92,8 +94,10 @@ lk_vars_t vars(
     .rx_data(rx_data),
     .tx_valid(vars_tx_valid),
     .tx_data(vars_tx_data),
+    .var_address(var_address),
+    .var_transfer_size(var_transfer_size),
     .var_dmg_read_cs_pulse(var_dmg_read_cs_pulse),
-    .var_dmg_write_cs_pulse(var_dmg_read_cs_pulse)
+    .var_dmg_write_cs_pulse(var_dmg_write_cs_pulse)
 );
 
 enum {
@@ -273,6 +277,25 @@ lk_cmd_dmg_mbc_reset_t lk_dmg_cmd_reset(
     .cart_complete(cart_complete)
 );
 
+wire cmd_dmg_cart_read_complete;
+wire cmd_dmg_cart_read_tx_valid;
+wire [7:0] cmd_dmg_cart_read_tx_data;
+wire cmd_dmg_cart_read_cart_req;
+wire [15:0] cmd_dmg_cart_read_cart_a;
+
+lk_cmd_dmg_cart_read_t cmd_cart_read(
+    .clk(clk),
+    .en(command == CMD_DMG_CART_READ),
+    .complete(cmd_dmg_cart_read_complete),
+    .var_address(var_address),
+    .var_transfer_size(var_transfer_size),
+    .tx_valid(cmd_dmg_cart_read_tx_valid),
+    .tx_data(cmd_dmg_cart_read_tx_data),
+    .cart_req(cmd_dmg_cart_read_cart_req),
+    .cart_d_in(cart_d_in),
+    .cart_complete(cart_complete)
+);
+
 reg cmd_complete;
 always_comb begin
     cmd_complete = 1; // default to going back to CMD_IDLE
@@ -283,6 +306,7 @@ always_comb begin
             CMD_SET_VARIABLE: cmd_complete = vars_cmd_complete;
             CMD_QUERY_FW_INFO: cmd_complete = cmd_query_fw_info_complete;
             CMD_SET_PIN: cmd_complete = cmd_set_pin_complete;
+            CMD_DMG_CART_READ: cmd_complete = cmd_dmg_cart_read_complete;
             CMD_DMG_MBC_RESET: cmd_complete = cmd_dmg_mbc_reset_complete;
             default: ;
         endcase
@@ -299,25 +323,34 @@ always_comb begin
     end
 end
 
-always_comb begin
-    tx_valid = 1'b0;
-    tx_data = 8'd0; // 8'h55, 8'd85, ascii uppercase U
+reg       tx_valid_r;
+reg [7:0] tx_data_r;
+assign tx_valid = tx_valid_r;
+assign tx_data  = tx_data_r;
+
+always @(posedge clk) begin
+    tx_valid_r <= 1'b0;
+    tx_data_r <= 8'd0; // 8'h55, 8'd85, ascii uppercase U
 
     case (command)
         CMD_QUERY_FW_INFO: begin
-            tx_valid = cmd_query_fw_info_tx_valid;
-            tx_data = cmd_query_fw_info_tx_data;
+            tx_valid_r <= cmd_query_fw_info_tx_valid;
+            tx_data_r <= cmd_query_fw_info_tx_data;
         end
         CMD_GET_VARIABLE,
         CMD_SET_VARIABLE: begin
-            tx_valid = vars_tx_valid;
-            tx_data = vars_tx_data;
+            tx_valid_r <= vars_tx_valid;
+            tx_data_r <= vars_tx_data;
+        end
+        CMD_DMG_CART_READ: begin
+            tx_valid_r <= cmd_dmg_cart_read_tx_valid;
+            tx_data_r <= cmd_dmg_cart_read_tx_data;
         end
         // Completion acks
         CMD_DMG_MBC_RESET,
         CMD_SET_PIN: begin
-            tx_valid = cmd_complete;
-            tx_data = 8'd1;
+            tx_valid_r <= cmd_complete;
+            tx_data_r <= 8'd1;
         end
         // Always-acks
         //
@@ -333,31 +366,31 @@ always_comb begin
         CMD_DISABLE_PULLUPS,
         CMD_SET_MODE_DMG,
         CMD_SET_VOLTAGE_5V: begin
-            tx_valid = 1;
-            tx_data = 8'd1;
+            tx_valid_r <= 1;
+            tx_data_r <= 8'd1;
         end
         default: ;
     endcase
 end
 
-struct packed {
-    reg valid;
-    reg data_dir_e;
-    reg a;
-    reg d_out;
-} cart_req;
+reg cart_req = 0;
 
-always_comb begin
-    cart_req = '{default:0};
+always @(posedge clk) begin
+    cart_req <= 0;
+    cart_data_dir_e <= 1'b1; // read
+    cart_a <= 16'hFFFF;
+    cart_d_out <= 8'd0;
 
     case (command)
+        CMD_DMG_CART_READ: begin
+            cart_req <= cmd_dmg_cart_read_cart_req;
+            cart_a <= cmd_dmg_cart_read_cart_a;
+        end
         CMD_DMG_MBC_RESET: begin
-            cart_req = '{
-                valid: cmd_dmg_mbc_reset_cart_req,
-                data_dir_e: 1'b0, // always a write
-                a: cmd_dmg_mbc_reset_cart_a,
-                d_out: cmd_dmg_mbc_reset_cart_d_out
-            };
+            cart_req <= cmd_dmg_mbc_reset_cart_req;
+            cart_data_dir_e <= 1'b0; // always a write;
+            cart_a <= cmd_dmg_mbc_reset_cart_a;
+            cart_d_out <= cmd_dmg_mbc_reset_cart_d_out;
         end
         default: ;
     endcase
@@ -371,8 +404,6 @@ always @(posedge clk) begin
     // Pulses
     command <= next_command;
     if (reset || !lk_enabled) begin
-        cart_a          <= 16'hFFFF;
-        cart_data_dir_e <= 1'b1; // read
         cart_state      <= C_IDLE;
         cart_clk        <= 1'b1;
         cart_cs         <= 1'b1;
@@ -380,12 +411,8 @@ always @(posedge clk) begin
         cart_wr         <= 1'b1;
         cart_rst_out    <= 1'b1;
     end else begin
-        if (cart_req.valid) begin
-            cart_data_dir_e <= cart_req.data_dir_e;
-            cart_a <= cart_req.a;
-            cart_d_out <= cart_req.d_out;
-            cart_state <= C_SETUP;
-        end
+        if (cart_req) cart_state <= C_SETUP;
+
         // ─────────────────────────────────────────────────────────────────
         // Cart access state machine (runs every cycle, driven by pstate)
         // ─────────────────────────────────────────────────────────────────
@@ -393,9 +420,9 @@ always @(posedge clk) begin
         C_IDLE: ; // nothing
 
         C_SETUP: begin
-            // Address and direction already set by caller one cycle ago.
+            // Address and direction already set by caller two cycles ago.
             // Now assert CS with setup delay.
-            cart_wait_cnt <= CART_SETUP[4:0] - 5'd1;
+            cart_wait_cnt <= CART_SETUP[4:0] - 5'd2;
             cart_state <= C_CSRD;
         end
 
