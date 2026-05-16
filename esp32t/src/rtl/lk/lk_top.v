@@ -230,76 +230,6 @@ always @(posedge clk) begin
     end else vars_cleaned <= 0;
 end
 
-// ============================================================
-// BYE ("KL") helpers
-// ============================================================
-
-
-module cmd_bye_t(
-    input wire clk,
-    input wire en,
-    output wire complete,
-    input wire rx_valid,
-    input wire [7:0] rx_data,
-    output reg tx_valid,
-    output reg [7:0] tx_data,
-    output reg lk_disable
-);
-
-    enum {
-        BYE_RX,
-        BYE_EXEC,
-        BYE_COMPLETE
-    } state = BYE_RX;
-    assign complete = (state == BYE_COMPLETE);
-
-    always @(posedge clk) begin
-        tx_valid <= 1'b0;
-        tx_data <= 8'd0;
-        lk_disable <= 0;
-        state <= state;
-
-        if (!en) begin
-            state <= BYE_RX;
-        end else begin
-            case (state)
-                BYE_RX: begin
-                    if (rx_valid) begin
-                        tx_valid <= 1;
-                        if (rx_data == "L") begin
-                            tx_data <= 8'hFF;
-                            state <= BYE_EXEC;
-                        end else begin
-                            tx_data <= 8'h00;
-                            state <= BYE_COMPLETE;
-                        end
-                    end
-                end
-                BYE_EXEC: begin
-                    lk_disable <= 1;
-                    state <= BYE_COMPLETE;
-                end
-                BYE_COMPLETE: ;
-            endcase
-        end // if (en)
-    end // always @(posedge clk)
-endmodule
-
-wire cmd_bye_complete;
-wire cmd_bye_tx_valid;
-wire [7:0] cmd_bye_tx_data;
-
-cmd_bye_t cmd_bye(
-    .clk(clk),
-    .en(command == CMD_BYE),
-    .complete(cmd_bye_complete),
-    .rx_valid(rx_valid),
-    .rx_data(rx_data),
-    .tx_valid(cmd_bye_tx_valid),
-    .tx_data(cmd_bye_tx_data),
-    .lk_disable(lk_disable)
-);
-
 module cmd_query_fw_info_t(
     input wire clk,
     input wire en,
@@ -389,7 +319,6 @@ always_comb begin
             CMD_GET_VARIABLE: next_command = vars_cmd_complete ? CMD_IDLE : CMD_GET_VARIABLE;
             CMD_SET_VARIABLE: next_command = vars_cmd_complete ? CMD_IDLE : CMD_SET_VARIABLE;
             CMD_QUERY_FW_INFO: next_command = cmd_query_fw_info_complete ? CMD_IDLE : CMD_QUERY_FW_INFO;
-            CMD_BYE: next_command = cmd_bye_complete ? CMD_IDLE : CMD_BYE;
             default: ;
         endcase
     end
@@ -409,10 +338,6 @@ always_comb begin
         CMD_SET_VARIABLE: begin
             tx_valid = vars_tx_valid;
             tx_data = vars_tx_data;
-        end
-        CMD_BYE: begin
-            tx_valid = cmd_bye_tx_valid;
-            tx_data = cmd_bye_tx_data;
         end
         default: ;
     endcase
