@@ -70,8 +70,7 @@ module lk_top #(
     output reg  [7:0]  cart_d_out,        // data to write
     input  wire [7:0]  cart_d_in,         // data read from cart
     output reg         cart_audio,
-    input  wire        cart_det,          // 0 = no cart (active-low)
-    output reg         cart_pullups_enabled
+    input  wire        cart_det           // 0 = no cart (active-low)
 );
 
 reg vars_reset = 0;
@@ -302,7 +301,6 @@ always @(posedge clk) begin
         cart_data_dir_e <= 1'b1;
         cart_d_out      <= 8'hFF;
         cart_done       <= 1'b0;
-        cart_pullups_enabled <= 1'b0;
     end else begin
         // ─────────────────────────────────────────────────────────────────
         // Cart access state machine (runs every cycle, driven by pstate)
