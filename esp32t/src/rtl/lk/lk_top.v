@@ -115,6 +115,7 @@ localparam CMD_SET_VOLTAGE_5V = 8'hA5;
 localparam CMD_SET_VARIABLE = 8'hA6;
 localparam CMD_SET_FLASH_CMD = 8'hA7;
 localparam CMD_CLK_TOGGLE = 8'hA9;
+localparam CMD_DISABLE_PULLUPS = 8'hAC;
 localparam CMD_GET_VARIABLE = 8'hAD;
 localparam CMD_GET_VAR_STATE = 8'hAE;
 localparam CMD_SET_VAR_STATE = 8'hAF;
@@ -294,6 +295,17 @@ always_comb begin
             tx_data = 8'd1;
         end
         // Basic acks
+        //
+        // These are mostly commands that are unneeded for devices that only support DMG
+        // but not AGB.
+        //
+        // FlashGBX invokes `DISABLE_PULLUPS` even for DMG, however, `ENABLE_PULLUPS` depends on
+        // the cartridge type, and as of 2026-05-16, every cartridge that requires it is an AGB
+        // cartridge.
+        //
+        // So for now, we need to ack `DISABLE_PULLUPS`, and we don't need to handle `ENABLE_PULLUPS` as
+        // it should never be invoked
+        CMD_DISABLE_PULLUPS,
         CMD_SET_MODE_DMG,
         CMD_SET_VOLTAGE_5V: begin
             tx_valid = 1;
