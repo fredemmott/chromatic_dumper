@@ -94,10 +94,12 @@ lk_vars_t vars(
     .rx_data(rx_data),
     .tx_valid(vars_tx_valid),
     .tx_data(vars_tx_data),
-    .var_address(var_address),
-    .var_transfer_size(var_transfer_size),
-    .var_dmg_read_cs_pulse(var_dmg_read_cs_pulse),
-    .var_dmg_write_cs_pulse(var_dmg_write_cs_pulse)
+    .var_address_out(var_address),
+    .var_address_in_en((command == CMD_DMG_CART_READ) && cmd_dmg_cart_read_complete),
+    .var_address_in(cmd_dmg_cart_read_var_address_out),
+    .var_transfer_size_out(var_transfer_size),
+    .var_dmg_read_cs_pulse_out(var_dmg_read_cs_pulse),
+    .var_dmg_write_cs_pulse_out(var_dmg_write_cs_pulse)
 );
 
 enum {
@@ -278,13 +280,15 @@ lk_cmd_dmg_mbc_reset_t lk_dmg_cmd_reset(
 wire cmd_dmg_cart_read_complete;
 wire cmd_dmg_cart_read_cart_req;
 wire [15:0] cmd_dmg_cart_read_cart_a;
+wire [15:0] cmd_dmg_cart_read_var_address_out;
 
 lk_cmd_dmg_cart_read_t cmd_cart_read(
     .clk(clk),
     .en(command == CMD_DMG_CART_READ),
     .complete(cmd_dmg_cart_read_complete),
-    .var_address(var_address),
-    .var_transfer_size(var_transfer_size),
+    .var_address_in(var_address),
+    .var_address_out(cmd_dmg_cart_read_var_address_out),
+    .var_transfer_size_in(var_transfer_size),
     .cart_req(cmd_dmg_cart_read_cart_req),
     .cart_a(cmd_dmg_cart_read_cart_a),
     .cart_complete(cart_complete)
@@ -518,9 +522,7 @@ always @(posedge clk) begin
             end
         end
 
-        C_DONE: begin
-            cart_state <= C_IDLE;
-        end
+        C_DONE: cart_state <= C_IDLE;
         endcase // cart_state
 
 `ifdef NOT_DEFINED

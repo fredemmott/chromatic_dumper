@@ -2,6 +2,9 @@ module lk_cmd_dmg_cart_read_t(
     input wire clk,
     input wire en,
     output wire complete,
+    input wire [15:0] var_address_in,
+    output reg [15:0] var_address_out,
+    input wire [15:0] var_transfer_size_in,
     input wire [15:0] var_address,
     input wire [15:0] var_transfer_size,
     output reg cart_req,
@@ -20,6 +23,7 @@ assign complete = (state == S_COMPLETE);
 
 reg [15:0] address;
 reg [15:0] remaining;
+assign var_address_out = address;
 
 always @(posedge clk) begin
     cart_req <= 0;
@@ -27,8 +31,8 @@ always @(posedge clk) begin
     if (!en) begin
         cart_a <= ~16'd0;
         state <= S_INIT;
-        address <= var_address;
-        remaining <= var_transfer_size;
+        address <= var_address_in;
+        remaining <= var_transfer_size_in;
     end else begin
         case (state)
             S_EXEC: begin

@@ -2,10 +2,12 @@ module lk_vars_t(
     input wire clk,
     input wire reset,
     output reg complete,
-    output wire [15:0] var_address,
-    output wire [15:0] var_transfer_size,
-    output wire var_dmg_read_cs_pulse,
-    output wire var_dmg_write_cs_pulse,
+    output wire [15:0] var_address_out,
+    input wire var_address_in_en,
+    input wire [15:0] var_address_in,
+    output wire [15:0] var_transfer_size_out,
+    output wire var_dmg_read_cs_pulse_out,
+    output wire var_dmg_write_cs_pulse_out,
     input wire rx_valid,
     input wire [7:0] rx_data,
     output reg tx_valid,
@@ -57,10 +59,10 @@ struct packed {
     reg        dmg_read_cs_pulse;
     reg        dmg_write_cs_pulse;
 } storage = '{default:0};
-assign var_address = storage.address;
-assign var_transfer_size = storage.transfer_size;
-assign var_dmg_read_cs_pulse = storage.dmg_read_cs_pulse;
-assign var_dmg_write_cs_pulse = storage.dmg_read_cs_pulse;
+assign var_address_out = storage.address;
+assign var_transfer_size_out = storage.transfer_size;
+assign var_dmg_read_cs_pulse_out = storage.dmg_read_cs_pulse;
+assign var_dmg_write_cs_pulse_out = storage.dmg_read_cs_pulse;
 
 function [15:0] get_var16(
     reg [7:0] size,
@@ -225,6 +227,8 @@ always @(posedge clk) begin
             default: set_state <= SS_COMPLETE;
         endcase
     end
+
+    if (var_address_in_en) storage.address <= var_address_in;
 end
 
 endmodule
