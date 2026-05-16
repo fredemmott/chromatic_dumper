@@ -292,6 +292,7 @@ lk_cmd_dmg_cart_read_t cmd_cart_read(
     .tx_valid(cmd_dmg_cart_read_tx_valid),
     .tx_data(cmd_dmg_cart_read_tx_data),
     .cart_req(cmd_dmg_cart_read_cart_req),
+    .cart_a(cmd_dmg_cart_read_cart_a),
     .cart_d_in(cart_d_in_r),
     .cart_complete(cart_complete)
 );
