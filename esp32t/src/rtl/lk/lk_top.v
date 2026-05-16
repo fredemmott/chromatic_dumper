@@ -110,6 +110,8 @@ enum {
 typedef reg[7:0] command_t;
 localparam CMD_IDLE = 8'h00;
 localparam CMD_QUERY_FW_INFO = 8'hA1;
+localparam CMD_SET_MODE_DMG = 8'hA3;
+localparam CMD_SET_VOLTAGE_5V = 8'hA5;
 localparam CMD_SET_VARIABLE = 8'hA6;
 localparam CMD_SET_FLASH_CMD = 8'hA7;
 localparam CMD_CLK_TOGGLE = 8'hA9;
@@ -127,7 +129,6 @@ localparam CMD_FLASH_PROGRAM = 8'hD3;
 localparam CMD_CART_WRITE_FLASH_CMD = 8'hD4;
 localparam CMD_CALC_CRC32 = 8'hD5;
 localparam CMD_DMG_SET_PIN = 8'hF5;
-localparam CMD_BYE = "K"; // followed by "L"
 
 // ============================================================
 // Cart access states
@@ -272,6 +273,12 @@ always_comb begin
         CMD_SET_VARIABLE: begin
             tx_valid = vars_tx_valid;
             tx_data = vars_tx_data;
+        end
+        // Basic acks
+        CMD_SET_MODE_DMG,
+        CMD_SET_VOLTAGE_5V: begin
+            tx_valid = 1;
+            tx_data = 8'd1;
         end
         default: ;
     endcase
