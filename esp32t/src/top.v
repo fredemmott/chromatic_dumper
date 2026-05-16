@@ -429,6 +429,7 @@ module top #(parameter ISSIMU=0)
     wire lk_cart_rst_out;
     wire lk_cart_wr;
     wire lk_cart_data_dir_e;
+    wire lk_cart_audio;
 
     wire [15:0] emu_cart_a;
     wire emu_cart_clk;
@@ -461,6 +462,9 @@ module top #(parameter ISSIMU=0)
     // LK/EMU MUX: inout -----------------------------------------
     wire [7:0] cart_d_in = CART_D;
     wire [7:0] cart_d_out = lk_enabled ? lk_cart_d_out : emu_cart_d_out;
+    // Not actually used by the Chromatic firmware anywehere
+    assign CART_AUDIN = lk_enabled ? 1'bZ : lk_cart_audio;
+
 
     assign emu_cart_d_in = (emu_cart_data_dir_e && !lk_enabled) ? cart_d_in : 8'h00;
     assign lk_cart_d_in = (lk_cart_data_dir_e && lk_enabled) ? cart_d_in : 8'h00;
@@ -825,7 +829,8 @@ module top #(parameter ISSIMU=0)
         .cart_data_dir_e(lk_cart_data_dir_e),
         .cart_d_in      (lk_cart_d_in),
         .cart_d_out     (lk_cart_d_out),
-        .cart_audio     (CART_AUDIN),
+        .cart_audio     (lk_cart_audio),
         .cart_det       (CART_DET)
     );
+
 endmodule

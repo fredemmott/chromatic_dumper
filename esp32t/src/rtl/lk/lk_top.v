@@ -128,7 +128,7 @@ localparam CMD_DMG_FLASH_WRITE_BYTE = 8'hD1;
 localparam CMD_FLASH_PROGRAM = 8'hD3;
 localparam CMD_CART_WRITE_FLASH_CMD = 8'hD4;
 localparam CMD_CALC_CRC32 = 8'hD5;
-localparam CMD_DMG_SET_PIN = 8'hF5;
+localparam CMD_SET_PIN = 8'hF5;
 
 // ============================================================
 // Cart access states
@@ -244,6 +244,17 @@ lk_cmd_query_fw_info_t cmd_query_fw_info(
     .tx_data(cmd_query_fw_info_tx_data)
 );
 
+wire cmd_set_pin_complete;
+
+lk_cmd_set_pin_t lk_cmd_set_pin(
+    .clk(clk),
+    .en(command == CMD_SET_PIN),
+    .complete(cmd_set_pin_complete),
+    .rx_valid(rx_valid),
+    .rx_data(rx_data),
+    .cart_audio(cart_audio)
+);
+
 command_t next_command;
 
 always_comb begin
@@ -254,6 +265,7 @@ always_comb begin
             CMD_GET_VARIABLE: next_command = vars_cmd_complete ? CMD_IDLE : CMD_GET_VARIABLE;
             CMD_SET_VARIABLE: next_command = vars_cmd_complete ? CMD_IDLE : CMD_SET_VARIABLE;
             CMD_QUERY_FW_INFO: next_command = cmd_query_fw_info_complete ? CMD_IDLE : CMD_QUERY_FW_INFO;
+            CMD_SET_PIN: next_command = cmd_set_pin_complete ? CMD_IDLE : CMD_SET_PIN;
             default: ;
         endcase
     end
@@ -273,6 +285,13 @@ always_comb begin
         CMD_SET_VARIABLE: begin
             tx_valid = vars_tx_valid;
             tx_data = vars_tx_data;
+        end
+        // Completion acks
+        CMD_SET_PIN: begin
+            // If we have more completion acks here:
+            // tx_valid = (next_command != command);
+            tx_valid = cmd_set_pin_complete;
+            tx_data = 8'd1;
         end
         // Basic acks
         CMD_SET_MODE_DMG,

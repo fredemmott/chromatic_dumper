@@ -61,6 +61,7 @@
         <File path="src/rtl/USB/USBUVCUART/usb_video/uvc_defs.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/USB/USBUVCUART/usbuvcuart_top.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/lk/lk_cmd_query_fw_info.v" type="file.verilog" enable="1"/>
+        <File path="src/rtl/lk/lk_cmd_set_pin.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/lk/lk_top.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/lk/lk_vars.v" type="file.verilog" enable="1"/>
         <File path="src/top.v" type="file.verilog" enable="1"/>
