@@ -41,16 +41,19 @@ localparam VAR_ID_FLASH_WE_PIN = make_var16_id(8'd1, 8'h04);
 localparam VAR_ID_DMG_READ_CS_PULSE = make_var16_id(8'd1, 8'h08);
 localparam VAR_ID_DMG_WRITE_CS_PULSE = make_var16_id(8'd1, 8'h09);
 
+localparam FWE_PIN_WR = 1;
+localparam FWE_PIN_AUDIO = 2;
+localparam FWE_PIN_WR_AND_RESET = 3;
+
 struct packed {
     reg [15:0] address;
     reg [15:0] transfer_size;
     reg [7:0]  status_register;
     reg [7:0]  cart_mode;
     reg [7:0]  dmg_access_mode;
-    reg        flash_we_pin;
+    reg [1:0]  flash_we_pin;
     reg        dmg_read_cs_pulse;
     reg        dmg_write_cs_pulse;
-    reg [4:0]  PADDING;
 } storage = '{default:0};
 assign var_dmg_read_cs_pulse = storage.dmg_read_cs_pulse;
 assign var_dmg_write_cs_pulse = storage.dmg_read_cs_pulse;
@@ -67,7 +70,7 @@ function [15:0] get_var16(
             VAR_ID_STATUS_REGISTER: get_var16[7:0] = storage.status_register;
             VAR_ID_CART_MODE: get_var16[7:0] = storage.cart_mode;
             VAR_ID_DMG_ACCESS_MODE: get_var16[7:0] = storage.dmg_access_mode;
-            VAR_ID_FLASH_WE_PIN: get_var16[0] = storage.flash_we_pin;
+            VAR_ID_FLASH_WE_PIN: get_var16[1:0] = storage.flash_we_pin;
             VAR_ID_DMG_READ_CS_PULSE: get_var16[0] = storage.dmg_read_cs_pulse;
             VAR_ID_DMG_WRITE_CS_PULSE: get_var16[0] = storage.dmg_write_cs_pulse;
             default: ;
@@ -87,7 +90,7 @@ task set_var16(
             VAR_ID_STATUS_REGISTER: storage.status_register <= data[7:0];
             VAR_ID_CART_MODE: storage.cart_mode <= data[7:0];
             VAR_ID_DMG_ACCESS_MODE: storage.dmg_access_mode <= data[7:0];
-            VAR_ID_FLASH_WE_PIN: storage.flash_we_pin <= data[0];
+            VAR_ID_FLASH_WE_PIN: storage.flash_we_pin <= data[1:0];
             VAR_ID_DMG_READ_CS_PULSE: storage.dmg_read_cs_pulse <= data[0];
             VAR_ID_DMG_WRITE_CS_PULSE: storage.dmg_write_cs_pulse <= data[0];
             default: ;
