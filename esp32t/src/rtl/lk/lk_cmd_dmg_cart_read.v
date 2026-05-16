@@ -23,7 +23,6 @@ assign complete = (state == S_COMPLETE);
 
 reg [15:0] address;
 reg [15:0] remaining;
-assign var_address_out = address;
 
 always @(posedge clk) begin
     cart_req <= 0;
@@ -33,6 +32,7 @@ always @(posedge clk) begin
         state <= S_INIT;
         address <= var_address_in;
         remaining <= var_transfer_size_in;
+        var_address_out <= var_address_in + var_transfer_size_in;
     end else begin
         case (state)
             S_EXEC: begin
