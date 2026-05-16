@@ -159,7 +159,7 @@ wire cart_complete = (cart_state == C_DONE);
 
 
 // Cart access working registers
-reg [7:0]  cart_din_r;    // latched read result
+reg [7:0]  cart_d_in_r;    // latched read result
 reg        cart_done;     // pulses for one cycle when cart access complete
 reg [4:0]  cart_wait_cnt;
 
@@ -292,7 +292,7 @@ lk_cmd_dmg_cart_read_t cmd_cart_read(
     .tx_valid(cmd_dmg_cart_read_tx_valid),
     .tx_data(cmd_dmg_cart_read_tx_data),
     .cart_req(cmd_dmg_cart_read_cart_req),
-    .cart_d_in(cart_d_in),
+    .cart_d_in(cart_d_in_r),
     .cart_complete(cart_complete)
 );
 
@@ -471,7 +471,7 @@ always @(posedge clk) begin
             if (cart_wait_cnt != 0) begin
                 cart_wait_cnt <= cart_wait_cnt - 5'd1;
             end else begin
-                cart_din_r <= cart_d_in;
+                cart_d_in_r <= cart_d_in;
                 cart_rd    <= 1'b1;
                 cart_cs    <= 1'b1;
                 cart_state <= C_DONE;
@@ -743,13 +743,13 @@ always @(posedge clk) begin
             if (cart_done) begin
                 if (crc_remaining == 16'd1) begin
                     // Like most LK commands, FlashGBX does the MB <-> LE conversion
-                    crc_state <= next_crc(crc_state, cart_din_r) ^ 32'hFFFFFFFF;
+                    crc_state <= next_crc(crc_state, cart_d_in_r) ^ 32'hFFFFFFFF;
 
                     tx_data_sel    <= TXS_CALC_CRC;
                     tx_bytes_count <= 4;
                     pstate         <= P_TX_BYTES;
                 end else begin
-                    crc_state <= next_crc(crc_state, cart_din_r);
+                    crc_state <= next_crc(crc_state, cart_d_in_r);
                     crc_remaining <= crc_remaining - 16'd1;
                     crc_address <= crc_address + 16'd1;
                     pstate <= P_CALC_CRC_RD;
