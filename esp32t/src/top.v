@@ -19,7 +19,7 @@ module top #(parameter ISSIMU=0)
     input               BTN_SEL,
     input               BTN_START,
 
-    output  [15:0]      CART_A,
+    inout   [15:0]      CART_A,
     output              CART_CLK,
     output              CART_CS,
     inout   [7:0]       CART_D,
@@ -420,6 +420,8 @@ module top #(parameter ISSIMU=0)
     wire      lk_rx_dval;
     wire[7:0] lk_rx_data;
 
+    wire lk_cart_enabled;
+
     wire [15:0] lk_cart_a;
     wire lk_cart_clk;
     wire lk_cart_cs;
@@ -448,7 +450,11 @@ module top #(parameter ISSIMU=0)
     // _DIR_E can be thought of as 'is read'
 
     // LK/EMU MUX: output ----------------------------------------
-    assign CART_A = lk_enabled ? lk_cart_a : emu_cart_a;
+    wire cart_enabled = lk_enabled ? lk_cart_enabled : 1;
+
+    wire [15:0] cart_a = lk_enabled ? lk_cart_a : emu_cart_a;
+    assign CART_A = cart_enabled ? cart_a : 'bZ;
+
     assign CART_CLK = lk_enabled ? lk_cart_clk : emu_cart_clk;
     assign CART_CS = lk_enabled ? lk_cart_cs : emu_cart_cs;
     assign CART_RD = lk_enabled ? lk_cart_rd : emu_cart_rd;
@@ -819,6 +825,7 @@ module top #(parameter ISSIMU=0)
         .rx_data        (lk_rx_data),
         .tx_valid       (lk_tx_dval),
         .tx_data        (lk_tx_data),
+        .cart_enabled   (lk_cart_enabled),
         .cart_a         (lk_cart_a),
         .cart_clk       (lk_cart_clk),
         .cart_cs        (lk_cart_cs),

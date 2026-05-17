@@ -58,6 +58,7 @@ module lk_top #(
     output reg         tx_valid,
     output reg  [7:0]  tx_data,
 
+    output reg         cart_enabled,
     // Cartridge bus (top-level drives tristate from these)
     output reg  [15:0] cart_a,
     output reg         cart_clk,
@@ -192,7 +193,6 @@ typedef enum logic [3:0] {
 command_t command = CMD_IDLE;
 cart_state_t cart_state;
 wire cart_complete = (cart_state == C_DONE);
-
 
 // Cart access working registers
 reg [4:0]  cart_wait_cnt;
@@ -380,6 +380,7 @@ always_comb begin
                 tx_source = TXS_ACK_ON_COMPLETION;
                 cart_peer = CP_DMG_MBC_RESET;
             end
+            CMD_SET_ADDR_AS_INPUTS,
             CMD_DISABLE_PULLUPS,
             CMD_SET_MODE_DMG,
             CMD_SET_VOLTAGE_5V: tx_source = TXS_ACK_ALWAYS;
@@ -395,6 +396,16 @@ always_comb begin
         if (command == CMD_INIT) next_command = CMD_IDLE;
         else if (command == CMD_IDLE && rx_valid) next_command = rx_data_as_command;
         else next_command = cmd_complete ? CMD_IDLE : command;
+    end
+end
+
+initial cart_enabled = 0;
+always @(posedge clk) begin
+    if (reset) begin
+        cart_enabled <= 0;
+    end else begin
+        if (command == CMD_SET_VOLTAGE_5V) cart_enabled <= 1;
+        else if (command == CMD_SET_ADDR_AS_INPUTS) cart_enabled <= 0;
     end
 end
 
