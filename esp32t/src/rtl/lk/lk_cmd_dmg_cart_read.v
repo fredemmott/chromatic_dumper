@@ -5,8 +5,6 @@ module lk_cmd_dmg_cart_read_t(
     input wire [15:0] var_address_in,
     output reg [15:0] var_address_out,
     input wire [15:0] var_transfer_size_in,
-    input wire [15:0] var_address,
-    input wire [15:0] var_transfer_size,
     output reg cart_req,
     output reg [15:0] cart_a,
     input wire cart_complete
