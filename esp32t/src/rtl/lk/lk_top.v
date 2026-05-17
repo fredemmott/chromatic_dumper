@@ -113,6 +113,7 @@ enum {
 // Protocol states
 // ============================================================
 typedef enum {
+    CMD_INIT,
     CMD_IDLE,
     CMD_QUERY_FW_INFO,
     CMD_SET_MODE_DMG,
@@ -331,6 +332,7 @@ lk_cmd_dmg_cart_read_t cmd_cart_read(
 enum {
     TXS_NONE,
     TXS_ACK_ALWAYS,
+    TXS_ACK_ALWAYS_FF,
     TXS_ACK_ON_COMPLETION,
     TXS_QUERY_FW_INFO,
     TXS_VARIABLES,
@@ -351,6 +353,10 @@ always_comb begin
 
     if (lk_enabled && !reset) begin
         case (command)
+            CMD_INIT: begin
+                cmd_complete = 1;
+                tx_source = TXS_ACK_ALWAYS_FF;
+            end
             CMD_IDLE: cmd_complete = rx_valid;
             CMD_GET_VARIABLE,
             CMD_SET_VARIABLE: begin
@@ -385,11 +391,11 @@ end
 
 command_t next_command;
 always_comb begin
-    next_command = CMD_IDLE;
-    if (lk_enabled && !reset) begin
-        if (command == CMD_IDLE && rx_valid) begin
-            next_command = rx_data_as_command;
-        end else next_command = cmd_complete ? CMD_IDLE : command;
+    next_command = CMD_INIT;
+    if (!reset) begin
+        if (command == CMD_INIT) next_command = CMD_IDLE;
+        else if (command == CMD_IDLE && rx_valid) next_command = rx_data_as_command;
+        else next_command = cmd_complete ? CMD_IDLE : command;
     end
 end
 
@@ -402,6 +408,10 @@ always @(posedge clk) begin
         TXS_ACK_ALWAYS: begin
             tx_valid <= 1;
             tx_data <= 8'd1;
+        end
+        TXS_ACK_ALWAYS_FF: begin
+            tx_valid <= 1;
+            tx_data <= 8'hFF;
         end
         TXS_ACK_ON_COMPLETION: begin
             tx_valid <= cmd_complete;

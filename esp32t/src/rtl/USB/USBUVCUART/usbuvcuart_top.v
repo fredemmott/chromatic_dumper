@@ -1015,7 +1015,6 @@ module usbuvcuart_top(
         EP3_55_WAIT_AA,
         EP3_TX_LK_ID,
         EP3_L_WAIT_K,
-        EP3_LK_WAIT_TX_ACK,
         EP3_LK // passthrough to cart_reader
     } ep3_state_t;
     ep3_state_t ep3_state = EP3_DEFAULT;
@@ -1027,7 +1026,6 @@ module usbuvcuart_top(
       EP3_PEER_LK
     } ep3_peer;
     assign ep3_peer = (ep3_state == EP3_TX_LK_ID) ? EP3_PEER_SELF :
-                      (ep3_state == EP3_LK_WAIT_TX_ACK) ? EP3_PEER_SELF :
                       (ep3_state == EP3_LK) ? EP3_PEER_LK :
                       EP3_PEER_UART;
     assign lk_enabled = (ep3_peer == EP3_PEER_LK);
@@ -1084,7 +1082,6 @@ module usbuvcuart_top(
                          /* (ep3_peer == EP3_PEER_SELF) */ ep3_self_tx_dval;
     assign ep3_tx_data = (ep3_peer == EP3_PEER_UART) ? uart_rx_data[7:0]:
                          (ep3_peer == EP3_PEER_LK) ? lk_tx_data :
-                         (ep3_state == EP3_LK_WAIT_TX_ACK) ? 8'hFF :
                          /* (ep3_state == EP3_TX_LK_ID ) */ lk_id[ep3_idx];
 
     usb_fifo usb_fifo
@@ -1122,7 +1119,7 @@ module usbuvcuart_top(
     always @(posedge pClk) begin
         // If we have a USB connection, the DTR bit indicates if the host is connected to the USB
         // serial device. If we have no USB connection, the flag is not updated
-        ep3_reset <= lk_disable || RESET_IN || usb_busreset || (!usb_online)|| (!E_UART_DTR);
+        ep3_reset <= lk_disable || RESET_IN || usb_busreset || (!usb_online)|| (!E_UART_DTR) || ~usblocked;
     end
 
     always @(posedge pClk) begin
@@ -1174,17 +1171,12 @@ module usbuvcuart_top(
                 EP3_L_WAIT_K: begin
                     if (ep3_rx_dval) begin
                         if (ep3_rx_data == "K") begin
-                            ep3_state <= EP3_LK_WAIT_TX_ACK;
+                            ep3_state <= EP3_LK;
                         end else if (ep3_rx_data == "L") begin
                             // Allow LLLLLL...K
                             ep3_state <= EP3_ESP_WAIT_RX;
                         end else ep3_state <= EP3_DEFAULT;
                     end
-                end
-                EP3_LK_WAIT_TX_ACK: begin
-                    if (!ep3_self_tx_dval) begin
-                        ep3_self_tx_dval <= 1'b1;
-                    end else ep3_state <= EP3_LK;
                 end
                 EP3_LK: /* handled with ep3_reset */ ;
                 default: ep3_state <= EP3_DEFAULT;
