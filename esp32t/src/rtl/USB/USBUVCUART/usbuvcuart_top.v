@@ -40,7 +40,7 @@ module usbuvcuart_top(
     inout               usb_term_dn_io,
 
     // FlashGBX "LK" mode
-    output              lk_enabled,
+    output reg          lk_enabled,
     input               lk_disable,
 
     input               lk_tx_dval,
@@ -1028,7 +1028,6 @@ module usbuvcuart_top(
     assign ep3_peer = (ep3_state == EP3_TX_LK_ID) ? EP3_PEER_SELF :
                       (ep3_state == EP3_LK) ? EP3_PEER_LK :
                       EP3_PEER_UART;
-    assign lk_enabled = (ep3_peer == EP3_PEER_LK);
 
     wire      ep3_rx_dval;
     wire[7:0] ep3_rx_data;
@@ -1122,8 +1121,10 @@ module usbuvcuart_top(
         ep3_reset <= lk_disable || RESET_IN || usb_busreset || (!usb_online)|| (!E_UART_DTR) || ~usblocked;
     end
 
+    initial lk_enabled = 0;
     always @(posedge pClk) begin
         ep3_self_tx_dval <= 1'b0;
+        lk_enabled <= 0;
 
         if (ep3_reset) begin
             ep3_state <= EP3_DEFAULT;
@@ -1178,7 +1179,7 @@ module usbuvcuart_top(
                         end else ep3_state <= EP3_DEFAULT;
                     end
                 end
-                EP3_LK: /* handled with ep3_reset */ ;
+                EP3_LK: lk_enabled <= 1;
                 default: ep3_state <= EP3_DEFAULT;
             endcase
         end

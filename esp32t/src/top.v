@@ -413,7 +413,7 @@ module top #(parameter ISSIMU=0)
     wire lcd_off_overwrite;
 
     // FlashGBX "LK" firmware
-    reg       lk_enabled = 1'b0;
+    wire      lk_enabled;
     wire      lk_disable;
     wire      lk_tx_dval;
     wire[7:0] lk_tx_data;
