@@ -813,8 +813,7 @@ module top #(parameter ISSIMU=0)
     lk_top #(.CLK_FREQ(60_000_000))
     u_lk(
         .clk            (PHY_CLKOUT),
-        .reset          (~usblocked),
-        .lk_enabled     (lk_enabled),
+        .reset          (!lk_enabled),
         .lk_disable     (lk_disable),
         .rx_valid       (lk_rx_dval),
         .rx_data        (lk_rx_data),

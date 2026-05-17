@@ -50,7 +50,6 @@ module lk_top #(
 )(
     input  wire        clk,
     input  wire        reset,
-    input reg          lk_enabled,
     output reg         lk_disable = 1'b0,
 
     // Parallel byte interface (EP3 via usbuvcuart_top)
@@ -266,7 +265,7 @@ reg [31:0] clk_tog_cnt;
 
 reg vars_cleaned = 0;
 always @(posedge clk) begin
-    if (reset || !lk_enabled) begin
+    if (reset) begin
         vars_reset <= !vars_cleaned;
         vars_cleaned <= 1;
     end else vars_cleaned <= 0;
@@ -351,7 +350,7 @@ always_comb begin
     tx_source = TXS_NONE;
     cart_peer = CP_NONE;
 
-    if (lk_enabled && !reset) begin
+    if (!reset) begin
         case (command)
             CMD_INIT: begin
                 cmd_complete = 1;
@@ -464,7 +463,7 @@ end
 always @(posedge clk) begin
     // Pulses
     command <= next_command;
-    if (reset || !lk_enabled) begin
+    if (reset) begin
         cart_state      <= C_IDLE;
         cart_clk        <= 1'b1;
         cart_cs         <= 1'b1;
