@@ -508,7 +508,7 @@ module top #(parameter ISSIMU=0)
     emu_system_top u_emu_system_top(
         .hclk(hClk),
         .pclk(pClk),
-        .reset_n(~memrst | lk_enabled),//lock_o),
+        .reset_n(~memrst),//lock_o),
         .POWER_GOOD(~POWER_ON_FPGA),
 
         .customPaletteEna(paletteBGIn[63]),
