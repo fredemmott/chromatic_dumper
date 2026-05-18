@@ -413,8 +413,6 @@ module top #(parameter ISSIMU=0)
     wire lcd_off_overwrite;
 
     // FlashGBX "LK" firmware
-    wire      lk_enabled;
-    wire      lk_disable;
     wire      lk_tx_dval;
     wire[7:0] lk_tx_data;
     wire      lk_rx_dval;
@@ -712,7 +710,6 @@ module top #(parameter ISSIMU=0)
         .usb_term_dp_io(usb_term_dp_io),
         .usb_term_dn_io(usb_term_dn_io),
         .lk_enabled(lk_enabled),
-        .lk_disable(lk_disable),
         .lk_tx_dval(lk_tx_dval),
         .lk_tx_data(lk_tx_data),
         .lk_rx_dval(lk_rx_dval),
@@ -820,7 +817,6 @@ module top #(parameter ISSIMU=0)
     u_lk(
         .clk            (PHY_CLKOUT),
         .reset          (!lk_enabled),
-        .lk_disable     (lk_disable),
         .rx_valid       (lk_rx_dval),
         .rx_data        (lk_rx_data),
         .tx_valid       (lk_tx_dval),

@@ -41,7 +41,6 @@ module usbuvcuart_top(
 
     // FlashGBX "LK" mode
     output reg          lk_enabled,
-    input               lk_disable,
 
     input               lk_tx_dval,
     input[7:0]          lk_tx_data,
@@ -1118,7 +1117,7 @@ module usbuvcuart_top(
     always @(posedge pClk) begin
         // If we have a USB connection, the DTR bit indicates if the host is connected to the USB
         // serial device. If we have no USB connection, the flag is not updated
-        ep3_reset <= lk_disable || RESET_IN || usb_busreset || (!usb_online)|| (!E_UART_DTR) || ~usblocked;
+        ep3_reset <= RESET_IN || usb_busreset || (!usb_online)|| (!E_UART_DTR) || ~usblocked;
     end
 
     initial lk_enabled = 0;

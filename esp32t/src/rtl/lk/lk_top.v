@@ -50,7 +50,6 @@ module lk_top #(
 )(
     input  wire        clk,
     input  wire        reset,
-    output reg         lk_disable = 1'b0,
 
     // Parallel byte interface (EP3 via usbuvcuart_top)
     input  wire        rx_valid,
