@@ -87,40 +87,48 @@ module lk_top #(
 
 reg        tx_valid = 0;
 reg  [7:0] tx_data = '0;
-wire       tx_cork = 0;
+reg tx_full = 0;
 
-wire TX_EMPTY;
-assign TX_VALID = ~TX_EMPTY;
+wire       TX_EMPTY;
+wire       TX_RD_EN = ~TX_EMPTY;
+wire [7:0] TX_Q;
+
 // lk_top -> USB
 lk_usb_fifo_t usb_tx_fifo(
     .WrClk(clk),
-    .Full(tx_cork),
+    .Full(tx_full),
     .WrEn(tx_valid),
     .Data(tx_data),
 
     .RdClk(PHY_CLKOUT),
     .Empty(TX_EMPTY),
-    .RdEn(~TX_CORK),
-    .Q(TX_DATA)
+    .RdEn(TX_RD_EN),
+    .Q(TX_Q)
 );
+assign TX_VALID = ~TX_EMPTY;
+assign TX_DATA = TX_Q;
+
+reg        rx_valid;
+reg  [7:0] rx_data;
 
 wire       rx_empty;
-wire       rx_valid = ~rx_empty;
-reg  [7:0] rx_data = '0;
-// Unused
-reg        RX_CORK = 0;
+wire       rx_rd_en = ~rx_empty;
+wire [7:0] rx_q;
+reg        RX_FULL = 0; // unused
 // USB -> LK_TOP
 lk_usb_fifo_t usb_rx_fifo(
     .WrClk(PHY_CLKOUT),
-    .Full(RX_CORK),
+    .Full(RX_FULL),
     .WrEn(RX_VALID),
     .Data(RX_DATA),
 
     .RdClk(clk),
     .Empty(rx_empty),
-    .RdEn(rx_valid),
-    .Q(rx_data)
+    .RdEn(rx_rd_en),
+    .Q(rx_q)
 );
+assign rx_valid = ~rx_empty;
+assign rx_data = rx_q;
 
 reg vars_reset = 0;
 
