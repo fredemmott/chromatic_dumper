@@ -686,7 +686,6 @@ module top #(parameter ISSIMU=0)
     wire LK_TX_DATA;
     wire LK_RX_DVAL;
     wire LK_RX_DATA;
-    wire LK_TX_CORK;
     usbuvcuart_top u_usb_top(
         .CLK_24MHz(CLK_24MHz),
         .ERST(usbrst),
@@ -716,7 +715,6 @@ module top #(parameter ISSIMU=0)
         .usb_term_dp_io(usb_term_dp_io),
         .usb_term_dn_io(usb_term_dn_io),
         .lk_enabled(LK_ENABLED),
-        .lk_tx_cork(LK_TX_CORK),
         .lk_tx_dval(LK_TX_DVAL),
         .lk_tx_data(LK_TX_DATA),
         .lk_rx_dval(LK_RX_DVAL),
@@ -834,7 +832,6 @@ module top #(parameter ISSIMU=0)
         .PHY_CLKOUT     (PHY_CLKOUT),
         .RX_VALID       (LK_RX_DVAL),
         .RX_DATA        (LK_RX_DATA),
-        .TX_CORK        (LK_TX_CORK),
         .TX_VALID       (LK_TX_DVAL),
         .TX_DATA        (LK_TX_DATA),
         .cart_enabled   (lk_cart_enabled),

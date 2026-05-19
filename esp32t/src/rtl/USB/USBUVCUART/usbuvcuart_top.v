@@ -42,7 +42,6 @@ module usbuvcuart_top(
     // FlashGBX "LK" mode
     output reg          lk_enabled,
 
-    output              lk_tx_cork,
     input               lk_tx_dval,
     input[7:0]          lk_tx_data,
 
@@ -1066,14 +1065,11 @@ module usbuvcuart_top(
         lk_id[21] = 8'h00;
     end
 
-    // TODO: the EP3_PEER_LK TX/RX data/dval need to be passed upwards
-
     assign uart_tx_data = (ep3_peer == EP3_PEER_UART) ? {8'd0, ep3_rx_data} : 16'd0;
     assign uart_tx_data_val = (ep3_peer == EP3_PEER_UART) ? ep3_rx_dval : 1'd0;
 
     assign lk_rx_dval = (ep3_peer == EP3_PEER_LK) ? ep3_rx_dval : 1'b0;
     assign lk_rx_data = (ep3_peer == EP3_PEER_LK) ? ep3_rx_data : 8'b0;
-    assign lk_tx_cork = (ep3_peer == EP3_PEER_LK) ? uart_txcork : 1'b0;
 
     // 1 is fine for the cases handled by the FPGA, as the FPGA is always faster than the USB bus
     assign ep3_rx_rdy  = (ep3_peer == EP3_PEER_UART) ? (!uart_tx_busy) : 1'b1;
