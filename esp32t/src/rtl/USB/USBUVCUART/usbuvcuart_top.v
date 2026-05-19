@@ -1112,11 +1112,15 @@ module usbuvcuart_top(
 
     reg ep3_reset = 1;
 
-    always @(posedge pClk) begin
-        // If we have a USB connection, the DTR bit indicates if the host is connected to the USB
-        // serial device. If we have no USB connection, the flag is not updated
-        ep3_reset <= RESET_IN || usb_busreset || (!usb_online)|| (!E_UART_DTR) || ~usblocked;
-    end
+    // This is functionaly just `assign ep3_reset = ~s_ctl_sig[0];`, but avoids
+    // routing congestion issues
+    wire ep3_reset;
+    LUT1 #(
+        .INIT(2'b01)
+    ) ep3_reset_lut(
+        .I0(s_ctl_sig[0]),
+        .F(ep3_reset)
+    );
 
     initial lk_enabled = 0;
     always @(posedge pClk) begin
