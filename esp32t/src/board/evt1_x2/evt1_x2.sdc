@@ -32,3 +32,8 @@ create_generated_clock -name clk24p -source [get_ports {CLK_24MHz}] -master_cloc
 create_clock -name usbintsclk -period 8 -waveform {0 4} [get_nets {u_usb_top/u_USB_SoftPHY_Top/usb2_0_softphy/u_usb_20_phy_utmi/u_usb2_0_softphy/u_usb_phy_hs/sclk}] -add
 set_clock_groups -asynchronous -group [get_clocks {PHY_CLKOUT}] -group [get_clocks {fclk_960M}]
 set_clock_groups -asynchronous -group [get_clocks {PHY_CLKOUT}] -group [get_clocks {usbintsclk}]
+
+// FlashGBX LK: similar setup, but we're driven by the USB clock
+
+set_clock_groups -asynchronous -group [get_clocks {PHY_CLKOUT}] -group [get_clocks {xclk}]
+set_false_path -to [get_regs {lk_cdc_*0_s0}]

@@ -38,8 +38,10 @@
 
 `default_nettype none
 
+// Update the `set_clock_groups -asynchronous...` in evt1_x2.sdc if this changes
+`define LK_CLOCK xClk
+
 module lk_top #(
-    parameter CLK_FREQ     = 60_000_000,
     // Number of clock cycles CS/RD is asserted before latching data.
     // At 60 MHz, 16 cycles ≈ 267 ns (GB min CS low = 200 ns).
     parameter CART_RD_HOLD = 16,
@@ -50,12 +52,14 @@ module lk_top #(
 )(
     input  wire        clk,
     input  wire        reset,
+    input  wire        PHY_CLKOUT,
 
     // Parallel byte interface (EP3 via usbuvcuart_top)
-    input  wire        rx_valid,
-    input  wire [7:0]  rx_data,
-    output reg         tx_valid,
-    output reg  [7:0]  tx_data,
+    input  wire        RX_VALID,
+    input  wire [7:0]  RX_DATA,
+    output reg         TX_VALID,
+    output reg  [7:0]  TX_DATA,
+    input  reg         TX_CORK,
 
     output reg         cart_enabled,
     // Cartridge bus (top-level drives tristate from these)
@@ -69,6 +73,54 @@ module lk_top #(
     output reg  [7:0]  cart_d_out,        // data to write
     input  wire [7:0]  cart_d_in,         // data read from cart
     output reg         cart_audio
+);
+
+// USB data is on PHY_CLKOUT
+// Cartridge pins and all logic in top.v is on xClk instead, or derived clocks like pClk
+// Using xClk as this module's native clock as:
+// - we're limited by the cartridge speed anyway
+// - it greatly simplifies the MUX in top.v
+// - it's much less work than trying to CDC the cartridge and the cartridge state machine :)
+// The two clocks are close, but xClk is slightly faster, so we can cork on the fifo
+//
+// xClk         67.109Mhz   14.901ns
+// PHY_CLKOUT   60mhz       16.667ns
+
+reg        tx_valid = 0;
+reg  [7:0] tx_data = '0;
+wire       tx_cork = 0;
+
+wire TX_EMPTY;
+assign TX_VALID = ~TX_EMPTY;
+// lk_top -> USB
+lk_usb_fifo_t usb_tx_fifo(
+    .WrClk(clk),
+    .Full(tx_cork),
+    .WrEn(tx_valid),
+    .Data(tx_data),
+
+    .RdClk(PHY_CLKOUT),
+    .Empty(TX_EMPTY),
+    .RdEn(~TX_CORK),
+    .Q(TX_DATA)
+);
+
+wire       rx_empty;
+wire       rx_valid = ~rx_empty;
+reg  [7:0] rx_data = '0;
+// Unused
+reg        RX_CORK = 0;
+// USB -> LK_TOP
+lk_usb_fifo_t usb_rx_fifo(
+    .WrClk(PHY_CLKOUT),
+    .Full(RX_CORK),
+    .WrEn(RX_VALID),
+    .Data(RX_DATA),
+
+    .RdClk(clk),
+    .Empty(rx_empty),
+    .RdEn(rx_valid),
+    .Q(rx_data)
 );
 
 reg vars_reset = 0;

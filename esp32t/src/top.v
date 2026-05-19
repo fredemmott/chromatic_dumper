@@ -681,6 +681,12 @@ module top #(parameter ISSIMU=0)
             else
                 usbrst <= 1'd0;
 
+    wire LK_ENABLED;
+    wire LK_TX_DVAL;
+    wire LK_TX_DATA;
+    wire LK_RX_DVAL;
+    wire LK_RX_DATA;
+    wire LK_TX_CORK;
     usbuvcuart_top u_usb_top(
         .CLK_24MHz(CLK_24MHz),
         .ERST(usbrst),
@@ -709,12 +715,21 @@ module top #(parameter ISSIMU=0)
         .usb_pullup_en_o(usb_pullup_en_o),
         .usb_term_dp_io(usb_term_dp_io),
         .usb_term_dn_io(usb_term_dn_io),
-        .lk_enabled(lk_enabled),
-        .lk_tx_dval(lk_tx_dval),
-        .lk_tx_data(lk_tx_data),
-        .lk_rx_dval(lk_rx_dval),
-        .lk_rx_data(lk_rx_data)
+        .lk_enabled(LK_ENABLED),
+        .lk_tx_cork(LK_TX_CORK),
+        .lk_tx_dval(LK_TX_DVAL),
+        .lk_tx_data(LK_TX_DATA),
+        .lk_rx_dval(LK_RX_DVAL),
+        .lk_rx_data(LK_RX_DATA)
     );
+
+    (* syn_preserve = 1 *) reg [1:0] lk_cdc_enabled = '0;
+    reg lk_enabled = 0;
+    always @(posedge `LK_CLOCK or negedge LK_ENABLED) begin
+        if (~LK_ENABLED) lk_cdc_enabled <= '0;
+        else lk_cdc_enabled <= {lk_cdc_enabled[0], 1'b1};
+    end
+    always @(posedge `LK_CLOCK) lk_enabled <= lk_cdc_enabled[1];
 
     wire [13:0] hAdcValue_r1;
     wire hAdcReq_ext;
@@ -813,14 +828,15 @@ module top #(parameter ISSIMU=0)
     assign I2S_BCLK = menuDisabled;
 
     // FlashGBX "LK" protocol
-    lk_top #(.CLK_FREQ(60_000_000))
-    u_lk(
-        .clk            (PHY_CLKOUT),
+    lk_top u_lk(
+        .clk            (`LK_CLOCK),
         .reset          (!lk_enabled),
-        .rx_valid       (lk_rx_dval),
-        .rx_data        (lk_rx_data),
-        .tx_valid       (lk_tx_dval),
-        .tx_data        (lk_tx_data),
+        .PHY_CLKOUT     (PHY_CLKOUT),
+        .RX_VALID       (LK_RX_DVAL),
+        .RX_DATA        (LK_RX_DATA),
+        .TX_CORK        (LK_TX_CORK),
+        .TX_VALID       (LK_TX_DVAL),
+        .TX_DATA        (LK_TX_DATA),
         .cart_enabled   (lk_cart_enabled),
         .cart_a         (lk_cart_a),
         .cart_clk       (lk_cart_clk),
