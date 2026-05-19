@@ -1070,6 +1070,8 @@ module usbuvcuart_top(
 
     assign lk_rx_dval = (ep3_peer == EP3_PEER_LK) ? ep3_rx_dval : 1'b0;
     assign lk_rx_data = (ep3_peer == EP3_PEER_LK) ? ep3_rx_data : 8'b0;
+    reg [7:0] lk_id_it;
+    assign lk_id_it = lk_id[ep3_idx];
 
     // 1 is fine for the cases handled by the FPGA, as the FPGA is always faster than the USB bus
     assign ep3_rx_rdy  = (ep3_peer == EP3_PEER_UART) ? (!uart_tx_busy) : 1'b1;
@@ -1078,7 +1080,7 @@ module usbuvcuart_top(
                          /* (ep3_peer == EP3_PEER_SELF) */ ep3_self_tx_dval;
     assign ep3_tx_data = (ep3_peer == EP3_PEER_UART) ? uart_rx_data[7:0]:
                          (ep3_peer == EP3_PEER_LK) ? lk_tx_data :
-                         /* (ep3_state == EP3_TX_LK_ID ) */ lk_id[ep3_idx];
+                         /* (ep3_state == EP3_TX_LK_ID ) */ lk_id_it;
 
     usb_fifo usb_fifo
     (
