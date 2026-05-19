@@ -59,7 +59,6 @@ module lk_top #(
     input  wire [7:0]  RX_DATA,
     output reg         TX_VALID,
     output reg  [7:0]  TX_DATA,
-    input  reg         TX_CORK,
 
     output reg         cart_enabled,
     // Cartridge bus (top-level drives tristate from these)
