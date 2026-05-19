@@ -681,11 +681,11 @@ module top #(parameter ISSIMU=0)
             else
                 usbrst <= 1'd0;
 
-    wire LK_ENABLED;
-    wire LK_TX_DVAL;
-    wire LK_TX_DATA;
-    wire LK_RX_DVAL;
-    wire LK_RX_DATA;
+    wire       LK_ENABLED;
+    wire       LK_TX_DVAL;
+    wire [7:0] LK_TX_DATA;
+    wire       LK_RX_DVAL;
+    wire [7:0] LK_RX_DATA;
     usbuvcuart_top u_usb_top(
         .CLK_24MHz(CLK_24MHz),
         .ERST(usbrst),
