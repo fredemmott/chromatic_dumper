@@ -188,7 +188,6 @@ typedef enum logic [3:0] {
 // ============================================================
 // Registers
 // ============================================================
-command_t command = CMD_IDLE;
 cart_state_t cart_state;
 wire cart_complete = (cart_state == C_DONE);
 
