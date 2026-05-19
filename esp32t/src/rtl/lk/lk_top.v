@@ -68,8 +68,7 @@ module lk_top #(
     output reg         cart_data_dir_e,   // 1 = read, 0 = write
     output reg  [7:0]  cart_d_out,        // data to write
     input  wire [7:0]  cart_d_in,         // data read from cart
-    output reg         cart_audio,
-    input  wire        cart_det           // 0 = no cart (active-low)
+    output reg         cart_audio
 );
 
 reg vars_reset = 0;

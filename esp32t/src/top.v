@@ -831,8 +831,7 @@ module top #(parameter ISSIMU=0)
         .cart_data_dir_e(lk_cart_data_dir_e),
         .cart_d_in      (lk_cart_d_in),
         .cart_d_out     (lk_cart_d_out),
-        .cart_audio     (lk_cart_audio),
-        .cart_det       (CART_DET)
+        .cart_audio     (lk_cart_audio)
     );
 
 endmodule
