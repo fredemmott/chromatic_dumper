@@ -1,0 +1,74 @@
+package lk_types;
+
+typedef enum {
+    CMD_INIT,
+    CMD_IDLE,
+    CMD_QUERY_FW_INFO,
+    CMD_SET_VARIABLE/*,
+    CMD_SET_VOLTAGE_5V,
+    CMD_SET_FLASH_CMD,
+    CMD_SET_ADDR_AS_INPUTS,
+    CMD_CLK_TOGGLE,
+    CMD_GET_VARIABLE,
+    CMD_GET_VAR_STATE,
+    CMD_SET_VAR_STATE,
+    CMD_DMG_CART_READ,
+    CMD_DMG_CART_WRITE,
+    CMD_DMG_CART_WRITE_SRAM,
+    CMD_DMG_MBC_RESET,
+    CMD_DMG_SET_BANK_CHANGE_CMD,
+    CMD_DMG_CART_READ_MEASURE,
+    CMD_DMG_FLASH_WRITE_BYTE,
+    CMD_FLASH_PROGRAM,
+    CMD_CART_WRITE_FLASH_CMD,
+    CMD_CALC_CRC32,
+    CMD_SET_PIN
+    */
+} command_t;
+// TODO:
+parameter command_t CMD_STUB_NOOP_ACK = CMD_IDLE;
+parameter command_t CMD_SET_VOLTAGE_5V = CMD_IDLE;
+parameter command_t CMD_SET_FLASH_CMD = CMD_IDLE;
+parameter command_t CMD_SET_ADDR_AS_INPUTS = CMD_IDLE;
+parameter command_t CMD_CLK_TOGGLE = CMD_IDLE;
+parameter command_t CMD_GET_VARIABLE = CMD_IDLE;
+parameter command_t CMD_GET_VAR_STATE = CMD_IDLE;
+parameter command_t CMD_SET_VAR_STATE = CMD_IDLE;
+parameter command_t CMD_DMG_CART_READ = CMD_IDLE;
+parameter command_t CMD_DMG_CART_WRITE = CMD_IDLE;
+parameter command_t CMD_DMG_CART_WRITE_SRAM = CMD_IDLE;
+parameter command_t CMD_DMG_MBC_RESET = CMD_IDLE;
+parameter command_t CMD_DMG_SET_BANK_CHANGE_CMD = CMD_IDLE;
+parameter command_t CMD_DMG_CART_READ_MEASURE = CMD_IDLE;
+parameter command_t CMD_DMG_FLASH_WRITE_BYTE = CMD_IDLE;
+parameter command_t CMD_FLASH_PROGRAM = CMD_IDLE;
+parameter command_t CMD_CART_WRITE_FLASH_CMD = CMD_IDLE;
+parameter command_t CMD_CALC_CRC32 = CMD_IDLE;
+parameter command_t CMD_SET_PIN = CMD_IDLE;
+
+parameter command_t CMD_DISABLE_PULLUPS = CMD_STUB_NOOP_ACK;
+parameter command_t CMD_SET_MODE_DMG = CMD_STUB_NOOP_ACK;
+
+typedef struct packed {
+    logic [15:0] address;
+    logic [15:0] transfer_size;
+    logic [7:0]  status_register;
+    logic [7:0]  cart_mode;
+    logic [7:0]  dmg_access_mode;
+    logic [1:0]  flash_we_pin;
+    logic        dmg_read_cs_pulse;
+    logic        dmg_write_cs_pulse;
+} vars_t;
+
+typedef struct packed {
+    logic valid;
+    logic is_write;
+    logic [15:0] address;
+    logic [7:0] data;
+} cart_out_t;
+
+typedef struct packed {
+    logic audio;
+} cart_pins_t;
+
+endpackage

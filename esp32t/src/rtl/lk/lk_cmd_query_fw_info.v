@@ -1,20 +1,14 @@
+import lk_types::*;
+
 module lk_cmd_query_fw_info_t(
     input wire clk,
-    input wire en,
-    output wire complete,
-    input wire rx_valid,
-    input wire [7:0] rx_data,
-    output wire tx_valid,
-    output wire [7:0] tx_data
+    input wire reset,
+    output reg complete,
+    output reg [7:0] tx_data
 );
     localparam ROM_LEN = 14;
     reg [7:0] rom [0:ROM_LEN-1];
-    reg [4:0] index = 0;
-
-    wire valid_index = (index < ROM_LEN);
-    assign tx_valid = valid_index;
-    assign tx_data = valid_index ? rom[index] : 8'd0;
-    assign complete = !valid_index;
+    reg [4:0] idx = 0;
 
     initial begin
         // FW info buffer
@@ -40,11 +34,11 @@ module lk_cmd_query_fw_info_t(
         rom[13] = 8'h01;
     end
 
+    assign tx_data = (idx < ROM_LEN) ? rom[idx] : 8'd0;
+    assign complete = (idx == (ROM_LEN - 1));
+
     always @(posedge clk) begin
-        if (!en) begin
-            index <= 0;
-        end else if (valid_index) begin
-            index <= index + 1;
-        end
+        if (reset) idx <= 0;
+        else idx <= idx + 1'b1;
     end
 endmodule
