@@ -857,7 +857,7 @@ module top #(parameter ISSIMU=0)
         .cart_cs        (lk_cart_cs),
         .cart_rd        (lk_cart_rd),
         .cart_wr        (lk_cart_wr),
-        .cart_rst_out   (lk_cart_rst_out),
+        .cart_rst       (lk_cart_rst_out),
         .cart_data_dir_e(lk_cart_data_dir_e),
         .cart_d_in      (lk_cart_d_in),
         .cart_d_out     (lk_cart_d_out),

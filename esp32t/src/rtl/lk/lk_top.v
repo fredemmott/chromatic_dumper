@@ -76,6 +76,17 @@ module lk_top #(
     output reg         cart_audio
 );
 
+// stubs while refactor WIP
+assign cart_a = 16'd0;
+assign cart_clk = 1'b0;
+assign cart_cs = 1'b0;
+assign cart_rd = 1'b0;
+assign cart_wr = 1'b0;
+assign cart_rst = 1'b0;
+assign cart_data_dir_e = 1'b1; // read
+assign cart_d_out = 7'd0;
+assign cart_audio = 1'd0;
+
 // USB data is on PHY_CLKOUT
 // Cartridge pins and all logic in top.v is on xClk instead, or derived clocks like pClk
 // Using xClk as this module's native clock as:
@@ -87,8 +98,8 @@ module lk_top #(
 // xClk         67.109Mhz   14.901ns
 // PHY_CLKOUT   60mhz       16.667ns
 
-reg        tx_valid = 0;
-reg  [7:0] tx_data = '0;
+reg        tx_valid;
+reg  [7:0] tx_data;
 reg tx_full = 0;
 
 wire       TX_EMPTY;
@@ -134,44 +145,47 @@ assign rx_data = rx_q;
 
 vars_t vars = '{default: 0};
 
-command_t command_from_rx_data;
-always @(*) begin
-    command_from_rx_data = CMD_IDLE;
-    case (rx_data)
-        // Must match `DEVICE_CMD` in `LK_Device.py`
-        8'hA1: command_from_rx_data = CMD_QUERY_FW_INFO;
-        8'hA3: command_from_rx_data = CMD_SET_MODE_DMG;
-        8'hA5: command_from_rx_data = CMD_SET_VOLTAGE_5V;
-        8'hA6: command_from_rx_data = CMD_SET_VARIABLE;
-        8'hA7: command_from_rx_data = CMD_SET_FLASH_CMD;
-        8'hA8: command_from_rx_data = CMD_SET_ADDR_AS_INPUTS;
-        8'hA9: command_from_rx_data = CMD_CLK_TOGGLE;
-        8'hAC: command_from_rx_data = CMD_DISABLE_PULLUPS;
-        8'hAD: command_from_rx_data = CMD_GET_VARIABLE;
-        8'hAE: command_from_rx_data = CMD_GET_VAR_STATE;
-        8'hAF: command_from_rx_data = CMD_SET_VAR_STATE;
-        8'hB1: command_from_rx_data = CMD_DMG_CART_READ;
-        8'hB2: command_from_rx_data = CMD_DMG_CART_WRITE;
-        8'hB3: command_from_rx_data = CMD_DMG_CART_WRITE_SRAM;
-        8'hB4: command_from_rx_data = CMD_DMG_MBC_RESET;
-        8'hB8: command_from_rx_data = CMD_DMG_SET_BANK_CHANGE_CMD;
-        8'hBA: command_from_rx_data = CMD_DMG_CART_READ_MEASURE;
-        8'hD1: command_from_rx_data = CMD_DMG_FLASH_WRITE_BYTE;
-        8'hD3: command_from_rx_data = CMD_FLASH_PROGRAM;
-        8'hD4: command_from_rx_data = CMD_CART_WRITE_FLASH_CMD;
-        8'hD5: command_from_rx_data = CMD_CALC_CRC32;
-        8'hF5: command_from_rx_data = CMD_SET_PIN;
-        default: ;
-    endcase
-end
-
+command_t cmd_rom [0:255];
+initial cmd_rom = '{
+    // Must match `DEVICE_CMD` in `LK_Device.py`
+    8'hA1: CMD_QUERY_FW_INFO,
+    8'hA3: CMD_SET_MODE_DMG,
+    8'hA5: CMD_SET_VOLTAGE_5V,
+    8'hA6: CMD_SET_VARIABLE,
+    8'hA7: CMD_SET_FLASH_CMD,
+    8'hA8: CMD_SET_ADDR_AS_INPUTS,
+    8'hA9: CMD_CLK_TOGGLE,
+    8'hAC: CMD_DISABLE_PULLUPS,
+    8'hAD: CMD_GET_VARIABLE,
+    8'hAE: CMD_GET_VAR_STATE,
+    8'hAF: CMD_SET_VAR_STATE,
+    8'hB1: CMD_DMG_CART_READ,
+    8'hB2: CMD_DMG_CART_WRITE,
+    8'hB3: CMD_DMG_CART_WRITE_SRAM,
+    8'hB4: CMD_DMG_MBC_RESET,
+    8'hB8: CMD_DMG_SET_BANK_CHANGE_CMD,
+    8'hBA: CMD_DMG_CART_READ_MEASURE,
+    8'hD1: CMD_DMG_FLASH_WRITE_BYTE,
+    8'hD3: CMD_FLASH_PROGRAM,
+    8'hD4: CMD_CART_WRITE_FLASH_CMD,
+    8'hD5: CMD_CALC_CRC32,
+    8'hF5: CMD_SET_PIN,
+    default: CMD_IDLE
+};
 command_t command = CMD_INIT;
 
-wire en_init = command == CMD_INIT;
+wire en_stub_noop_ack = command == CMD_STUB_NOOP_ACK;
+wire en_init = (command == CMD_INIT) && !reset;
 wire en_idle = command == CMD_IDLE;
+
+wire cmd_init_tx_valid = en_init;
+wire [7:0] cmd_init_tx_data = cmd_init_tx_valid ? 8'hFF : 8'd0;
+
+wire cmd_idle_complete = (en_idle & rx_valid);
 
 wire en_query_fw_info = command == CMD_QUERY_FW_INFO;
 wire cmd_query_fw_info_complete;
+wire cmd_query_fw_info_tx_valid = cmd_query_fw_info_complete;
 wire [7:0] cmd_query_fw_info_tx_data;
 lk_cmd_query_fw_info_t cmd_query_fw_info(
     clk,
@@ -193,63 +207,67 @@ lk_cmd_set_variable_t cmd_set_variable_info(
     cmd_set_variable_vars_out
 );
 
+wire en_set_voltage_5v = command == CMD_SET_VOLTAGE_5V;
+wire en_set_addr_as_inputs = command == CMD_SET_ADDR_AS_INPUTS;
+always @(posedge clk) begin
+    if (reset) begin
+        cart_enabled <= 1'b0;
+    end else if (en_set_voltage_5v) begin
+        cart_enabled <= 1'b1;
+    end else if (en_set_addr_as_inputs) begin
+        cart_enabled <= 1'b0;
+    end
+end
 
 reg complete;
 always @(*) begin
     complete = 1;
-    unique case (1'b1)
-        en_init: ;
-        en_idle: complete = rx_valid;
-        en_query_fw_info: complete = cmd_query_fw_info_complete;
-        en_set_variable: complete = cmd_set_variable_complete;
-    endcase
-end
-
-command_t next_command;
-always @(*) begin
-    next_command = command;
-    if (reset) begin
-        next_command = CMD_INIT;
-    end else if (complete) begin
-        next_command = en_idle ? command_from_rx_data : CMD_IDLE;
+    if (!reset) begin
+        priority case (1'b1)
+            en_idle: complete = cmd_idle_complete;
+            en_query_fw_info: complete = cmd_query_fw_info_complete;
+            en_set_variable: complete = cmd_set_variable_complete;
+            default: ;
+        endcase
     end
 end
-always @(posedge clk) command <= next_command;
-
-vars_t next_vars;
-always @(*) begin
-    next_vars = vars;
-    if (reset) begin
-        next_vars = '{default: 0};
-    end else if (en_set_variable) next_vars = cmd_set_variable_vars_out;
-end
-always @(posedge clk) vars <= next_vars;
-
 
 always @(posedge clk) begin
-    tx_valid <= 1'b0;
-    tx_data  <= 8'd0;
-    if (reset) begin
-        cart_enabled <= 1'b0;
-    end else begin
-        unique case (1'b1)
+    tx_valid <= 0;
+    tx_data <= 8'd0;
+    if (!reset) begin
+        priority case (1'b1)
+            en_set_addr_as_inputs,
+            en_set_variable,
+            en_set_voltage_5v,
+            en_stub_noop_ack: begin
+                tx_valid <= complete;
+                tx_data <= 8'd1;
+            end
             en_init: begin
                 tx_valid <= 1'b1;
                 tx_data <= 8'hFF;
             end
             en_query_fw_info: begin
-                // It sends a byte on each cycle, up to and including the cycle
-                // when it completes
                 tx_valid <= 1'b1;
                 tx_data <= cmd_query_fw_info_tx_data;
-            end
-            en_set_variable: begin
-                tx_valid <= complete;
-                tx_data <= 1'b1;
             end
             default: ;
         endcase
     end
+ end
+
+always @(posedge clk) begin
+    if (reset) begin
+        command <= CMD_INIT;
+    end else if (complete) begin
+        command <= en_idle ? cmd_rom[rx_data] : CMD_IDLE;
+    end
+end
+
+always @(posedge clk) begin
+    if (reset) vars <= '{default: 0};
+    else if (cmd_set_variable_complete) vars <= cmd_set_variable_vars_out;
 end
 
 endmodule // cart_reader

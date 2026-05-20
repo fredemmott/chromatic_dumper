@@ -16,20 +16,24 @@ reg [7:0] var_size;
 var_id_t  var_id;
 reg [15:0] var_value;
 
-always @(*) begin
-    vars_out = vars_in;
-    begin
-        unique case (var_id)
-            VAR_ID_ADDRESS: vars_out.address = var_value;
-            VAR_ID_TRANSFER_SIZE: vars_out.transfer_size = var_value;
-            VAR_ID_STATUS_REGISTER: vars_out.status_register = var_value[7:0];
-            VAR_ID_CART_MODE: vars_out.cart_mode = var_value[7:0];
-            VAR_ID_DMG_ACCESS_MODE: vars_out.dmg_access_mode = var_value[7:0];
-            VAR_ID_FLASH_WE_PIN: vars_out.flash_we_pin = var_value[1:0];
-            VAR_ID_DMG_READ_CS_PULSE: vars_out.dmg_read_cs_pulse = var_value[0];
-            VAR_ID_DMG_WRITE_CS_PULSE: vars_out.dmg_write_cs_pulse = var_value[0];
-            default: ;
-        endcase
+always @(posedge clk) begin
+    if (reset) begin
+        vars_out <= '{default: 0};
+    end else begin
+        vars_out <= vars_in;
+        begin
+            unique case (var_id)
+                VAR_ID_ADDRESS: vars_out.address <= var_value;
+                VAR_ID_TRANSFER_SIZE: vars_out.transfer_size <= var_value;
+                VAR_ID_STATUS_REGISTER: vars_out.status_register <= var_value[7:0];
+                VAR_ID_CART_MODE: vars_out.cart_mode <= var_value[7:0];
+                VAR_ID_DMG_ACCESS_MODE: vars_out.dmg_access_mode <= var_value[7:0];
+                VAR_ID_FLASH_WE_PIN: vars_out.flash_we_pin <= var_value[1:0];
+                VAR_ID_DMG_READ_CS_PULSE: vars_out.dmg_read_cs_pulse <= var_value[0];
+                VAR_ID_DMG_WRITE_CS_PULSE: vars_out.dmg_write_cs_pulse <= var_value[0];
+                default: ;
+            endcase
+        end
     end
 end
 

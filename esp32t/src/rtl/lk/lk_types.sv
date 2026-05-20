@@ -1,13 +1,15 @@
 package lk_types;
 
 typedef enum {
+    CMD_STUB_NOOP_ACK,
     CMD_INIT,
     CMD_IDLE,
     CMD_QUERY_FW_INFO,
-    CMD_SET_VARIABLE/*,
+    CMD_SET_VARIABLE,
     CMD_SET_VOLTAGE_5V,
+    CMD_SET_ADDR_AS_INPUTS/*,
+    CMD_SET_PIN/*,
     CMD_SET_FLASH_CMD,
-    CMD_SET_ADDR_AS_INPUTS,
     CMD_CLK_TOGGLE,
     CMD_GET_VARIABLE,
     CMD_GET_VAR_STATE,
@@ -22,14 +24,10 @@ typedef enum {
     CMD_FLASH_PROGRAM,
     CMD_CART_WRITE_FLASH_CMD,
     CMD_CALC_CRC32,
-    CMD_SET_PIN
     */
 } command_t;
 // TODO:
-parameter command_t CMD_STUB_NOOP_ACK = CMD_IDLE;
-parameter command_t CMD_SET_VOLTAGE_5V = CMD_IDLE;
 parameter command_t CMD_SET_FLASH_CMD = CMD_IDLE;
-parameter command_t CMD_SET_ADDR_AS_INPUTS = CMD_IDLE;
 parameter command_t CMD_CLK_TOGGLE = CMD_IDLE;
 parameter command_t CMD_GET_VARIABLE = CMD_IDLE;
 parameter command_t CMD_GET_VAR_STATE = CMD_IDLE;

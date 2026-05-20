@@ -34,8 +34,8 @@ module lk_cmd_query_fw_info_t(
         rom[13] = 8'h01;
     end
 
-    assign tx_data = (idx < ROM_LEN) ? rom[idx] : 8'd0;
-    assign complete = (idx == (ROM_LEN - 1));
+    assign tx_data = ((idx < ROM_LEN) && ~reset) ? rom[idx] : 8'd0;
+    assign complete = (idx == (ROM_LEN - 1)) && !reset;
 
     always @(posedge clk) begin
         if (reset) idx <= 0;
