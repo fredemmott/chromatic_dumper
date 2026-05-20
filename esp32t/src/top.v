@@ -385,6 +385,7 @@ module top #(parameter ISSIMU=0)
     always@(posedge xClk)
         memrst <= CART_DET_sr[17:2] == 16'h7FFF ||
                   CART_DET_sr[17:2] == 16'h8000 ||
+                  lk_enabled ||
                   ~xclk_lock_o;
 
     mem_system_top #(ISSIMU)
