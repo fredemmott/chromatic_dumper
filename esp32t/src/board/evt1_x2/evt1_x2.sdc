@@ -37,3 +37,9 @@ set_clock_groups -asynchronous -group [get_clocks {PHY_CLKOUT}] -group [get_cloc
 
 set_clock_groups -asynchronous -group [get_clocks {PHY_CLKOUT}] -group [get_clocks {xclk}]
 set_false_path -to [get_regs {lk_cdc_*0_s0}]
+
+// Correct (loosen) the timing requirements for reseting the DRAM.
+//
+// Not logically needed for FlashGBX LK, but the added complexity makes the routing harder
+set_multicycle_path -from [get_clocks {xclk}] -to [get_clocks {xclk2}] -setup 2
+set_multicycle_path -from [get_clocks {xclk}] -to [get_clocks {xclk2}] -hold 1

@@ -246,7 +246,7 @@ module top #(parameter ISSIMU=0)
     always@(posedge gClk)
         LCD_VSYNC_r1 <= LCD_VSYNC;
 
-    reg memrst = 1'd0;
+    reg memrst = 1'd1;
 
     reg LCD_EN1;
     reg LCD_EN0;
@@ -364,12 +364,28 @@ module top #(parameter ISSIMU=0)
     always@(posedge xClk)
         CART_DET_sr <= {CART_DET_sr[16:0], CART_DET};
 
+    // FlashGBX LK:
+    //
+    // While semantically this is irrelevant, even on the stock firmware, timing is *very* tight
+    // for memrst, and the extra complexity FlashGBX LK adds can push the routing over the edge.
+    //
+    // The delay here allows more flexibility
+    //
+    // It's also a good thing: lock_o flickers a bunch on boot. This can be a few milliseconds.
+    // This waits for it to be stable for 255 ticks *in a row*, which will be ~ 3.8 microseconds.
+    reg [7:0] lock_o_count = 8'd0;
+    wire xclk_lock_o = (lock_o_count == 8'hFF);
+    always@(posedge xClk) begin
+        if (!lock_o) lock_o_count <= 8'd0;
+        else if (!xclk_lock_o) lock_o_count <= lock_o_count + 1'd1;
+    end
+
     // CART_DET = 0 (no cart inserted)
-    always@(posedge xClk or negedge lock_o)
-        if(~lock_o)
-            memrst <= 1'd1;
-        else
-            memrst <= CART_DET_sr[17:2] == 16'h7FFF || CART_DET_sr[17:2] == 16'h8000;
+
+    always@(posedge xClk)
+        memrst <= CART_DET_sr[17:2] == 16'h7FFF ||
+                  CART_DET_sr[17:2] == 16'h8000 ||
+                  ~xclk_lock_o;
 
     mem_system_top #(ISSIMU)
     u_mem_system_top
