@@ -1112,8 +1112,6 @@ module usbuvcuart_top(
     assign    E_UART_DTR = s_ctl_sig[0];
     assign    E_UART_RTS = s_ctl_sig[1];
 
-    reg ep3_reset = 1;
-
     // This is functionaly just `assign ep3_reset = ~s_ctl_sig[0];`, but avoids
     // routing congestion issues
     wire ep3_reset;
