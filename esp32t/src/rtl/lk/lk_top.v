@@ -183,8 +183,6 @@ command_t command = CMD_INIT;
 wire en_stub_noop_ack = command == CMD_STUB_NOOP_ACK;
 wire en_idle = command == CMD_WAIT_CMD;
 
-wire cmd_idle_complete = (en_idle & rx_valid);
-
 wire en_query_fw_info = command == CMD_QUERY_FW_INFO;
 wire cmd_query_fw_info_complete;
 wire cmd_query_fw_info_tx_valid;
