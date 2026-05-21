@@ -75,6 +75,9 @@ module lk_top #(
     input  wire [7:0]  cart_d_in,         // data read from cart
     output reg         cart_audio
 );
+// This is just to simplify routing; this is safe because in top_v, reset is ~lk_enabled, synchronized with clk
+reg reset_r = 1;
+always @(posedge clk) reset_r <= reset;
 
 // stubs while refactor WIP
 assign cart_a = 16'd0;
@@ -174,7 +177,7 @@ initial cmd_rom = '{
 command_t command = CMD_INIT;
 
 wire en_stub_noop_ack = command == CMD_STUB_NOOP_ACK;
-wire en_init = (command == CMD_INIT) && !reset;
+wire en_init = (command == CMD_INIT) && !reset_r;
 wire en_idle = command == CMD_WAIT_CMD;
 
 wire cmd_init_tx_valid = en_init;
@@ -210,7 +213,7 @@ lk_cmd_set_variable_t cmd_set_variable_info(
 wire en_set_voltage_5v = command == CMD_SET_VOLTAGE_5V;
 wire en_set_addr_as_inputs = command == CMD_SET_ADDR_AS_INPUTS;
 always @(posedge clk) begin
-    if (reset) begin
+    if (reset_r) begin
         cart_enabled <= 1'b0;
     end else if (en_set_voltage_5v) begin
         cart_enabled <= 1'b1;
@@ -222,7 +225,7 @@ end
 reg complete;
 always @(*) begin
     complete = 1;
-    if (!reset) begin
+    if (!reset_r) begin
         priority case (1'b1)
             en_idle: complete = cmd_idle_complete;
             en_query_fw_info: complete = cmd_query_fw_info_complete;
@@ -235,7 +238,7 @@ end
 always @(posedge clk) begin
     tx_valid <= 0;
     tx_data <= 8'd0;
-    if (!reset) begin
+    if (!reset_r) begin
         priority case (1'b1)
             en_set_addr_as_inputs,
             en_set_variable,
@@ -258,7 +261,7 @@ always @(posedge clk) begin
  end
 
 always @(posedge clk) begin
-    if (reset) begin
+    if (reset_r) begin
         command <= CMD_INIT;
     end else if (complete) begin
         command <= en_idle ? cmd_rom[rx_data] : CMD_WAIT_CMD;
@@ -266,7 +269,7 @@ always @(posedge clk) begin
 end
 
 always @(posedge clk) begin
-    if (reset) vars <= '{default: 0};
+    if (reset_r) vars <= '{default: 0};
     else if (cmd_set_variable_complete) vars <= cmd_set_variable_vars_out;
 end
 
