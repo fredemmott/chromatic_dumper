@@ -19,7 +19,6 @@ typedef enum {
     CMD_DMG_CART_WRITE_SRAM,
     CMD_DMG_MBC_RESET,
     CMD_DMG_SET_BANK_CHANGE_CMD,
-    CMD_DMG_CART_READ_MEASURE,
     CMD_DMG_FLASH_WRITE_BYTE,
     CMD_FLASH_PROGRAM,
     CMD_CART_WRITE_FLASH_CMD,
@@ -37,7 +36,6 @@ parameter command_t CMD_DMG_CART_WRITE = CMD_IDLE;
 parameter command_t CMD_DMG_CART_WRITE_SRAM = CMD_IDLE;
 parameter command_t CMD_DMG_MBC_RESET = CMD_IDLE;
 parameter command_t CMD_DMG_SET_BANK_CHANGE_CMD = CMD_IDLE;
-parameter command_t CMD_DMG_CART_READ_MEASURE = CMD_IDLE;
 parameter command_t CMD_DMG_FLASH_WRITE_BYTE = CMD_IDLE;
 parameter command_t CMD_FLASH_PROGRAM = CMD_IDLE;
 parameter command_t CMD_CART_WRITE_FLASH_CMD = CMD_IDLE;
