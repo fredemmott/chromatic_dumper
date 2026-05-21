@@ -227,6 +227,7 @@ always @(posedge clk) begin
 end
 
 reg complete;
+/*
 always @(*) begin
     complete = 1;
     if (!reset_r) begin
@@ -237,6 +238,26 @@ always @(*) begin
             default: ;
         endcase
     end
+end
+*/
+always @(*) begin
+    unique case (command)
+        CMD_QUERY_FW_INFO: complete = cmd_query_fw_info_complete;
+        CMD_SET_VARIABLE: complete = cmd_set_variable_complete;
+        // Single-cycle:
+        CMD_INIT,
+        CMD_STUB_NOOP_ACK,
+        CMD_SET_VOLTAGE_5V,
+        CMD_SET_ADDR_AS_INPUTS,
+        // Special:
+        CMD_WAIT_CMD: complete = 1'b1;
+        // If we missed something or got invalid state (e.g. on powerup),
+        // mark as complete so we go back to CMD_WAIT_CMD
+        //
+        // Worst case, the client will realize something's wrong when
+        // waiting for an ack times out
+        default: complete = 1'b1;
+    endcase
 end
 
 always @(posedge clk) begin
