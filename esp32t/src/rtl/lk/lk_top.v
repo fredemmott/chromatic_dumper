@@ -181,11 +181,7 @@ end
 command_t command = CMD_INIT;
 
 wire en_stub_noop_ack = command == CMD_STUB_NOOP_ACK;
-wire en_init = (command == CMD_INIT) && !reset_r;
 wire en_idle = command == CMD_WAIT_CMD;
-
-wire cmd_init_tx_valid = en_init;
-wire [7:0] cmd_init_tx_data = cmd_init_tx_valid ? 8'hFF : 8'd0;
 
 wire cmd_idle_complete = (en_idle & rx_valid);
 
