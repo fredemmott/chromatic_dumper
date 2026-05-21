@@ -234,30 +234,38 @@ always @(*) begin
     endcase
 end
 
-always @(posedge clk) begin
-    tx_valid <= 0;
-    tx_data <= 8'd0;
+reg next_tx_valid;
+reg [7:0] next_tx_data;
+always @(*) begin
+    next_tx_valid = 1'b0;
+    next_tx_data = 8'd0;
+
     if (!reset_r) begin
         unique case (command)
             CMD_INIT: begin
-                tx_valid <= 1'b1;
-                tx_data <= 8'hFF;
+                next_tx_valid = 1'b1;
+                next_tx_data = 8'hFF;
             end
             CMD_WAIT_CMD: ;
             CMD_SET_ADDR_AS_INPUTS,
             CMD_SET_VARIABLE,
             CMD_SET_VOLTAGE_5V,
             CMD_STUB_NOOP_ACK: begin
-                tx_valid <= complete;
-                tx_data <= 8'd1;
+                next_tx_valid = complete;
+                next_tx_data = 8'd1;
             end
             CMD_QUERY_FW_INFO: begin
-                tx_valid <= cmd_query_fw_info_tx_valid;
-                tx_data <= cmd_query_fw_info_tx_data;
+                next_tx_valid = cmd_query_fw_info_tx_valid;
+                next_tx_data = cmd_query_fw_info_tx_data;
             end
             default: ;
         endcase
     end
+end
+
+always @(posedge clk) begin
+    tx_valid <= next_tx_valid;
+    tx_data <= next_tx_data;
  end
 
 always @(posedge clk) begin
