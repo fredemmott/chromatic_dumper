@@ -180,27 +180,22 @@ initial begin
 end
 command_t command = CMD_INIT;
 
-wire en_stub_noop_ack = command == CMD_STUB_NOOP_ACK;
-wire en_idle = command == CMD_WAIT_CMD;
-
-wire en_query_fw_info = command == CMD_QUERY_FW_INFO;
 wire cmd_query_fw_info_complete;
 wire cmd_query_fw_info_tx_valid;
 wire [7:0] cmd_query_fw_info_tx_data;
 lk_cmd_query_fw_info_t cmd_query_fw_info(
     clk,
-    ~en_query_fw_info,
+    ~(command == CMD_QUERY_FW_INFO),
     cmd_query_fw_info_complete,
     cmd_query_fw_info_tx_valid,
     cmd_query_fw_info_tx_data
 );
 
-wire en_set_variable = command == CMD_SET_VARIABLE;
 wire cmd_set_variable_complete;
 vars_t cmd_set_variable_vars_out;
 lk_cmd_set_variable_t cmd_set_variable_info(
     clk,
-    ~en_set_variable,
+    ~(command == CMD_SET_VARIABLE),
     cmd_set_variable_complete,
     rx_valid,
     rx_data,
@@ -208,14 +203,12 @@ lk_cmd_set_variable_t cmd_set_variable_info(
     cmd_set_variable_vars_out
 );
 
-wire en_set_voltage_5v = command == CMD_SET_VOLTAGE_5V;
-wire en_set_addr_as_inputs = command == CMD_SET_ADDR_AS_INPUTS;
 always @(posedge clk) begin
     if (reset_r) begin
         cart_enabled <= 1'b0;
-    end else if (en_set_voltage_5v) begin
+    end else if (command == CMD_SET_VOLTAGE_5V) begin
         cart_enabled <= 1'b1;
-    end else if (en_set_addr_as_inputs) begin
+    end else if (command == CMD_SET_ADDR_AS_INPUTS) begin
         cart_enabled <= 1'b0;
     end
 end
@@ -271,7 +264,7 @@ always @(posedge clk) begin
     if (reset_r) begin
         command <= CMD_INIT;
     end else if (complete) begin
-        command <= en_idle ? cmd_rom[rx_data] : CMD_WAIT_CMD;
+        command <= (command == CMD_WAIT_CMD) ? cmd_rom[rx_data] : CMD_WAIT_CMD;
     end
 end
 
