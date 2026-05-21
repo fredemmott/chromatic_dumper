@@ -169,13 +169,13 @@ initial cmd_rom = '{
     8'hD4: CMD_CART_WRITE_FLASH_CMD,
     8'hD5: CMD_CALC_CRC32,
     8'hF5: CMD_SET_PIN,
-    default: CMD_IDLE
+    default: CMD_WAIT_CMD
 };
 command_t command = CMD_INIT;
 
 wire en_stub_noop_ack = command == CMD_STUB_NOOP_ACK;
 wire en_init = (command == CMD_INIT) && !reset;
-wire en_idle = command == CMD_IDLE;
+wire en_idle = command == CMD_WAIT_CMD;
 
 wire cmd_init_tx_valid = en_init;
 wire [7:0] cmd_init_tx_data = cmd_init_tx_valid ? 8'hFF : 8'd0;
@@ -260,7 +260,7 @@ always @(posedge clk) begin
     if (reset) begin
         command <= CMD_INIT;
     end else if (complete) begin
-        command <= en_idle ? cmd_rom[rx_data] : CMD_IDLE;
+        command <= en_idle ? cmd_rom[rx_data] : CMD_WAIT_CMD;
     end
 end
 
