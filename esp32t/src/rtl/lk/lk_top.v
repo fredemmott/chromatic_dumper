@@ -149,31 +149,35 @@ assign rx_data = rx_q;
 vars_t vars = '{default: 0};
 
 command_t cmd_rom [0:255];
-initial cmd_rom = '{
+integer i;
+initial begin
+    for (i = 0; i < 256; i++) begin
+        cmd_rom[i] = CMD_WAIT_CMD;
+    end
+
     // Must match `DEVICE_CMD` in `LK_Device.py`
-    8'hA1: CMD_QUERY_FW_INFO,
-    8'hA3: CMD_SET_MODE_DMG,
-    8'hA5: CMD_SET_VOLTAGE_5V,
-    8'hA6: CMD_SET_VARIABLE,
-    8'hA7: CMD_SET_FLASH_CMD,
-    8'hA8: CMD_SET_ADDR_AS_INPUTS,
-    8'hA9: CMD_CLK_TOGGLE,
-    8'hAC: CMD_DISABLE_PULLUPS,
-    8'hAD: CMD_GET_VARIABLE,
-    8'hAE: CMD_GET_VAR_STATE,
-    8'hAF: CMD_SET_VAR_STATE,
-    8'hB1: CMD_DMG_CART_READ,
-    8'hB2: CMD_DMG_CART_WRITE,
-    8'hB3: CMD_DMG_CART_WRITE_SRAM,
-    8'hB4: CMD_DMG_MBC_RESET,
-    8'hB8: CMD_DMG_SET_BANK_CHANGE_CMD,
-    8'hD1: CMD_DMG_FLASH_WRITE_BYTE,
-    8'hD3: CMD_FLASH_PROGRAM,
-    8'hD4: CMD_CART_WRITE_FLASH_CMD,
-    8'hD5: CMD_CALC_CRC32,
-    8'hF5: CMD_SET_PIN,
-    default: CMD_WAIT_CMD
-};
+    cmd_rom[8'hA1] = CMD_QUERY_FW_INFO;
+    cmd_rom[8'hA3] = CMD_SET_MODE_DMG;
+    cmd_rom[8'hA5] = CMD_SET_VOLTAGE_5V;
+    cmd_rom[8'hA6] = CMD_SET_VARIABLE;
+    cmd_rom[8'hA7] = CMD_SET_FLASH_CMD;
+    cmd_rom[8'hA8] = CMD_SET_ADDR_AS_INPUTS;
+    cmd_rom[8'hA9] = CMD_CLK_TOGGLE;
+    cmd_rom[8'hAC] = CMD_DISABLE_PULLUPS;
+    cmd_rom[8'hAD] = CMD_GET_VARIABLE;
+    cmd_rom[8'hAE] = CMD_GET_VAR_STATE;
+    cmd_rom[8'hAF] = CMD_SET_VAR_STATE;
+    cmd_rom[8'hB1] = CMD_DMG_CART_READ;
+    cmd_rom[8'hB2] = CMD_DMG_CART_WRITE;
+    cmd_rom[8'hB3] = CMD_DMG_CART_WRITE_SRAM;
+    cmd_rom[8'hB4] = CMD_DMG_MBC_RESET;
+    cmd_rom[8'hB8] = CMD_DMG_SET_BANK_CHANGE_CMD;
+    cmd_rom[8'hD1] = CMD_DMG_FLASH_WRITE_BYTE;
+    cmd_rom[8'hD3] = CMD_FLASH_PROGRAM;
+    cmd_rom[8'hD4] = CMD_CART_WRITE_FLASH_CMD;
+    cmd_rom[8'hD5] = CMD_CALC_CRC32;
+    cmd_rom[8'hF5] = CMD_SET_PIN;
+end
 command_t command = CMD_INIT;
 
 wire en_stub_noop_ack = command == CMD_STUB_NOOP_ACK;
