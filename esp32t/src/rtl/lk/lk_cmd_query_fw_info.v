@@ -4,6 +4,7 @@ module lk_cmd_query_fw_info_t(
     input wire clk,
     input wire reset,
     output reg complete,
+    output reg tx_valid,
     output reg [7:0] tx_data
 );
     localparam ROM_LEN = 14;
@@ -34,11 +35,16 @@ module lk_cmd_query_fw_info_t(
         rom[13] = 8'h01;
     end
 
-    assign tx_data = ((idx < ROM_LEN) && ~reset) ? rom[idx] : 8'd0;
-    assign complete = (idx == (ROM_LEN - 1)) && !reset;
-
     always @(posedge clk) begin
-        if (reset) idx <= 0;
-        else idx <= idx + 1'b1;
+        tx_valid <= 0;
+        if (reset) begin
+            idx <= 0;
+            complete <= 0;
+        end else if (idx < ROM_LEN) begin
+            idx <= idx + 1;
+            tx_valid <= 1;
+            tx_data <= rom[idx];
+            if (idx == (ROM_LEN - 1)) complete <= 1;
+        end
     end
 endmodule

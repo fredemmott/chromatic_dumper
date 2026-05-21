@@ -184,12 +184,13 @@ wire cmd_idle_complete = (en_idle & rx_valid);
 
 wire en_query_fw_info = command == CMD_QUERY_FW_INFO;
 wire cmd_query_fw_info_complete;
-wire cmd_query_fw_info_tx_valid = cmd_query_fw_info_complete;
+wire cmd_query_fw_info_tx_valid;
 wire [7:0] cmd_query_fw_info_tx_data;
 lk_cmd_query_fw_info_t cmd_query_fw_info(
     clk,
     ~en_query_fw_info,
     cmd_query_fw_info_complete,
+    cmd_query_fw_info_tx_valid,
     cmd_query_fw_info_tx_data
 );
 
@@ -248,7 +249,7 @@ always @(posedge clk) begin
                 tx_data <= 8'hFF;
             end
             en_query_fw_info: begin
-                tx_valid <= 1'b1;
+                tx_valid <= cmd_query_fw_info_tx_valid;
                 tx_data <= cmd_query_fw_info_tx_data;
             end
             default: ;
