@@ -103,7 +103,7 @@ reg  [7:0] tx_data;
 reg tx_full = 0;
 
 wire       TX_EMPTY;
-wire       TX_RD_EN = ~TX_EMPTY;
+wire       TX_POP_EN = ~TX_EMPTY;
 wire [7:0] TX_Q;
 
 // lk_top -> USB
@@ -115,7 +115,7 @@ lk_usb_fifo_t usb_tx_fifo(
 
     .RdClk(PHY_CLKOUT),
     .Empty(TX_EMPTY),
-    .RdEn(TX_RD_EN),
+    .RdEn(TX_POP_EN), // FWFT fifo
     .Q(TX_Q)
 );
 assign TX_VALID = ~TX_EMPTY;
@@ -125,7 +125,7 @@ reg        rx_valid;
 reg  [7:0] rx_data;
 
 wire       rx_empty;
-wire       rx_rd_en = ~rx_empty;
+wire       rx_pop_en = ~rx_empty;
 wire [7:0] rx_q;
 reg        RX_FULL = 0; // unused
 // USB -> LK_TOP
@@ -137,7 +137,7 @@ lk_usb_fifo_t usb_rx_fifo(
 
     .RdClk(clk),
     .Empty(rx_empty),
-    .RdEn(rx_rd_en),
+    .RdEn(rx_pop_en),
     .Q(rx_q)
 );
 assign rx_valid = ~rx_empty;
