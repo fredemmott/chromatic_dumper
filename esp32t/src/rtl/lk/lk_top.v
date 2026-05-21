@@ -264,19 +264,20 @@ always @(posedge clk) begin
     tx_valid <= 0;
     tx_data <= 8'd0;
     if (!reset_r) begin
-        priority case (1'b1)
-            en_set_addr_as_inputs,
-            en_set_variable,
-            en_set_voltage_5v,
-            en_stub_noop_ack: begin
-                tx_valid <= complete;
-                tx_data <= 8'd1;
-            end
-            en_init: begin
+        unique case (command)
+            CMD_INIT: begin
                 tx_valid <= 1'b1;
                 tx_data <= 8'hFF;
             end
-            en_query_fw_info: begin
+            CMD_WAIT_CMD: ;
+            CMD_SET_ADDR_AS_INPUTS,
+            CMD_SET_VARIABLE,
+            CMD_SET_VOLTAGE_5V,
+            CMD_STUB_NOOP_ACK: begin
+                tx_valid <= complete;
+                tx_data <= 8'd1;
+            end
+            CMD_QUERY_FW_INFO: begin
                 tx_valid <= cmd_query_fw_info_tx_valid;
                 tx_data <= cmd_query_fw_info_tx_data;
             end
