@@ -227,19 +227,6 @@ always @(posedge clk) begin
 end
 
 reg complete;
-/*
-always @(*) begin
-    complete = 1;
-    if (!reset_r) begin
-        priority case (1'b1)
-            en_idle: complete = cmd_idle_complete;
-            en_query_fw_info: complete = cmd_query_fw_info_complete;
-            en_set_variable: complete = cmd_set_variable_complete;
-            default: ;
-        endcase
-    end
-end
-*/
 always @(*) begin
     unique case (command)
         CMD_QUERY_FW_INFO: complete = cmd_query_fw_info_complete;
