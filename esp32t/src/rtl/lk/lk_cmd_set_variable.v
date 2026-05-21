@@ -11,7 +11,7 @@ module lk_cmd_set_variable_t(
     output vars_t     vars_out
 );
 
-reg [3:0] idx = 0;
+reg [3:0] idx;
 reg [7:0] var_size;
 var_id_t  var_id;
 reg [15:0] var_value;
@@ -41,7 +41,6 @@ always @(posedge clk) begin
     if (reset) begin
         complete <= 1'b0;
         idx <= 0;
-        var_id <= 0;
     end else if (rx_valid) begin
         // byte [0]      size
         //      [1..4]   key (first 3 bytes unused)
