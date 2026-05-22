@@ -1,8 +1,7 @@
 package lk_types;
 
 typedef enum {
-    CMD_INIT,
-    CMD_WAIT_CMD,
+    CMD_INVALID,
     CMD_STUB_NOOP_ACK,
     CMD_QUERY_FW_INFO,
     CMD_SET_VARIABLE,
@@ -26,21 +25,23 @@ typedef enum {
     */
 } command_t;
 // TODO:
-parameter command_t CMD_SET_FLASH_CMD = CMD_WAIT_CMD;
-parameter command_t CMD_CLK_TOGGLE = CMD_WAIT_CMD;
-parameter command_t CMD_GET_VARIABLE = CMD_WAIT_CMD;
-parameter command_t CMD_GET_VAR_STATE = CMD_WAIT_CMD;
-parameter command_t CMD_SET_VAR_STATE = CMD_WAIT_CMD;
-parameter command_t CMD_DMG_CART_READ = CMD_WAIT_CMD;
-parameter command_t CMD_DMG_CART_WRITE = CMD_WAIT_CMD;
-parameter command_t CMD_DMG_CART_WRITE_SRAM = CMD_WAIT_CMD;
-parameter command_t CMD_DMG_MBC_RESET = CMD_WAIT_CMD;
-parameter command_t CMD_DMG_SET_BANK_CHANGE_CMD = CMD_WAIT_CMD;
-parameter command_t CMD_DMG_FLASH_WRITE_BYTE = CMD_WAIT_CMD;
-parameter command_t CMD_FLASH_PROGRAM = CMD_WAIT_CMD;
-parameter command_t CMD_CART_WRITE_FLASH_CMD = CMD_WAIT_CMD;
-parameter command_t CMD_CALC_CRC32 = CMD_WAIT_CMD;
-parameter command_t CMD_SET_PIN = CMD_WAIT_CMD;
+parameter command_t CMD_NOT_IMPLEMENTED = CMD_INVALID;
+
+parameter command_t CMD_SET_FLASH_CMD = CMD_NOT_IMPLEMENTED;
+parameter command_t CMD_CLK_TOGGLE = CMD_NOT_IMPLEMENTED;
+parameter command_t CMD_GET_VARIABLE = CMD_NOT_IMPLEMENTED;
+parameter command_t CMD_GET_VAR_STATE = CMD_NOT_IMPLEMENTED;
+parameter command_t CMD_SET_VAR_STATE = CMD_NOT_IMPLEMENTED;
+parameter command_t CMD_DMG_CART_READ = CMD_NOT_IMPLEMENTED;
+parameter command_t CMD_DMG_CART_WRITE = CMD_NOT_IMPLEMENTED;
+parameter command_t CMD_DMG_CART_WRITE_SRAM = CMD_NOT_IMPLEMENTED;
+parameter command_t CMD_DMG_MBC_RESET = CMD_NOT_IMPLEMENTED;
+parameter command_t CMD_DMG_SET_BANK_CHANGE_CMD = CMD_NOT_IMPLEMENTED;
+parameter command_t CMD_DMG_FLASH_WRITE_BYTE = CMD_NOT_IMPLEMENTED;
+parameter command_t CMD_FLASH_PROGRAM = CMD_NOT_IMPLEMENTED;
+parameter command_t CMD_CART_WRITE_FLASH_CMD = CMD_NOT_IMPLEMENTED;
+parameter command_t CMD_CALC_CRC32 = CMD_NOT_IMPLEMENTED;
+parameter command_t CMD_SET_PIN = CMD_NOT_IMPLEMENTED;
 
 parameter command_t CMD_DISABLE_PULLUPS = CMD_STUB_NOOP_ACK;
 parameter command_t CMD_SET_MODE_DMG = CMD_STUB_NOOP_ACK;

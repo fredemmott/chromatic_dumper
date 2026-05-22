@@ -152,7 +152,7 @@ command_t cmd_rom [0:255];
 integer i;
 initial begin
     for (i = 0; i < 256; i++) begin
-        cmd_rom[i] = CMD_WAIT_CMD;
+        cmd_rom[i] = CMD_INVALID;
     end
 
     // Must match `DEVICE_CMD` in `LK_Device.py`
@@ -178,7 +178,7 @@ initial begin
     cmd_rom[8'hD5] = CMD_CALC_CRC32;
     cmd_rom[8'hF5] = CMD_SET_PIN;
 end
-command_t command = CMD_INIT;
+command_t command = CMD_INVALID;
 
 wire cmd_query_fw_info_complete;
 wire cmd_query_fw_info_tx_valid;
@@ -215,23 +215,62 @@ end
 
 reg complete;
 always @(*) begin
+    complete = 1'b1;
     unique case (command)
         CMD_QUERY_FW_INFO: complete = cmd_query_fw_info_complete;
         CMD_SET_VARIABLE: complete = cmd_set_variable_complete;
-        // Single-cycle:
-        CMD_INIT,
-        CMD_STUB_NOOP_ACK,
-        CMD_SET_VOLTAGE_5V,
-        CMD_SET_ADDR_AS_INPUTS,
-        // Special:
-        CMD_WAIT_CMD: complete = 1'b1;
-        // If we missed something or got invalid state (e.g. on powerup),
-        // mark as complete so we go back to CMD_WAIT_CMD
-        //
-        // Worst case, the client will realize something's wrong when
-        // waiting for an ack times out
-        default: complete = 1'b1;
+        // Single-cycle and invalid
+        default: ;
     endcase
+end
+
+reg exec_tx_valid;
+reg [7:0] exec_tx_data;
+always @(*) begin
+    exec_tx_valid = 1'b0;
+    exec_tx_data = 8'd0;
+
+    unique case (command)
+        CMD_SET_ADDR_AS_INPUTS,
+        CMD_SET_VARIABLE,
+        CMD_SET_VOLTAGE_5V,
+        CMD_STUB_NOOP_ACK: begin
+            exec_tx_valid = complete;
+            exec_tx_data = 8'd1;
+        end
+        CMD_QUERY_FW_INFO: begin
+            exec_tx_valid = cmd_query_fw_info_tx_valid;
+            exec_tx_data = cmd_query_fw_info_tx_data;
+        end
+        default: ;
+    endcase
+end
+
+enum {
+    S_RESET,
+    S_INIT,
+    S_IDLE,
+    S_EXEC
+} state = S_INIT;
+
+always @(posedge clk) begin
+    if (reset_r) begin
+        state <= S_RESET;
+        command <= CMD_INVALID;
+    end else begin
+        unique case (state)
+            S_RESET: state <= S_INIT;
+            S_INIT: state <= S_IDLE;
+            S_IDLE: if (rx_valid) begin
+                command <= cmd_rom[rx_data];
+                state <= S_EXEC;
+            end
+            S_EXEC: if (complete) begin
+                state <= S_IDLE;
+                command <= CMD_INVALID;
+            end
+        endcase
+    end
 end
 
 reg next_tx_valid;
@@ -239,42 +278,23 @@ reg [7:0] next_tx_data;
 always @(*) begin
     next_tx_valid = 1'b0;
     next_tx_data = 8'd0;
-
-    if (!reset_r) begin
-        unique case (command)
-            CMD_INIT: begin
-                next_tx_valid = 1'b1;
-                next_tx_data = 8'hFF;
-            end
-            CMD_WAIT_CMD: ;
-            CMD_SET_ADDR_AS_INPUTS,
-            CMD_SET_VARIABLE,
-            CMD_SET_VOLTAGE_5V,
-            CMD_STUB_NOOP_ACK: begin
-                next_tx_valid = complete;
-                next_tx_data = 8'd1;
-            end
-            CMD_QUERY_FW_INFO: begin
-                next_tx_valid = cmd_query_fw_info_tx_valid;
-                next_tx_data = cmd_query_fw_info_tx_data;
-            end
-            default: ;
-        endcase
-    end
+    unique case (state)
+        S_RESET, S_IDLE: ;
+        S_INIT: begin
+            next_tx_valid = 1'b1;
+            next_tx_data = 8'hFF;
+        end
+        S_EXEC: begin
+            next_tx_valid = exec_tx_valid;
+            next_tx_data = exec_tx_data;
+        end
+    endcase
 end
 
 always @(posedge clk) begin
     tx_valid <= next_tx_valid;
     tx_data <= next_tx_data;
  end
-
-always @(posedge clk) begin
-    if (reset_r) begin
-        command <= CMD_INIT;
-    end else if (complete) begin
-        command <= (command == CMD_WAIT_CMD) ? cmd_rom[rx_data] : CMD_WAIT_CMD;
-    end
-end
 
 always @(posedge clk) begin
     if (reset_r) vars <= '{default: 0};
