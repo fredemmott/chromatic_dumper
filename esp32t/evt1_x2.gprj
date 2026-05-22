@@ -69,6 +69,8 @@
         <File path="src/rtl/lk/lk_top.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/lk/lk_types.sv" type="file.verilog" enable="1"/>
         <File path="src/rtl/lk/lk_var_ids.v" type="file.verilog" enable="1"/>
+        <File path="src/rtl/lk/serial_mux/lk_mcu_observer.v" type="file.verilog" enable="1"/>
+        <File path="src/rtl/lk/serial_mux/lk_serial_id.v" type="file.verilog" enable="1"/>
         <File path="src/top.v" type="file.verilog" enable="1"/>
         <File path="src/Gameboy_MiSTer/rtl/T80/T80_ALU.vhd" type="file.vhdl" enable="1"/>
         <File path="src/Gameboy_MiSTer/rtl/T80/T80_Pack.vhd" type="file.vhdl" enable="1"/>
