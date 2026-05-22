@@ -269,6 +269,7 @@ always @(posedge clk) begin
                 state <= S_IDLE;
                 command <= CMD_INVALID;
             end
+            default: ;
         endcase
     end
 end
@@ -288,6 +289,7 @@ always @(*) begin
             next_tx_valid = exec_tx_valid;
             next_tx_data = exec_tx_data;
         end
+        default: ;
     endcase
 end
 
