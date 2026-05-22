@@ -16,6 +16,13 @@ reg [7:0] var_size;
 var_id_t  var_id;
 reg [15:0] var_value;
 
+reg rx_valid_r;
+reg [7:0] rx_data_r;
+always @(posedge clk) begin
+    rx_valid_r <= rx_valid;
+    rx_data_r <= rx_data;
+end
+
 always @(posedge clk) begin
     if (reset) begin
         vars_out <= '{default: 0};
@@ -41,17 +48,17 @@ always @(posedge clk) begin
     if (reset) begin
         complete <= 1'b0;
         idx <= 0;
-    end else if (rx_valid) begin
+    end else if (rx_valid_r) begin
         // byte [0]      size
         //      [1..4]   key (first 3 bytes unused)
         //      [5..8]   value (first 2 bytes unused)
         idx <= idx + 1'b1;
         unique case (idx)
             0: var_size <= rx_data;
-            4: var_id <= make_var16_id(var_size, rx_data);
-            7: var_value[15:8] <= rx_data;
+            4: var_id <= make_var16_id(var_size, rx_data_r);
+            7: var_value[15:8] <= rx_data_r;
             8: begin
-                var_value[7:0] <= rx_data;
+                var_value[7:0] <= rx_data_r;
                 complete <= 1'b1;
             end
             default: ;

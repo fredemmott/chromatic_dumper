@@ -203,6 +203,25 @@ lk_cmd_set_variable_t cmd_set_variable_info(
     cmd_set_variable_vars_out
 );
 
+wire cmd_set_pin_complete;
+cart_pins_t stable_cart_pins;
+cart_pins_t cmd_set_pin_complete_out;
+lk_cmd_set_pin_t cmd_set_pin(
+    clk,
+    ~(command == CMD_SET_PIN),
+    cmd_set_pin_complete,
+    rx_valid,
+    rx_data,
+    stable_cart_pins,
+    cmd_set_pin_complete_out);
+always @(posedge clk) begin
+    if (reset) begin
+        stable_cart_pins <= '{default: 0};
+    end else begin
+        if (cmd_set_pin_complete) stable_cart_pins <= cmd_set_pin_complete_out;
+    end
+end
+
 always @(posedge clk) begin
     if (reset_r) begin
         cart_enabled <= 1'b0;
@@ -219,6 +238,7 @@ always @(*) begin
     unique case (command)
         CMD_QUERY_FW_INFO: complete = cmd_query_fw_info_complete;
         CMD_SET_VARIABLE: complete = cmd_set_variable_complete;
+        CMD_SET_PIN: complete = cmd_set_pin_complete;
         // Single-cycle and invalid
         default: ;
     endcase
@@ -232,6 +252,7 @@ always @(*) begin
 
     unique case (command)
         CMD_SET_ADDR_AS_INPUTS,
+        CMD_SET_PIN,
         CMD_SET_VARIABLE,
         CMD_SET_VOLTAGE_5V,
         CMD_STUB_NOOP_ACK: begin
