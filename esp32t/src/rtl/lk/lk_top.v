@@ -176,7 +176,7 @@ lk_cmd_set_pin_t SET_PIN(
     cart_idle_pins,
     SET_PIN_pins);
 always @(posedge clk) begin
-    if (reset) begin
+    if (reset_r) begin
         cart_idle_pins <= '{
             address: 16'hFFFF,
             clk: 1'b1,
