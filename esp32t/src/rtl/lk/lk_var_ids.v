@@ -1,6 +1,10 @@
 package lk_var_ids;
 
-function [9:0] make_var16_id(
+typedef reg[9:0] var_id_t;
+
+localparam var_id_t VAR_ID_INVALID = ~10'b0;
+
+function var_id_t make_var16_id(
     input [7:0] size,
     input [7:0] key
 );
@@ -13,8 +17,6 @@ function [9:0] make_var16_id(
         make_var16_id = {~size[2:1], key[7:0]};
     end
 endfunction
-
-typedef reg[9:0] var_id_t;
 
 localparam VAR_ID_ADDRESS = make_var16_id(8'd4, 8'h00);
 localparam VAR_ID_TRANSFER_SIZE = make_var16_id(8'd2, 8'h00);
