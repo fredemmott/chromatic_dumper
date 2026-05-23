@@ -2,7 +2,7 @@ import lk_types::*;
 
 module lk_cmd_set_pin_t(
     input  wire        clk,
-    input  wire        reset,
+    input  wire        enable,
     output reg         complete,
     input  wire        rx_valid,
     input  wire [7:0]  rx_data,
@@ -32,7 +32,7 @@ end
 
 always @(posedge clk) begin
     complete <= 0;
-    if (reset) begin
+    if (!enable) begin
         idx <= 3'd0;
     end else if (rx_valid_r) begin
         idx <= idx + 1'b1;

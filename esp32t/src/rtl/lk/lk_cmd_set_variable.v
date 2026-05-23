@@ -3,7 +3,7 @@ import lk_var_ids::*;
 
 module lk_cmd_set_variable_t(
     input  wire       clk,
-    input  wire       reset,
+    input  wire       enable,
     output reg        complete,
     input  wire       rx_valid,
     input  wire [7:0] rx_data,
@@ -24,7 +24,7 @@ always @(posedge clk) begin
 end
 
 always @(posedge clk) begin
-    if (reset) begin
+    if (!enable) begin
         vars_out <= '{default: 0};
     end else begin
         vars_out <= vars_in;
@@ -45,7 +45,7 @@ always @(posedge clk) begin
 end
 
 always @(posedge clk) begin
-    if (reset) begin
+    if (!enable) begin
         complete <= 1'b0;
         idx <= 0;
     end else if (rx_valid_r) begin

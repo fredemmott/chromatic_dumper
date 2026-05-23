@@ -185,7 +185,7 @@ wire cmd_query_fw_info_tx_valid;
 wire [7:0] cmd_query_fw_info_tx_data;
 lk_cmd_query_fw_info_t cmd_query_fw_info(
     clk,
-    ~(command == CMD_QUERY_FW_INFO),
+    (command == CMD_QUERY_FW_INFO),
     cmd_query_fw_info_complete,
     cmd_query_fw_info_tx_valid,
     cmd_query_fw_info_tx_data
@@ -195,7 +195,7 @@ wire cmd_set_variable_complete;
 vars_t cmd_set_variable_vars_out;
 lk_cmd_set_variable_t cmd_set_variable_info(
     clk,
-    ~(command == CMD_SET_VARIABLE),
+    (command == CMD_SET_VARIABLE),
     cmd_set_variable_complete,
     rx_valid,
     rx_data,
@@ -208,7 +208,7 @@ cart_pins_t stable_cart_pins;
 cart_pins_t cmd_set_pin_complete_out;
 lk_cmd_set_pin_t cmd_set_pin(
     clk,
-    ~(command == CMD_SET_PIN),
+    (command == CMD_SET_PIN),
     cmd_set_pin_complete,
     rx_valid,
     rx_data,

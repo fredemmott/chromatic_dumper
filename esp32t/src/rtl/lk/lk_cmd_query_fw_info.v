@@ -2,7 +2,7 @@ import lk_types::*;
 
 module lk_cmd_query_fw_info_t(
     input wire clk,
-    input wire reset,
+    input wire enable,
     output reg complete,
     output reg tx_valid,
     output reg [7:0] tx_data
@@ -37,7 +37,7 @@ module lk_cmd_query_fw_info_t(
 
     always @(posedge clk) begin
         tx_valid <= 0;
-        if (reset) begin
+        if (!enable) begin
             idx <= 0;
             complete <= 0;
         end else if (idx < ROM_LEN) begin
