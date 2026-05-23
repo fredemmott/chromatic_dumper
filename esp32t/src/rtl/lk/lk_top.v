@@ -180,45 +180,45 @@ initial begin
 end
 command_t command = CMD_INVALID;
 
-wire cmd_query_fw_info_complete;
-wire cmd_query_fw_info_tx_valid;
-wire [7:0] cmd_query_fw_info_tx_data;
-lk_cmd_query_fw_info_t cmd_query_fw_info(
+wire QUERY_FW_INFO_complete;
+wire QUERY_FW_INFO_tx_valid;
+wire [7:0] QUERY_FW_INFO_tx_data;
+lk_cmd_query_fw_info_t QUERY_FW_INFO(
     clk,
     (command == CMD_QUERY_FW_INFO),
-    cmd_query_fw_info_complete,
-    cmd_query_fw_info_tx_valid,
-    cmd_query_fw_info_tx_data
+    QUERY_FW_INFO_complete,
+    QUERY_FW_INFO_tx_valid,
+    QUERY_FW_INFO_tx_data
 );
 
-wire cmd_set_variable_complete;
-vars_t cmd_set_variable_vars_out;
-lk_cmd_set_variable_t cmd_set_variable_info(
+wire SET_VARIABLE_complete;
+vars_t SET_VARIABLE_vars_out;
+lk_cmd_set_variable_t SET_VARIABLE_info(
     clk,
     (command == CMD_SET_VARIABLE),
-    cmd_set_variable_complete,
+    SET_VARIABLE_complete,
     rx_valid,
     rx_data,
     vars,
-    cmd_set_variable_vars_out
+    SET_VARIABLE_vars_out
 );
 
-wire cmd_set_pin_complete;
+wire SET_PIN_complete;
 cart_pins_t stable_cart_pins;
-cart_pins_t cmd_set_pin_complete_out;
-lk_cmd_set_pin_t cmd_set_pin(
+cart_pins_t SET_PIN_complete_out;
+lk_cmd_set_pin_t SET_PIN(
     clk,
     (command == CMD_SET_PIN),
-    cmd_set_pin_complete,
+    SET_PIN_complete,
     rx_valid,
     rx_data,
     stable_cart_pins,
-    cmd_set_pin_complete_out);
+    SET_PIN_complete_out);
 always @(posedge clk) begin
     if (reset) begin
         stable_cart_pins <= '{default: 0};
     end else begin
-        if (cmd_set_pin_complete) stable_cart_pins <= cmd_set_pin_complete_out;
+        if (SET_PIN_complete) stable_cart_pins <= SET_PIN_complete_out;
     end
 end
 
@@ -236,9 +236,9 @@ reg complete;
 always @(*) begin
     complete = 1'b1;
     unique case (command)
-        CMD_QUERY_FW_INFO: complete = cmd_query_fw_info_complete;
-        CMD_SET_VARIABLE: complete = cmd_set_variable_complete;
-        CMD_SET_PIN: complete = cmd_set_pin_complete;
+        CMD_QUERY_FW_INFO: complete = QUERY_FW_INFO_complete;
+        CMD_SET_VARIABLE: complete = SET_VARIABLE_complete;
+        CMD_SET_PIN: complete = SET_PIN_complete;
         // Single-cycle and invalid
         default: ;
     endcase
@@ -260,8 +260,8 @@ always @(*) begin
             exec_tx_data = 8'd1;
         end
         CMD_QUERY_FW_INFO: begin
-            exec_tx_valid = cmd_query_fw_info_tx_valid;
-            exec_tx_data = cmd_query_fw_info_tx_data;
+            exec_tx_valid = QUERY_FW_INFO_tx_valid;
+            exec_tx_data = QUERY_FW_INFO_tx_data;
         end
         default: ;
     endcase
@@ -321,7 +321,7 @@ always @(posedge clk) begin
 
 always @(posedge clk) begin
     if (reset_r) vars <= '{default: 0};
-    else if (cmd_set_variable_complete) vars <= cmd_set_variable_vars_out;
+    else if (SET_VARIABLE_complete) vars <= SET_VARIABLE_vars_out;
 end
 
 endmodule // cart_reader
