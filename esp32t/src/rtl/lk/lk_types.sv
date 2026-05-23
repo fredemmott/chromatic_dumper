@@ -7,7 +7,8 @@ typedef enum {
     CMD_SET_VARIABLE,
     CMD_SET_VOLTAGE_5V,
     CMD_SET_ADDR_AS_INPUTS,
-    CMD_SET_PIN/*,
+    CMD_SET_PIN,
+    CMD_DMG_MBC_RESET/*,
     CMD_SET_FLASH_CMD,
     CMD_CLK_TOGGLE,
     CMD_GET_VARIABLE,
@@ -35,7 +36,6 @@ parameter command_t CMD_SET_VAR_STATE = CMD_NOT_IMPLEMENTED;
 parameter command_t CMD_DMG_CART_READ = CMD_NOT_IMPLEMENTED;
 parameter command_t CMD_DMG_CART_WRITE = CMD_NOT_IMPLEMENTED;
 parameter command_t CMD_DMG_CART_WRITE_SRAM = CMD_NOT_IMPLEMENTED;
-parameter command_t CMD_DMG_MBC_RESET = CMD_NOT_IMPLEMENTED;
 parameter command_t CMD_DMG_SET_BANK_CHANGE_CMD = CMD_NOT_IMPLEMENTED;
 parameter command_t CMD_DMG_FLASH_WRITE_BYTE = CMD_NOT_IMPLEMENTED;
 parameter command_t CMD_FLASH_PROGRAM = CMD_NOT_IMPLEMENTED;
@@ -61,7 +61,7 @@ typedef struct packed {
     logic is_write;
     logic [15:0] address;
     logic [7:0] data;
-} cart_out_t;
+} cart_req_t;
 
 typedef struct packed {
     logic audio;

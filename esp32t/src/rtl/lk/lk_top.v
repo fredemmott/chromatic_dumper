@@ -150,6 +150,9 @@ vars_t vars = '{default: 0};
 
 command_t command = CMD_INVALID;
 
+reg cart_complete;
+assign cart_complete = 1;
+
 wire QUERY_FW_INFO_complete;
 wire QUERY_FW_INFO_tx_valid;
 wire [7:0] QUERY_FW_INFO_tx_data;
@@ -192,6 +195,17 @@ always @(posedge clk) begin
     end
 end
 
+reg DMG_MBC_RESET_complete;
+cart_req_t DMG_MBC_RESET_cart_req;
+lk_cmd_dmg_mbc_reset_t cmd_dmg_mbc_reset(
+    clk,
+    (command == CMD_DMG_MBC_RESET),
+    DMG_MBC_RESET_complete,
+    DMG_MBC_RESET_cart_req,
+    cart_complete
+);
+
+
 always @(posedge clk) begin
     if (reset_r) begin
         cart_enabled <= 1'b0;
@@ -209,6 +223,7 @@ always @(*) begin
         CMD_QUERY_FW_INFO: complete = QUERY_FW_INFO_complete;
         CMD_SET_VARIABLE: complete = SET_VARIABLE_complete;
         CMD_SET_PIN: complete = SET_PIN_complete;
+        CMD_DMG_MBC_RESET: complete = DMG_MBC_RESET_complete;
         // Single-cycle and invalid
         default: ;
     endcase
@@ -221,6 +236,7 @@ always @(*) begin
     exec_tx_data = 8'd0;
 
     unique case (command)
+        CMD_DMG_MBC_RESET,
         CMD_SET_ADDR_AS_INPUTS,
         CMD_SET_PIN,
         CMD_SET_VARIABLE,

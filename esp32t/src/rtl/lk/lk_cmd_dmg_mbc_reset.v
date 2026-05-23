@@ -1,11 +1,10 @@
-// Send an ack when complete
+import lk_types::*;
+
 module lk_cmd_dmg_mbc_reset_t(
     input wire clk,
-    input wire en,
-    output wire complete,
-    output reg [15:0] cart_a,
-    output reg [7:0] cart_d_out,
-    output reg cart_req,
+    input wire enable,
+    output reg complete,
+    output cart_req_t cart_req,
     input reg cart_complete
 );
     // Thanks to the gbdev.io pandocs: https://gbdev.io/pandocs/MBCs.html
@@ -32,47 +31,67 @@ module lk_cmd_dmg_mbc_reset_t(
         S_COMPLETE
     } state_t;
     localparam state_t S_INIT = S_RAM_DISABLE;
-    state_t state = S_INIT;
-    // Used for S_CART_WAIT
-    state_t state_on_cart_complete = S_COMPLETE;
-    assign complete = (state == S_COMPLETE);
+    state_t state;
 
-    initial begin
-        cart_req = 0;
+    function cart_req_t make_req(input [15:0] address, input [7:0] data);
+        return '{
+            valid: 1'b1,
+            is_write: 1'b1,
+            address: address,
+            data: data
+        };
+    endfunction
+
+    always @(*) begin
+        cart_req = '{default: 0};
+        unique case (state)
+            S_RAM_DISABLE: cart_req = make_req(16'h0000, 8'd0);
+            S_ROM_BANK_SEL_LOW: cart_req = make_req(16'h2000, 8'd1);
+            S_ROM_BANK_SEL_HIGH: cart_req = make_req(16'h3000, 8'd0);
+            S_RAM_BANK_SEL: cart_req = make_req(16'h4000, 8'd0);
+            S_BANK_MODE_SEL: cart_req = make_req(16'h6000, 8'd0);
+            default: ;
+        endcase
     end
 
-    task start_write(
-        reg [15:0] address,
-        reg [7:0] data,
-        state_t next
-    );
-        begin
-            cart_a <= address;
-            cart_d_out <= data;
-            cart_req <= 1;
-            state <= S_CART_WAIT;
-            state_on_cart_complete <= next;
-        end
-    endtask
-
-    always @(posedge clk) begin
-        cart_req <= 1'b0;
-        if (!en) begin
-            cart_a <= 16'd0;
-            cart_d_out <= 8'd0;
-            state <= S_INIT;
-            state_on_cart_complete <= S_COMPLETE;
+    state_t state_next;
+    // Used for S_CART_WAIT
+    state_t state_on_cart_complete = S_COMPLETE;
+    always @(*) begin
+        complete = 1'b0;
+        state_next = state;
+        state_on_cart_complete = S_COMPLETE;
+        if (!enable) begin
+            state_next = S_INIT;
         end else begin
-            case(state)
-                S_RAM_DISABLE: start_write(16'h0000, 8'd0, S_ROM_BANK_SEL_LOW);
-                S_ROM_BANK_SEL_LOW: start_write(16'h2000, 8'd1, S_ROM_BANK_SEL_HIGH);
-                S_ROM_BANK_SEL_HIGH: start_write(16'h3000, 8'd0, S_RAM_BANK_SEL);
-                S_RAM_BANK_SEL: start_write(16'h4000, 8'd0, S_BANK_MODE_SEL);
-                S_BANK_MODE_SEL: start_write(16'h6000, 8'd0, S_COMPLETE);
-                S_CART_WAIT: if (cart_complete) state <= state_on_cart_complete;
-                S_COMPLETE: ;
-                default: state <= S_COMPLETE;
+            unique case(state)
+                S_RAM_DISABLE: begin
+                    state_next = S_CART_WAIT;
+                    state_on_cart_complete = S_ROM_BANK_SEL_LOW;
+                end
+                S_ROM_BANK_SEL_LOW: begin
+                    state_next = S_CART_WAIT;
+                    state_on_cart_complete = S_ROM_BANK_SEL_HIGH;
+                end
+                S_ROM_BANK_SEL_HIGH: begin
+                    state_next = S_CART_WAIT;
+                    state_on_cart_complete = S_RAM_BANK_SEL;
+                end
+                S_RAM_BANK_SEL: begin
+                    state_next = S_CART_WAIT;
+                    state_on_cart_complete = S_BANK_MODE_SEL;
+                end
+                S_BANK_MODE_SEL: begin
+                    state_next = S_CART_WAIT;
+                    state_on_cart_complete = S_COMPLETE;
+                end
+                S_CART_WAIT: begin
+                    if (cart_complete) state_next = state_on_cart_complete;
+                end
+                S_COMPLETE: complete = 1;
+                default: ;
             endcase
         end
     end
+    always @(posedge clk) state <= state_next;
 endmodule
