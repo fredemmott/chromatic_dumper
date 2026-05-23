@@ -79,17 +79,6 @@ module lk_top #(
 reg reset_r = 1;
 always @(posedge clk) reset_r <= reset;
 
-// stubs while refactor WIP
-assign cart_a = 16'd0;
-assign cart_clk = 1'b0;
-assign cart_cs = 1'b0;
-assign cart_rd = 1'b0;
-assign cart_wr = 1'b0;
-assign cart_rst = 1'b0;
-assign cart_data_dir_e = 1'b1; // read
-assign cart_d_out = 7'd0;
-assign cart_audio = 1'd0;
-
 // USB data is on PHY_CLKOUT
 // Cartridge pins and all logic in top.v is on xClk instead, or derived clocks like pClk
 // Using xClk as this module's native clock as:
@@ -150,8 +139,7 @@ vars_t vars = '{default: 0};
 
 command_t command = CMD_INVALID;
 
-reg cart_complete;
-assign cart_complete = 1;
+reg cart_complete_r;
 
 wire QUERY_FW_INFO_complete;
 wire QUERY_FW_INFO_tx_valid;
@@ -177,21 +165,31 @@ lk_cmd_set_variable_t SET_VARIABLE_info(
 );
 
 wire SET_PIN_complete;
-cart_pins_t stable_cart_pins;
-cart_pins_t SET_PIN_complete_out;
+cart_pins_t cart_idle_pins;
+cart_pins_t SET_PIN_pins;
 lk_cmd_set_pin_t SET_PIN(
     clk,
     (command == CMD_SET_PIN),
     SET_PIN_complete,
     rx_valid,
     rx_data,
-    stable_cart_pins,
-    SET_PIN_complete_out);
+    cart_idle_pins,
+    SET_PIN_pins);
 always @(posedge clk) begin
     if (reset) begin
-        stable_cart_pins <= '{default: 0};
+        cart_idle_pins <= '{
+            address: 16'hFFFF,
+            clk: 1'b1,
+            cs: 1'b1,
+            rd: 1'b1,
+            wr: 1'b1,
+            rst: 1'b1,
+            data_dir_e: 1'b1, // is read
+            data: 8'd0,
+            audio: 1'b0
+        };
     end else begin
-        if (SET_PIN_complete) stable_cart_pins <= SET_PIN_complete_out;
+        if (SET_PIN_complete) cart_idle_pins <= SET_PIN_pins;
     end
 end
 
@@ -202,9 +200,8 @@ lk_cmd_dmg_mbc_reset_t cmd_dmg_mbc_reset(
     (command == CMD_DMG_MBC_RESET),
     DMG_MBC_RESET_complete,
     DMG_MBC_RESET_cart_req,
-    cart_complete
+    cart_complete_r
 );
-
 
 always @(posedge clk) begin
     if (reset_r) begin
@@ -215,6 +212,32 @@ always @(posedge clk) begin
         cart_enabled <= 1'b0;
     end
 end
+
+cart_req_t cart_req;
+assign cart_req = (command == CMD_DMG_MBC_RESET) ? DMG_MBC_RESET_cart_req : '{default: 0};
+cart_pins_t cart;
+reg cart_complete;
+lk_cart_t cart_executor(
+    clk,
+    reset_r,
+    cart_req,
+    cart_complete,
+    cart_idle_pins,
+    cart,
+    vars.flash_we_pin,
+    vars.dmg_read_cs_pulse,
+    vars.dmg_write_cs_pulse
+);
+always @(posedge clk) cart_complete_r <= cart_complete;
+assign cart_a = cart.address;
+assign cart_clk = cart.clk;
+assign cart_cs = cart.cs;
+assign cart_rd = cart.rd;
+assign cart_wr = cart.wr;
+assign cart_rst = cart.rst;
+assign cart_data_dir_e = cart.data_dir_e;
+assign cart_d_out = cart.data;
+assign cart_audio = cart.audio;
 
 reg complete;
 always @(*) begin

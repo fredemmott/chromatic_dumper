@@ -35,7 +35,8 @@ module lk_cmd_dmg_mbc_reset_t(
 
     function cart_req_t make_req(input [15:0] address, input [7:0] data);
         return '{
-            valid: 1'b1,
+            is_valid: 1'b1,
+            is_flash: 1'b0,
             is_write: 1'b1,
             address: address,
             data: data
@@ -58,7 +59,6 @@ module lk_cmd_dmg_mbc_reset_t(
     // Used for S_CART_WAIT
     state_t state_on_cart_complete = S_COMPLETE;
     always @(*) begin
-        complete = 1'b0;
         state_next = state;
         state_on_cart_complete = S_COMPLETE;
         if (!enable) begin
@@ -88,10 +88,13 @@ module lk_cmd_dmg_mbc_reset_t(
                 S_CART_WAIT: begin
                     if (cart_complete) state_next = state_on_cart_complete;
                 end
-                S_COMPLETE: complete = 1;
+                S_COMPLETE: ;
                 default: ;
             endcase
         end
     end
-    always @(posedge clk) state <= state_next;
+    always @(posedge clk) begin
+        state <= state_next;
+        complete <= (state == S_COMPLETE);
+    end
 endmodule

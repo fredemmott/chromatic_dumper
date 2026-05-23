@@ -25,9 +25,9 @@ reg [31:0] pin_bits;
 reg [2:0] idx;
 reg value;
 
-always @(*) begin
-    pins_out = pins_in;
-    if (pin_bits[PIN_BIT_AUDIO]) pins_out.audio = value;
+always @(posedge clk) begin
+    pins_out <= pins_in;
+    if (pin_bits[PIN_BIT_AUDIO]) pins_out.audio <= value;
 end
 
 always @(posedge clk) begin
@@ -40,13 +40,10 @@ always @(posedge clk) begin
         //      [4]     value (1 or 0)
         unique case (idx)
             2, 3: pin_bits <= { pin_bits[7:0], rx_data_r };
-            4: begin
-                value <= rx_data[0];
-                complete <= 1'b1;
-            end
+            4: value <= rx_data[0];
             default: ;
         endcase
-    end
+    end else if (idx >= 4) complete <= 1'b1;
 end
 
 endmodule

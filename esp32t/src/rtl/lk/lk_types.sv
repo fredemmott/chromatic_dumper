@@ -55,16 +55,28 @@ typedef struct {
     logic        dmg_read_cs_pulse;
     logic        dmg_write_cs_pulse;
 } vars_t;
+localparam FLASH_WE_PIN_WR = 2'd1;
+localparam FLASH_WE_PIN_AUDIO  = 2'd2;
+localparam FLASH_WE_PIN_WR_AND_RESET = 2'd3;
 
 typedef struct {
-    logic valid;
-    logic is_write;
+    logic        is_valid;
+    logic        is_flash;
+    logic        is_write;
     logic [15:0] address;
-    logic [7:0] data;
+    logic [7:0]  data;
 } cart_req_t;
 
 typedef struct {
-    logic audio;
+    logic [15:0] address;
+    logic        clk;
+    logic        cs;
+    logic        rd;
+    logic        wr;
+    logic        rst;
+    logic        data_dir_e;
+    logic [7:0]  data;
+    logic        audio;
 } cart_pins_t;
 
 endpackage
