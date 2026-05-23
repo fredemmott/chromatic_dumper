@@ -45,7 +45,7 @@ parameter command_t CMD_CALC_CRC32 = CMD_NOT_IMPLEMENTED;
 parameter command_t CMD_DISABLE_PULLUPS = CMD_STUB_NOOP_ACK;
 parameter command_t CMD_SET_MODE_DMG = CMD_STUB_NOOP_ACK;
 
-typedef struct packed {
+typedef struct {
     logic [15:0] address;
     logic [15:0] transfer_size;
     logic [7:0]  status_register;
@@ -56,14 +56,14 @@ typedef struct packed {
     logic        dmg_write_cs_pulse;
 } vars_t;
 
-typedef struct packed {
+typedef struct {
     logic valid;
     logic is_write;
     logic [15:0] address;
     logic [7:0] data;
 } cart_req_t;
 
-typedef struct packed {
+typedef struct {
     logic audio;
 } cart_pins_t;
 
