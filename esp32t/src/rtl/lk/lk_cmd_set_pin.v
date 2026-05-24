@@ -2,12 +2,12 @@ import lk_types::*;
 
 module lk_cmd_set_pin_t(
     input  wire        clk,
+    input  wire        reset,
     input  wire        enable,
     output reg         complete,
     input  wire        rx_valid,
     input  wire [7:0]  rx_data,
-    input  cart_pins_t pins_in,
-    output cart_pins_t pins_out
+    output reg         pin_audio
 );
 
 // A full 30 different pins are defined in LK_Device::SetPin, but this is the only one
@@ -25,28 +25,35 @@ reg [31:0] pin_bits;
 reg [2:0] idx;
 reg value;
 
-cart_pins_t pins_out_next;
+reg pin_audio_next;
 always @(*) begin
-    pins_out_next = pins_in;
-    if (pin_bits[PIN_BIT_AUDIO]) pins_out_next.audio = value;
+    pin_audio_next = pin_audio;
+    if (pin_bits[PIN_BIT_AUDIO]) begin
+        pin_audio_next = value;
+    end
 end
-always @(posedge clk) pins_out <= pins_out_next;
+always @(posedge clk) pin_audio <= pin_audio_next;
 
 always @(posedge clk) begin
     if (!enable) begin
         idx <= 3'd0;
     end else if (rx_valid_r) begin
-        idx <= idx + 1'b1;
+        idx <= idx + 1'd1;
+    end
+end
+always @(posedge clk) complete <= (idx >= 3'd4);
+
+always @(posedge clk) begin
+    if (rx_valid_r) begin
         // byte [0..3]  bits
         //      [4]     value (1 or 0)
         unique case (idx)
-            2, 3: pin_bits <= { pin_bits[7:0], rx_data_r };
+            2: pin_bits[15:8] <= rx_data_r;
+            3: pin_bits[7:0] <= rx_data_r;
             4: value <= rx_data_r[0];
             default: ;
         endcase
     end
 end
-
-always @(posedge clk) complete <= (idx > 4);
 
 endmodule
