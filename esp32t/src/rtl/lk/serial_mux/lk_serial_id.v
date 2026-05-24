@@ -1,6 +1,6 @@
 module lk_serial_id_t(
     input clk,
-    input reset_n,
+    input enable,
     output reg complete,
     output reg tx_valid,
     output reg [7:0] tx_data
@@ -38,16 +38,19 @@ end
 reg [ROM_ADDR_WIDTH-1:0] idx;
 
 always @(posedge clk) begin
-    tx_valid <= 0;
-    if (~reset_n) begin
+    if (!enable) begin
         idx <= 0;
-        complete <= 0;
     end else if (idx < ROM_LEN) begin
-        idx <= idx + 1'b1;
-        tx_valid <= 1;
-        tx_data <= rom[idx];
-        complete <= idx == (ROM_LEN - 1);
+        idx <= idx + 1;
     end
+end
+
+always @(posedge clk) complete <= (enable && (idx == (ROM_LEN - 1)));
+always @(posedge clk) tx_valid <= idx < ROM_LEN;
+
+always @(posedge clk) begin
+    tx_data <= 8'd0;
+    if (idx < ROM_LEN) tx_data <= rom[idx];
 end
 
 endmodule
