@@ -3,13 +3,25 @@ import lk_types::*;
 module lk_cart_t(
     input wire clk,
     input wire reset,
+
     input cart_req_t req,
     output reg req_complete,
-    input cart_pins_t idle_pins,
-    output cart_pins_t cart,
+
+    input wire hold_pin_audio,
+
     input wire [1:0] var_flash_we_pin,
     input wire var_dmg_read_cs_pulse,
-    input wire var_dmg_write_cs_pulse
+    input wire var_dmg_write_cs_pulse,
+
+    output reg [15:0] cart_a,
+    output reg        cart_clk,
+    output reg        cart_cs,
+    output reg        cart_rd,
+    output reg        cart_wr,
+    output reg        cart_rst,
+    output reg        cart_data_dir_e,
+    output reg [7:0]  cart_d_out,
+    output reg        cart_audio
 );
 
 typedef enum {
@@ -42,32 +54,61 @@ always @(posedge clk) begin
     endcase
 end
 
-cart_pins_t next_cart;
+reg [15:0] cart_next_a;
+reg        cart_next_clk;
+reg        cart_next_cs;
+reg        cart_next_rd;
+reg        cart_next_wr;
+reg        cart_next_rst;
+reg        cart_next_data_dir_e;
+reg [7:0]  cart_next_d_out;
+reg        cart_next_audio;
 always @(*) begin
-    next_cart = idle_pins;
+    cart_next_a = 16'hFFFF;
+    cart_next_clk = 1'b1;
+    cart_next_cs = 1'b1;
+    cart_next_rd = 1'b1;
+    cart_next_wr = 1'b1;
+    cart_next_rst = 1'b1;
+    cart_next_data_dir_e = 1'b1; // is read
+    cart_next_d_out = 8'd0;
+    cart_next_audio = hold_pin_audio;
+
     if (current_req.is_valid) begin
-        next_cart.address = current_req.address;
-        next_cart.data = current_req.data;
-        next_cart.data_dir_e = ~current_req.is_write;
+        cart_next_a = current_req.address;
+        cart_next_d_out = current_req.data;
+        cart_next_data_dir_e = ~current_req.is_write;
         if (current_req.is_flash && current_req.is_write) begin
-            next_cart.audio = (var_flash_we_pin == FLASH_WE_PIN_AUDIO);
-            next_cart.wr = (var_flash_we_pin == FLASH_WE_PIN_WR) || (var_flash_we_pin == FLASH_WE_PIN_WR_AND_RESET);
-            next_cart.rst = ~(var_flash_we_pin == FLASH_WE_PIN_WR_AND_RESET);
+            cart_next_audio = (var_flash_we_pin == FLASH_WE_PIN_AUDIO);
+            cart_next_wr = (var_flash_we_pin == FLASH_WE_PIN_WR) || (var_flash_we_pin == FLASH_WE_PIN_WR_AND_RESET);
+            cart_next_rst = ~(var_flash_we_pin == FLASH_WE_PIN_WR_AND_RESET);
         end
     end
 
     unique case (state)
         S_WAIT: begin
-            if (var_dmg_read_cs_pulse) next_cart.cs = ~idle_pins.cs;
-            next_cart.rd = ~idle_pins.rd;
+            if (var_dmg_read_cs_pulse) cart_next_cs = 1'b0;
+            cart_next_rd = 1'b0;
         end
         S_WR_LOW, S_WR_HOLD: begin
-            next_cart.clk = ~idle_pins.clk;
-            next_cart.wr = ~idle_pins.wr;
-            if (var_dmg_write_cs_pulse) next_cart.cs = ~idle_pins.cs;
+            cart_next_clk = 1'b0;
+            cart_next_wr = 1'b0;
+            if (var_dmg_write_cs_pulse) cart_next_cs = 1'b0;
         end
         default: ;
     endcase
+end
+
+always @(posedge clk) begin
+    cart_a <= cart_next_a;
+    cart_clk <= cart_next_clk;
+    cart_cs <= cart_next_cs;
+    cart_rd <= cart_next_rd;
+    cart_wr <= cart_next_wr;
+    cart_rst <= cart_next_rst;
+    cart_data_dir_e <= cart_next_data_dir_e;
+    cart_d_out <= cart_next_d_out;
+    cart_audio <= cart_next_audio;
 end
 
 // Number of clock cycles CS/RD is asserted before latching data.
@@ -86,7 +127,7 @@ always @(*) begin
         next_state = S_IDLE;
     end else begin
         unique case(state)
-            S_IDLE: if (req.is_valid) next_state = S_SETUP;
+            S_IDLE: if (current_req.is_valid) next_state = S_SETUP;
             S_SETUP: next_state = S_CSRD;
             S_CSRD: if (wait_cnt == 0) next_state = (current_req.is_write ? S_WR_LOW : S_WAIT);
             S_WAIT: if (wait_cnt == 0) next_state = S_DONE;
@@ -101,8 +142,7 @@ end
 
 always @(posedge clk) begin
     state <= next_state;
-    cart <= next_cart;
-    req_complete <= (state == S_DONE);
+    req_complete <= (next_state == S_DONE);
 
     if (!reset) begin
         unique case (state)

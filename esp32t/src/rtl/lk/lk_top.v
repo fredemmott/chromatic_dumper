@@ -108,33 +108,15 @@ lk_cmd_set_variable_t u_SET_VARIABLE(
 );
 
 wire SET_PIN_complete;
-cart_pins_t cart_idle_pins;
-cart_pins_t SET_PIN_pins;
+reg hold_pin_audio;
 lk_cmd_set_pin_t u_SET_PIN(
     clk,
+    reset_r,
     (command == CMD_SET_PIN),
     SET_PIN_complete,
     rx_valid,
     rx_data,
-    cart_idle_pins,
-    SET_PIN_pins);
-always @(posedge clk) begin
-    if (reset_r) begin
-        cart_idle_pins <= '{
-            address: 16'hFFFF,
-            clk: 1'b1,
-            cs: 1'b1,
-            rd: 1'b1,
-            wr: 1'b1,
-            rst: 1'b1,
-            data_dir_e: 1'b1, // is read
-            data: 8'd0,
-            audio: 1'b0
-        };
-    end else begin
-        if (SET_PIN_complete) cart_idle_pins <= SET_PIN_pins;
-    end
-end
+    hold_pin_audio);
 
 reg DMG_MBC_RESET_complete;
 cart_req_t DMG_MBC_RESET_cart_req;
@@ -163,23 +145,26 @@ reg cart_complete;
 lk_cart_t cart_executor(
     clk,
     reset_r,
+
     cart_req,
     cart_complete,
-    cart_idle_pins,
-    cart,
+
+    hold_pin_audio,
+
     vars.flash_we_pin,
     vars.dmg_read_cs_pulse,
-    vars.dmg_write_cs_pulse
+    vars.dmg_write_cs_pulse,
+
+    cart_a,
+    cart_clk,
+    cart_cs,
+    cart_rd,
+    cart_wr,
+    cart_rst,
+    cart_data_dir_e,
+    cart_d_out,
+    cart_audio
 );
-assign cart_a = cart.address;
-assign cart_clk = cart.clk;
-assign cart_cs = cart.cs;
-assign cart_rd = cart.rd;
-assign cart_wr = cart.wr;
-assign cart_rst = cart.rst;
-assign cart_data_dir_e = cart.data_dir_e;
-assign cart_d_out = cart.data;
-assign cart_audio = cart.audio;
 
 reg complete;
 always @(*) begin
