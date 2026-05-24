@@ -87,7 +87,7 @@ reg cart_complete_r;
 wire QUERY_FW_INFO_complete;
 wire QUERY_FW_INFO_tx_valid;
 wire [7:0] QUERY_FW_INFO_tx_data;
-lk_cmd_query_fw_info_t QUERY_FW_INFO(
+lk_cmd_query_fw_info_t u_QUERY_FW_INFO(
     clk,
     (command == CMD_QUERY_FW_INFO),
     QUERY_FW_INFO_complete,
@@ -97,7 +97,7 @@ lk_cmd_query_fw_info_t QUERY_FW_INFO(
 
 wire SET_VARIABLE_complete;
 vars_t SET_VARIABLE_vars_out;
-lk_cmd_set_variable_t SET_VARIABLE_info(
+lk_cmd_set_variable_t u_SET_VARIABLE(
     clk,
     (command == CMD_SET_VARIABLE),
     SET_VARIABLE_complete,
@@ -110,7 +110,7 @@ lk_cmd_set_variable_t SET_VARIABLE_info(
 wire SET_PIN_complete;
 cart_pins_t cart_idle_pins;
 cart_pins_t SET_PIN_pins;
-lk_cmd_set_pin_t SET_PIN(
+lk_cmd_set_pin_t u_SET_PIN(
     clk,
     (command == CMD_SET_PIN),
     SET_PIN_complete,
@@ -138,7 +138,7 @@ end
 
 reg DMG_MBC_RESET_complete;
 cart_req_t DMG_MBC_RESET_cart_req;
-lk_cmd_dmg_mbc_reset_t cmd_dmg_mbc_reset(
+lk_cmd_dmg_mbc_reset_t u_DMG_MBC_RESET(
     clk,
     (command == CMD_DMG_MBC_RESET),
     DMG_MBC_RESET_complete,
