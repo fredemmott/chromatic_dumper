@@ -37,7 +37,6 @@ always @(posedge clk) begin
         S_WR_LOW,
         S_WR_HOLD,
         S_WR_HIGH,
-        S_WAIT,
         S_DONE: /* leave it alone; will clear when we go to idle next cycle */ ;
         default: current_req <= '{default: 0};
     endcase
