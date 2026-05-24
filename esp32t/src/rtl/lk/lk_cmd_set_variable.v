@@ -23,27 +23,27 @@ always @(posedge clk) begin
     rx_data_r <= rx_data;
 end
 
+vars_t vars_out_next;
 always @(*) begin
-    vars_out = vars_in;
+    vars_out_next = vars_in;
     begin
         unique case (var_id)
-            VAR_ID_ADDRESS: vars_out.address = var_value;
-            VAR_ID_TRANSFER_SIZE: vars_out.transfer_size = var_value;
-            VAR_ID_STATUS_REGISTER: vars_out.status_register = var_value[7:0];
-            VAR_ID_CART_MODE: vars_out.cart_mode = var_value[7:0];
-            VAR_ID_DMG_ACCESS_MODE: vars_out.dmg_access_mode = var_value[7:0];
-            VAR_ID_FLASH_WE_PIN: vars_out.flash_we_pin = var_value[1:0];
-            VAR_ID_DMG_READ_CS_PULSE: vars_out.dmg_read_cs_pulse = var_value[0];
-            VAR_ID_DMG_WRITE_CS_PULSE: vars_out.dmg_write_cs_pulse = var_value[0];
+            VAR_ID_ADDRESS: vars_out_next.address = var_value;
+            VAR_ID_TRANSFER_SIZE: vars_out_next.transfer_size = var_value;
+            VAR_ID_STATUS_REGISTER: vars_out_next.status_register = var_value[7:0];
+            VAR_ID_CART_MODE: vars_out_next.cart_mode = var_value[7:0];
+            VAR_ID_DMG_ACCESS_MODE: vars_out_next.dmg_access_mode = var_value[7:0];
+            VAR_ID_FLASH_WE_PIN: vars_out_next.flash_we_pin = var_value[1:0];
+            VAR_ID_DMG_READ_CS_PULSE: vars_out_next.dmg_read_cs_pulse = var_value[0];
+            VAR_ID_DMG_WRITE_CS_PULSE: vars_out_next.dmg_write_cs_pulse = var_value[0];
             default: ;
         endcase
     end
 end
+always @(posedge clk) vars_out <= vars_out_next;
 
 always @(posedge clk) begin
     if (!enable) begin
-        var_id <= VAR_ID_INVALID;
-        complete <= 1'b0;
         idx <= 0;
     end else if (rx_valid_r) begin
         // byte [0]      size
@@ -51,16 +51,14 @@ always @(posedge clk) begin
         //      [5..8]   value (first 2 bytes unused)
         idx <= idx + 1'b1;
         unique case (idx)
-            0: var_size <= rx_data;
+            0: var_size <= rx_data_r;
             4: var_id <= make_var16_id(var_size, rx_data_r);
             7: var_value[15:8] <= rx_data_r;
-            8: begin
-                var_value[7:0] <= rx_data_r;
-                complete <= 1'b1;
-            end
+            8: var_value[7:0] <= rx_data_r;
             default: ;
         endcase
     end
 end
+always @(posedge clk) complete <= (idx >= 9);
 
 endmodule
