@@ -311,8 +311,12 @@ enum {
     S_RESET,
     S_INIT,
     S_IDLE,
+    S_DECODE,
     S_EXEC
 } state = S_INIT;
+
+command_t rx_command;
+always @(posedge clk) rx_command <= cmd_rom[rx_data];
 
 always @(posedge clk) begin
     if (reset_r) begin
@@ -322,8 +326,9 @@ always @(posedge clk) begin
         unique case (state)
             S_RESET: state <= S_INIT;
             S_INIT: state <= S_IDLE;
-            S_IDLE: if (rx_valid) begin
-                command <= cmd_rom[rx_data];
+            S_IDLE: if (rx_valid) state <= S_DECODE;
+            S_DECODE: begin
+                command <= rx_command;
                 state <= S_EXEC;
             end
             S_EXEC: if (complete) begin
@@ -341,7 +346,7 @@ always @(*) begin
     next_tx_valid = 1'b0;
     next_tx_data = 8'd0;
     unique case (state)
-        S_RESET, S_IDLE: ;
+        S_RESET, S_IDLE, S_DECODE: ;
         S_INIT: begin
             next_tx_valid = 1'b1;
             next_tx_data = 8'hFF;
