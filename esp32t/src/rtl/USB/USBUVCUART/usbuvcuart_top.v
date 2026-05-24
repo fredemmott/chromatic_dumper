@@ -13,6 +13,7 @@ module usbuvcuart_top(
     input               ERST,
     output              pClk,
     output              usblocked,
+    input               xClk,
     input               hClk,
     input               hLineValid,
     input               hEnable,
@@ -45,8 +46,8 @@ module usbuvcuart_top(
     input               lk_tx_dval,
     input[7:0]          lk_tx_data,
 
-    output              lk_rx_dval,
-    output[7:0]         lk_rx_data
+    output reg           lk_rx_dval,
+    output reg [7:0]     lk_rx_data
 );
 
     wire yLineValid;
@@ -970,11 +971,14 @@ module usbuvcuart_top(
 
     wire uart_cts = 1'b0;
 
+    `define EP3_CLOCK xClk
+    `define EP3_CLOCK_FREQ 30'd67_108_864
+
     UART  #(
-        .CLK_FREQ     (30'd60000000)  // set system clock frequency in Hz
+        .CLK_FREQ     (`EP3_CLOCK_FREQ)  // set system clock frequency in Hz
     )u_UART
     (
-         .CLK        (pClk                )// clock
+         .CLK        (`EP3_CLOCK          )// clock
         ,.RST        (usb_busreset | RESET_IN)// reset
         ,.UART_TXD   (UART_TXD            )//output
         ,.UART_RXD   (UART_RXD            )//input
@@ -1019,11 +1023,11 @@ module usbuvcuart_top(
         ,.o_usb_txlen   (uart_txdat_len )
         ,.o_usb_txdat   (uart_txdat )
         //Endpoint 3
-        ,.i_ep3_tx_clk  (pClk             )
+        ,.i_ep3_tx_clk  (`EP3_CLOCK       )
         ,.i_ep3_tx_max  (12'd64           )
         ,.i_ep3_tx_dval (ep3_tx_dval      )
         ,.i_ep3_tx_data (ep3_tx_data      )
-        ,.i_ep3_rx_clk  (pClk             )
+        ,.i_ep3_rx_clk  (`EP3_CLOCK       )
         ,.i_ep3_rx_rdy  (ep3_rx_rdy       )
         ,.o_ep3_rx_dval (ep3_rx_dval      )
         ,.o_ep3_rx_data (ep3_rx_data      )
@@ -1053,9 +1057,20 @@ module usbuvcuart_top(
 
     assign uart_tx_data_val = ep3_is_mcu ? ep3_rx_dval : 1'b0;
     assign uart_tx_data = ep3_is_mcu ? {8'd0, ep3_rx_data } : 16'd0;
-
-    assign lk_rx_dval = ep3_is_lk ? ep3_rx_dval : 1'b0;
-    assign lk_rx_data = ep3_is_lk ? ep3_rx_data : 8'd0;
+    reg lk_rx_dval_comb;
+    reg [7:0] lk_rx_data_comb;
+    always @(*) begin
+        lk_rx_dval_comb = 1'b0;
+        lk_rx_data_comb = 8'd0;
+        if (ep3_is_lk) begin
+            lk_rx_dval_comb = ep3_rx_dval;
+            lk_rx_data_comb = ep3_rx_data;
+        end
+    end
+    always @(posedge `EP3_CLOCK) begin
+        lk_rx_dval <= lk_rx_dval_comb;
+        lk_rx_data <= lk_rx_data_comb;
+    end
 
     always @(*) begin
         ep3_rx_rdy = 1'b0;
@@ -1083,10 +1098,10 @@ module usbuvcuart_top(
     end
 
     reg lk_observer_enable = 0;
-    always @(posedge pClk) lk_observer_enable <= ep3_is_mcu;
+    always @(posedge `EP3_CLOCK) lk_observer_enable <= ep3_is_mcu;
     lk_serial_mux::peer_t lk_observer_peer_o;
     lk_mcu_observer_t lk_observer(
-        pClk,
+        `EP3_CLOCK,
         lk_observer_enable,
         ep3_rx_dval,
         ep3_rx_data,
@@ -1095,7 +1110,7 @@ module usbuvcuart_top(
 
     wire lk_serial_id_complete;
     lk_serial_id_t lk_serial_id(
-        pClk,
+        `EP3_CLOCK,
         ep3_is_lk_serial_id,
         lk_serial_id_complete,
         lk_serial_id_tx_dval,
@@ -1118,7 +1133,7 @@ module usbuvcuart_top(
         end
     end
 
-    always @(posedge pClk) begin
+    always @(posedge `EP3_CLOCK) begin
         ep3_peer <= ep3_next_peer;
     end
 endmodule

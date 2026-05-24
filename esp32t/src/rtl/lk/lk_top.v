@@ -54,13 +54,12 @@ module lk_top #(
 )(
     input  wire        clk,
     input  wire        reset,
-    input  wire        PHY_CLKOUT,
 
     // Parallel byte interface (EP3 via usbuvcuart_top)
-    input  wire        RX_VALID,
-    input  wire [7:0]  RX_DATA,
-    output reg         TX_VALID,
-    output reg  [7:0]  TX_DATA,
+    input  wire        rx_valid,
+    input  wire [7:0]  rx_data,
+    output reg         tx_valid,
+    output reg  [7:0]  tx_data,
 
     output reg         cart_enabled,
     // Cartridge bus (top-level drives tristate from these)
@@ -78,62 +77,6 @@ module lk_top #(
 // This is just to simplify routing; this is safe because in top_v, reset is ~lk_enabled, synchronized with clk
 reg reset_r = 1;
 always @(posedge clk) reset_r <= reset;
-
-// USB data is on PHY_CLKOUT
-// Cartridge pins and all logic in top.v is on xClk instead, or derived clocks like pClk
-// Using xClk as this module's native clock as:
-// - we're limited by the cartridge speed anyway
-// - it greatly simplifies the MUX in top.v
-// - it's much less work than trying to CDC the cartridge and the cartridge state machine :)
-// The two clocks are close, but xClk is slightly faster, so we can cork on the fifo
-//
-// xClk         67.109Mhz   14.901ns
-// PHY_CLKOUT   60mhz       16.667ns
-
-reg        tx_valid;
-reg  [7:0] tx_data;
-reg tx_full = 0;
-
-wire       TX_EMPTY;
-wire       TX_POP_EN = ~TX_EMPTY;
-wire [7:0] TX_Q;
-
-// lk_top -> USB
-lk_usb_fifo_t usb_tx_fifo(
-    .WrClk(clk),
-    .Full(tx_full),
-    .WrEn(tx_valid),
-    .Data(tx_data),
-
-    .RdClk(PHY_CLKOUT),
-    .Empty(TX_EMPTY),
-    .RdEn(TX_POP_EN), // FWFT fifo
-    .Q(TX_Q)
-);
-assign TX_VALID = ~TX_EMPTY;
-assign TX_DATA = TX_Q;
-
-reg        rx_valid;
-reg  [7:0] rx_data;
-
-wire       rx_empty;
-wire       rx_pop_en = ~rx_empty;
-wire [7:0] rx_q;
-reg        RX_FULL = 0; // unused
-// USB -> LK_TOP
-lk_usb_fifo_t usb_rx_fifo(
-    .WrClk(PHY_CLKOUT),
-    .Full(RX_FULL),
-    .WrEn(RX_VALID),
-    .Data(RX_DATA),
-
-    .RdClk(clk),
-    .Empty(rx_empty),
-    .RdEn(rx_pop_en),
-    .Q(rx_q)
-);
-assign rx_valid = ~rx_empty;
-assign rx_data = rx_q;
 
 vars_t vars = '{default: 0};
 

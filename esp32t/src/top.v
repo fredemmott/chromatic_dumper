@@ -709,6 +709,7 @@ module top #(parameter ISSIMU=0)
         .pClk(PHY_CLKOUT),
         .usblocked(usblocked),
         .hClk(gClk),
+        .xClk(xClk),
 
         .UART_TXD(UART_RXD), // output
         .UART_RXD(UART_TXD), // input
@@ -738,13 +739,7 @@ module top #(parameter ISSIMU=0)
         .lk_rx_data(LK_RX_DATA)
     );
 
-    (* syn_preserve = 1 *) reg [1:0] lk_cdc_enabled = '0;
-    reg lk_enabled = 0;
-    always @(posedge `LK_CLOCK or negedge LK_ENABLED) begin
-        if (~LK_ENABLED) lk_cdc_enabled <= '0;
-        else lk_cdc_enabled <= {lk_cdc_enabled[0], 1'b1};
-    end
-    always @(posedge `LK_CLOCK) lk_enabled <= lk_cdc_enabled[1];
+    assign lk_enabled = LK_ENABLED;
 
     wire [13:0] hAdcValue_r1;
     wire hAdcReq_ext;
@@ -846,11 +841,10 @@ module top #(parameter ISSIMU=0)
     lk_top u_lk(
         .clk            (`LK_CLOCK),
         .reset          (!lk_enabled),
-        .PHY_CLKOUT     (PHY_CLKOUT),
-        .RX_VALID       (LK_RX_DVAL),
-        .RX_DATA        (LK_RX_DATA),
-        .TX_VALID       (LK_TX_DVAL),
-        .TX_DATA        (LK_TX_DATA),
+        .rx_valid       (LK_RX_DVAL),
+        .rx_data        (LK_RX_DATA),
+        .tx_valid       (LK_TX_DVAL),
+        .tx_data        (LK_TX_DATA),
         .cart_enabled   (lk_cart_enabled),
         .cart_a         (lk_cart_a),
         .cart_clk       (lk_cart_clk),
