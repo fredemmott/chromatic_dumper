@@ -36,10 +36,15 @@ set_clock_groups -asynchronous -group [get_clocks {PHY_CLKOUT}] -group [get_cloc
 // FlashGBX LK: similar setup, but we're driven by the USB clock
 
 set_clock_groups -asynchronous -group [get_clocks {PHY_CLKOUT}] -group [get_clocks {xclk}]
-set_false_path -to [get_regs {lk_cdc_*0_s0}]
+//set_false_path -to [get_regs {lk_cdc_*0_s0}]
 
 // Correct (loosen) the timing requirements for reseting the DRAM.
 //
 // Not logically needed for FlashGBX LK, but the added complexity makes the routing harder
 set_multicycle_path -from [get_clocks {xclk}] -to [get_clocks {xclk2}] -setup 2
 set_multicycle_path -from [get_clocks {xclk}] -to [get_clocks {xclk2}] -hold 1
+
+report_timing -setup -max_paths 25 -max_common_paths 1 -mod_ins {u_lk}
+report_timing -hold -max_paths 25 -max_common_paths 1 -mod_ins {u_lk}
+report_timing -recovery -max_paths 25 -max_common_paths 1 -mod_ins {u_lk}
+report_timing -removal -max_paths 25 -max_common_paths 1 -mod_ins {u_lk}
