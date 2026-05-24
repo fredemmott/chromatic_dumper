@@ -46,8 +46,6 @@ module lk_cmd_dmg_mbc_reset_t(
     localparam command_t C_BANK_MODE_SEL     = '{ 16'h6000, 8'h00 };
     localparam COMMAND_COUNT = 5;
 
-    reg [2:0] idx;
-
     command_t command;
     always @(*) begin
         command = C_RAM_DISABLE;
@@ -69,9 +67,14 @@ module lk_cmd_dmg_mbc_reset_t(
     } state_t;
     state_t state;
 
+    reg [2:0] idx;
+
     always @(posedge clk) begin
-        if (!enable) idx <= 0;
-        else if ((state == S_REQ_WAIT) && cart_complete) idx <= idx + 1'b1;
+        if (!enable) begin
+            idx <= 2'd0;
+        end else begin
+            if (cart_complete) idx <= idx + 1;
+        end
     end
 
     always @(posedge clk) begin
