@@ -82,7 +82,7 @@ vars_t vars = '{default: 0};
 
 command_t command = CMD_INVALID;
 
-reg cart_complete_r;
+reg cart_complete;
 
 wire QUERY_FW_INFO_complete;
 wire QUERY_FW_INFO_tx_valid;
@@ -143,7 +143,7 @@ lk_cmd_dmg_mbc_reset_t u_DMG_MBC_RESET(
     (command == CMD_DMG_MBC_RESET),
     DMG_MBC_RESET_complete,
     DMG_MBC_RESET_cart_req,
-    cart_complete_r
+    cart_complete
 );
 
 always @(posedge clk) begin
@@ -171,7 +171,6 @@ lk_cart_t cart_executor(
     vars.dmg_read_cs_pulse,
     vars.dmg_write_cs_pulse
 );
-always @(posedge clk) cart_complete_r <= cart_complete;
 assign cart_a = cart.address;
 assign cart_clk = cart.clk;
 assign cart_cs = cart.cs;
