@@ -48,3 +48,8 @@ report_timing -setup -max_paths 25 -max_common_paths 1 -mod_ins {u_lk}
 report_timing -hold -max_paths 25 -max_common_paths 1 -mod_ins {u_lk}
 report_timing -recovery -max_paths 25 -max_common_paths 1 -mod_ins {u_lk}
 report_timing -removal -max_paths 25 -max_common_paths 1 -mod_ins {u_lk}
+
+report_timing -setup -max_paths 25
+report_timing -hold -max_paths 25
+report_timing -recovery -max_paths 25
+report_timing -removal -max_paths 25
