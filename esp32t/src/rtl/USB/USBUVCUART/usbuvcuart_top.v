@@ -1033,18 +1033,18 @@ module usbuvcuart_top(
         ,.o_ep3_rx_data (ep3_rx_data      )
     );
 
-    assign    E_UART_DTR = s_ctl_sig[0];
-    assign    E_UART_RTS = s_ctl_sig[1];
+    assign E_UART_DTR = s_ctl_sig[0];
+    assign E_UART_RTS = s_ctl_sig[1];
 
-    // This is functionaly just `assign ep3_reset = ~s_ctl_sig[0];`, but avoids
-    // routing congestion issues
-    wire ep3_reset;
-    LUT1 #(
-        .INIT(2'b01)
-    ) ep3_reset_lut(
-        .I0(s_ctl_sig[0]),
-        .F(ep3_reset)
-    );
+    (* syn_preserve *) reg [1:0] lk_cdc_dtr;
+    always @(posedge `EP3_CLOCK or negedge s_ctl_sig[0]) begin
+        if (!s_ctl_sig[0]) begin
+            lk_cdc_dtr <= 2'b00;
+        end else begin
+            lk_cdc_dtr <= { lk_cdc_dtr[0], 1'b1 };
+        end
+    end
+    wire ep3_reset = ~lk_cdc_dtr[1];
 
     wire      lk_serial_id_tx_dval;
     wire[7:0] lk_serial_id_tx_data;

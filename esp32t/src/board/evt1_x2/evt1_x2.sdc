@@ -36,7 +36,7 @@ set_clock_groups -asynchronous -group [get_clocks {PHY_CLKOUT}] -group [get_cloc
 // FlashGBX LK: similar setup, but we're driven by the USB clock
 
 set_clock_groups -asynchronous -group [get_clocks {PHY_CLKOUT}] -group [get_clocks {xclk}]
-//set_false_path -to [get_regs {lk_cdc_*0_s0}]
+set_false_path -to [get_regs {*/lk_cdc_*0_s0}]
 
 // Correct (loosen) the timing requirements for reseting the DRAM.
 //
