@@ -1,9 +1,11 @@
 import lk_types::*;
 
+// TODO: mark valid
 module lk_cmd_dmg_mbc_reset_t(
     input wire clk,
     input wire enable,
     output reg complete,
+    output reg cart_req_valid,
     output cart_req_t cart_req,
     input reg cart_complete
 );
@@ -59,10 +61,19 @@ module lk_cmd_dmg_mbc_reset_t(
         endcase
     end
 
+    reg [2:0] req_waiting;
+    always @(posedge clk) begin
+        if (!enable) begin
+            req_waiting <= COMMAND_COUNT;
+        end else if (cart_complete) begin
+            req_waiting <= req_waiting - 1'b1;
+        end
+    end
+
     typedef enum {
         S_INIT,
         S_REQ,
-        S_REQ_WAIT,
+        S_WAIT,
         S_COMPLETE
     } state_t;
     state_t state;
@@ -78,10 +89,11 @@ module lk_cmd_dmg_mbc_reset_t(
     end
 
     always @(posedge clk) begin
+        cart_req_valid <= 1'b0;
         cart_req <= '{default: 0};
         if (state == S_REQ) begin
+            cart_req_valid <= 1'b1;
             cart_req <= '{
-                is_valid: 1'b1,
                 is_write: 1'b1,
                 is_flash: 1'b0,
                 address: command.address,
@@ -98,8 +110,8 @@ module lk_cmd_dmg_mbc_reset_t(
         end else begin
             unique case (state)
                 S_INIT: if (enable) next_state = S_REQ;
-                S_REQ: next_state = S_REQ_WAIT;
-                S_REQ_WAIT: if (cart_complete) next_state = (idx == COMMAND_COUNT - 1) ? S_COMPLETE : S_REQ;
+                S_REQ: if (idx == (COMMAND_COUNT - 1)) next_state = S_WAIT;
+                S_WAIT: if (req_waiting == 0) next_state = S_COMPLETE;
                 S_COMPLETE: ;
                 default: ;
             endcase

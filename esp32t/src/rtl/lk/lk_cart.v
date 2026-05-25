@@ -4,6 +4,9 @@ module lk_cart_t(
     input wire clk,
     input wire reset,
 
+    output reg ready,
+
+    input wire req_valid,
     input cart_req_t req,
     output reg req_complete,
 
@@ -36,12 +39,20 @@ typedef enum {
 } state_t;
 state_t state;
 
+always @(posedge clk) ready <= (state == S_IDLE);
+
+reg current_req_valid;
 cart_req_t current_req;
 always @(posedge clk) begin
     unique case (state)
         S_IDLE: begin
-            if (req.is_valid) current_req <= req;
-            else current_req <= '{default: 0};
+            if (req_valid) begin
+                current_req <= req;
+                current_req_valid <= 1'b1;
+            end else begin
+                current_req_valid <= 1'b0;
+                current_req <= '{default: 0};
+            end
         end
         S_SETUP,
         S_CSRD,
@@ -74,7 +85,7 @@ always @(*) begin
     cart_next_d_out = 8'd0;
     cart_next_audio = hold_pin_audio;
 
-    if (current_req.is_valid) begin
+    if (current_req_valid) begin
         cart_next_a = current_req.address;
         cart_next_d_out = current_req.data;
         cart_next_data_dir_e = ~current_req.is_write;
@@ -127,7 +138,7 @@ always @(*) begin
         next_state = S_IDLE;
     end else begin
         unique case(state)
-            S_IDLE: if (current_req.is_valid) next_state = S_SETUP;
+            S_IDLE: if (current_req_valid) next_state = S_SETUP;
             S_SETUP: next_state = S_CSRD;
             S_CSRD: if (wait_cnt == 0) next_state = (current_req.is_write ? S_WR_LOW : S_WAIT);
             S_WAIT: if (wait_cnt == 0) next_state = S_DONE;
