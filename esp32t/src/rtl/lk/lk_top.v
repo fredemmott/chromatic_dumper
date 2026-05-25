@@ -107,6 +107,20 @@ lk_cmd_set_variable_t u_SET_VARIABLE(
     SET_VARIABLE_vars_out
 );
 
+wire GET_VARIABLE_complete;
+wire GET_VARIABLE_tx_valid;
+wire [7:0] GET_VARIABLE_tx_data;
+lk_cmd_get_variable_t u_GET_VARIABLE(
+    clk,
+    (command == CMD_GET_VARIABLE),
+    GET_VARIABLE_complete,
+    rx_valid,
+    rx_data,
+    GET_VARIABLE_tx_valid,
+    GET_VARIABLE_tx_data,
+    vars
+);
+
 wire SET_PIN_complete;
 reg hold_pin_audio;
 lk_cmd_set_pin_t u_SET_PIN(
@@ -172,6 +186,7 @@ always @(*) begin
     unique case (command)
         CMD_QUERY_FW_INFO: complete = QUERY_FW_INFO_complete;
         CMD_SET_VARIABLE: complete = SET_VARIABLE_complete;
+        CMD_GET_VARIABLE: complete = GET_VARIABLE_complete;
         CMD_SET_PIN: complete = SET_PIN_complete;
         CMD_DMG_MBC_RESET: complete = DMG_MBC_RESET_complete;
         // Single-cycle and invalid
@@ -198,6 +213,10 @@ always @(*) begin
         CMD_QUERY_FW_INFO: begin
             exec_tx_valid = QUERY_FW_INFO_tx_valid;
             exec_tx_data = QUERY_FW_INFO_tx_data;
+        end
+        CMD_GET_VARIABLE: begin
+            exec_tx_valid = GET_VARIABLE_tx_valid;
+            exec_tx_data = GET_VARIABLE_tx_data;
         end
         default: ;
     endcase
