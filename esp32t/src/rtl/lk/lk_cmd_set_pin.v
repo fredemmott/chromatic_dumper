@@ -48,6 +48,8 @@ always @(posedge clk) begin
         // byte [0..3]  bits
         //      [4]     value (1 or 0)
         unique case (idx)
+            0: pin_bits[31:24] <= rx_data_r;
+            1: pin_bits[23:16] <= rx_data_r;
             2: pin_bits[15:8] <= rx_data_r;
             3: pin_bits[7:0] <= rx_data_r;
             4: value <= rx_data_r[0];
