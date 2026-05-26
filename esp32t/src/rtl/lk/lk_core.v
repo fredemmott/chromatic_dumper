@@ -138,6 +138,25 @@ lk_cmd_dmg_cart_read_t u_DMG_CART_READ(
     vars.transfer_size
 );
 
+wire CART_WRITE_FLASH_CMD_complete;
+wire CART_WRITE_FLASH_CMD_req_valid;
+wire [15:0] CART_WRITE_FLASH_CMD_req_address;
+wire [7:0] CART_WRITE_FLASH_CMD_req_data;
+
+lk_cmd_cart_write_flash_cmd_t u_CART_WRITE_FLASH_CMD(
+    clk,
+    (command == CMD_CART_WRITE_FLASH_CMD),
+    CART_WRITE_FLASH_CMD_complete,
+
+    rx_valid,
+    rx_data,
+
+    CART_WRITE_FLASH_CMD_req_valid,
+    CART_WRITE_FLASH_CMD_req_address,
+    CART_WRITE_FLASH_CMD_req_data,
+    cart_complete
+);
+
 wire SET_PIN_complete;
 reg hold_pin_audio;
 lk_cmd_set_pin_t u_SET_PIN(
@@ -197,6 +216,15 @@ always @(*) begin
                 data: 8'd0
             };
         end
+        CMD_CART_WRITE_FLASH_CMD: begin
+            cart_req_valid_next = CART_WRITE_FLASH_CMD_req_valid;
+            cart_req_next = '{
+                is_flash: 1'b1,
+                is_write: 1'b1,
+                address: CART_WRITE_FLASH_CMD_req_address,
+                data: CART_WRITE_FLASH_CMD_req_data
+            };
+        end
         default: ;
     endcase
 end
@@ -215,6 +243,7 @@ always @(*) begin
         CMD_SET_PIN: complete = SET_PIN_complete;
         CMD_DMG_MBC_RESET: complete = DMG_MBC_RESET_complete;
         CMD_DMG_CART_READ: complete = DMG_CART_READ_complete;
+        CMD_CART_WRITE_FLASH_CMD: complete = CART_WRITE_FLASH_CMD_complete;
         // Single-cycle and invalid
         default: ;
     endcase
@@ -232,6 +261,7 @@ always @(*) begin
         CMD_SET_PIN,
         CMD_SET_VARIABLE,
         CMD_SET_VOLTAGE_5V,
+        CMD_CART_WRITE_FLASH_CMD,
         CMD_STUB_NOOP_ACK: begin
             exec_tx_valid = complete;
             exec_tx_data = 8'd1;
