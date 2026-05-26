@@ -25,7 +25,7 @@ typedef enum {
     S_COMPLETE
 } state_t;
 state_t state;
-always @(posedge clk) complete <= (state == S_COMPLETE);
+assign complete = (state == S_COMPLETE);
 
 reg [15:0] address;
 reg [15:0] remaining;
@@ -93,17 +93,19 @@ end
 state_t state_next;
 always @(*) begin
     state_next = state;
+    unique case(state)
+        S_INIT: state_next = S_EXEC;
+        S_EXEC: if (remaining_next == 0) state_next = S_WAIT;
+        S_WAIT: if (waiting_next == 0) state_next = S_COMPLETE;
+        default: ;
+    endcase
+end
+always @(posedge clk) begin
     if (!enable) begin
-        state_next = S_INIT;
+        state <= S_INIT;
     end else begin
-        unique case(state)
-            S_INIT: state_next = S_EXEC;
-            S_EXEC: if (remaining_next == 0) state_next = S_WAIT;
-            S_WAIT: if (waiting_next == 0) state_next = S_COMPLETE;
-            default: ;
-        endcase
+        state <= state_next;
     end
 end
-always @(posedge clk) state <= state_next;
 
 endmodule
