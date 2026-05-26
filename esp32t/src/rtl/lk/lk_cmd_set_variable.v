@@ -11,17 +11,20 @@ module lk_cmd_set_variable_t(
     output vars_t     vars_out
 );
 
-reg [3:0] idx;
-reg [7:0] var_size;
-var_id_t  var_id;
-reg [15:0] var_value;
-
 reg rx_valid_r;
 reg [7:0] rx_data_r;
 always @(posedge clk) begin
     rx_valid_r <= rx_valid;
     rx_data_r <= rx_data;
 end
+
+reg [3:0] idx;
+reg [7:0] var_size;
+reg [7:0] var_key;
+reg [15:0] var_value;
+
+var_id_t var_id;
+assign var_id = make_var16_id(var_size, var_key);
 
 vars_t vars_out_next;
 always @(*) begin
@@ -52,7 +55,7 @@ always @(posedge clk) begin
         idx <= idx + 1'b1;
         unique case (idx)
             0: var_size <= rx_data_r;
-            4: var_id <= make_var16_id(var_size, rx_data_r);
+            4: var_key <= rx_data_r;
             7: var_value[15:8] <= rx_data_r;
             8: var_value[7:0] <= rx_data_r;
             default: ;
