@@ -133,24 +133,8 @@ localparam CART_WR_HOLD = 10;
 localparam CART_SETUP   = 4;
 
 reg [4:0] wait_cnt;
-reg [4:0] wait_cnt_next;
 
 state_t next_state;
-
-always @(*) begin
-    wait_cnt_next = (wait_cnt > 5'd0) ? (wait_cnt - 5'd1) : 5'd0;
-    unique case ({state, next_state})
-        {S_SETUP,   S_CSRD}:    wait_cnt_next = CART_SETUP;
-        {S_CSRD,    S_WAIT}:    wait_cnt_next = CART_RD_HOLD;
-        {S_CSRD,    S_WR_LOW}:  wait_cnt_next = CART_WR_HOLD;
-        {S_WR_LOW,  S_WR_HOLD}: wait_cnt_next = CART_WR_HOLD;
-        {S_WR_HOLD, S_WR_HIGH}: wait_cnt_next = CART_WR_HOLD;
-        default: ;
-    endcase
-end
-always @(posedge clk) wait_cnt <= wait_cnt_next;
-
-
 always @(*) begin
     next_state = state;
     unique case(state)
@@ -166,7 +150,25 @@ always @(*) begin
     endcase
 end
 
-always @(posedge clk) req_complete <= (next_state == S_DONE);
+wire is_transition = (state != next_state);
+always @(posedge clk) begin
+    if (reset) begin
+        wait_cnt <= 5'd0;
+    end else if (wait_cnt > 5'd0) begin
+        wait_cnt <= wait_cnt - 5'd1;
+    end else if (is_transition) begin
+        unique case (next_state)
+            S_CSRD:    wait_cnt <= CART_SETUP;
+            S_WAIT:    wait_cnt <= CART_RD_HOLD;
+            S_WR_LOW:  wait_cnt <= CART_WR_HOLD;
+            S_WR_HOLD: wait_cnt <= CART_WR_HOLD;
+            S_WR_HIGH: wait_cnt <= CART_WR_HOLD;
+            default:   wait_cnt <= 5'd0;
+        endcase
+    end
+end
+
+assign req_complete = (next_state == S_DONE);
 
 always @(posedge clk) begin
     if (reset) begin
