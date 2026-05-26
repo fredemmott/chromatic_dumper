@@ -1,12 +1,12 @@
 import lk_types::*;
 
-// TODO: mark valid
 module lk_cmd_dmg_mbc_reset_t(
     input wire clk,
     input wire enable,
     output reg complete,
     output reg cart_req_valid,
-    output cart_req_t cart_req,
+    output reg [15:0] cart_req_address,
+    output reg [7:0] cart_req_data,
     input reg cart_complete
 );
     typedef struct {
@@ -89,17 +89,9 @@ module lk_cmd_dmg_mbc_reset_t(
     end
 
     always @(posedge clk) begin
-        cart_req_valid <= 1'b0;
-        cart_req <= '{default: 0};
-        if (state == S_REQ) begin
-            cart_req_valid <= 1'b1;
-            cart_req <= '{
-                is_write: 1'b1,
-                is_flash: 1'b0,
-                address: command.address,
-                data: command.data
-            };
-        end
+        cart_req_valid <= (state == S_REQ);
+        cart_req_address <= command.address;
+        cart_req_data <= command.data;
     end
 
     state_t next_state;

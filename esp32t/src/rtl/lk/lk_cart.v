@@ -4,8 +4,6 @@ module lk_cart_t(
     input wire clk,
     input wire reset,
 
-    output reg ready,
-
     input wire req_valid,
     input cart_req_t req,
     output reg req_complete,
@@ -38,8 +36,6 @@ typedef enum {
     S_WR_HIGH // write: WR high + drive data
 } state_t;
 state_t state;
-
-always @(posedge clk) ready <= (state == S_IDLE);
 
 reg current_req_valid;
 cart_req_t current_req;
@@ -150,10 +146,10 @@ always @(*) begin
         endcase
     end
 end
+always @(posedge clk) req_complete <= (next_state == S_DONE);
 
 always @(posedge clk) begin
     state <= next_state;
-    req_complete <= (next_state == S_DONE);
 
     if (!reset) begin
         unique case (state)

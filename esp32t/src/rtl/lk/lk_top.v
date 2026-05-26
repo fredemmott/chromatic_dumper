@@ -70,13 +70,12 @@ lk_core u_core(
     .cart_vars(cart_vars_i),
 
     .cart_complete(cart_complete_o),
-    .cart_data(cart_complete_data_o)
+    .cart_complete_data(cart_complete_data_o)
 );
 
 cart_vars_t cart_vars;
 always @(posedge clk) cart_vars <= cart_vars_i;
 
-wire cart_ready;
 wire cart_complete;
 
 logic cart_complete_sr [0:1];
@@ -95,12 +94,12 @@ reg [3:0] cart_req_count_next;
 always @(*) begin
     if (reset) begin
         cart_req_count_next = 0;
-    end else if (cart_req_valid_i) begin
-        cart_req_count_next = cart_req_count + 1'd1;
-    end else if (cart_ready && (cart_req_count > 0)) begin
-        cart_req_count_next = cart_req_count - 1'd1;
     end else begin
-        cart_req_count_next = cart_req_count;
+        unique case ({cart_complete_o, cart_req_valid_i})
+            2'b10: cart_req_count_next = cart_req_count - 1'b1;
+            2'b01: cart_req_count_next = cart_req_count + 1'b1;
+            default: cart_req_count_next = cart_req_count;
+        endcase
     end
 end
 always @(posedge clk) begin
@@ -108,31 +107,74 @@ always @(posedge clk) begin
     cart_req_almost_full_o <= (cart_req_count_next >= 6);
 end
 
-// Up to 6 flash commands per data byte; let's allow a queue size of 8, so we can definitely always fit them
-logic cart_req_valid_sr [0:7];
-cart_req_t cart_req_sr [0:7];
 wire cart_req_valid;
-cart_req_t cart_req;
+wire cart_reqs_almost_full;
 
-integer i;
+module cart_req_pipeline_stage_t(
+    input wire clk,
+    input wire reset,
+
+    input  wire shift_i,
+
+    input  wire       req_valid_i,
+    input  cart_req_t req_i,
+    output reg        req_valid_o,
+    output cart_req_t req_o
+);
+
+assign shift_o = shift_i || !req_valid_o;
+
 always @(posedge clk) begin
-    if (cart_ready || !cart_req_valid) begin
-        for (i = 7; i > 0; i = i - 1) begin
-            cart_req_sr[i] <= cart_req_sr[i - 1];
-            cart_req_valid_sr[i] <= cart_req_valid_sr[i - 1];
-        end
-        cart_req_sr[0] <= cart_req_i;
-        cart_req_valid_sr[0] <= cart_req_valid_i;
+    if (reset) begin
+        req_valid_o <= 1'b0;
+        req_o <= '{default: 0};
+    end else if (shift_o) begin
+        req_valid_o <= req_valid_i;
+        req_o <= req_i;
     end
 end
-assign cart_req_valid = cart_req_valid_sr[7];
-assign cart_req = cart_req_sr[7];
+
+endmodule
+
+wire       cart_shift_chain [0:8];
+wire [8:0] cart_valid_chain;
+cart_req_t cart_req_chain   [0:8];
+
+genvar i;
+generate
+    for (i = 0; i < 8; i = i + 1) begin : pipe_stages
+        assign cart_shift_chain[i] = cart_shift_chain[i + 1] || !cart_valid_chain[i+1];
+        cart_req_pipeline_stage_t u_cart_reqs(
+            .clk(clk),
+            .reset(reset),
+
+            // Control (shifting)                   reader -> writer    (i + 1 -> i)
+            .shift_i(cart_shift_chain[i+1]),
+
+            // Data                                 writer -> reader    (i -> i + 1)
+            .req_valid_i(cart_valid_chain[i]),
+            .req_valid_o(cart_valid_chain[i+1]),
+            .req_i(cart_req_chain[i]),
+            .req_o(cart_req_chain[i+1])
+        );
+    end
+endgenerate
+
+// Reader
+cart_req_t cart_req;
+assign cart_req_valid = cart_valid_chain[8];
+assign cart_req = cart_req_chain[8];
+//assign cart_req_valid =  1'b1;
+//assign cart_req = '{default: 0};
+assign cart_shift_chain[8] = cart_complete; // shift when we finish one
+
+// Writer
+assign cart_valid_chain[0] = cart_req_valid_i;
+assign cart_req_chain[0] = cart_req_i;
 
 lk_cart_t u_cart_executor(
     .clk(clk),
     .reset(reset_r),
-
-    .ready(cart_ready),
 
     .req_valid(cart_req_valid),
     .req(cart_req),

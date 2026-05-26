@@ -66,8 +66,9 @@ module lk_core #(
     output cart_vars_t cart_vars,
 
     input wire         cart_complete,
-    input wire [7:0]   cart_data // only valid if cart_complete
+    input wire [7:0]   cart_complete_data
 );
+wire cart_req_ready = !cart_req_almost_full;
 // This is just to simplify routing; this is safe because in top_v, reset is ~lk_enabled, synchronized with clk
 reg reset_r = 1;
 always @(posedge clk) reset_r <= reset;
@@ -113,6 +114,30 @@ lk_cmd_get_variable_t u_GET_VARIABLE(
     vars
 );
 
+wire DMG_CART_READ_complete;
+wire DMG_CART_READ_tx_valid;
+wire [7:0] DMG_CART_READ_tx_data;
+wire DMG_CART_READ_req_valid;
+wire [15:0] DMG_CART_READ_req_address;
+
+lk_cmd_dmg_cart_read_t u_DMG_CART_READ(
+    clk,
+    (command == CMD_DMG_CART_READ),
+    DMG_CART_READ_complete,
+
+    DMG_CART_READ_tx_valid,
+    DMG_CART_READ_tx_data,
+
+    cart_req_ready,
+    DMG_CART_READ_req_valid,
+    DMG_CART_READ_req_address,
+    cart_complete,
+    cart_complete_data,
+
+    vars.address,
+    vars.transfer_size
+);
+
 wire SET_PIN_complete;
 reg hold_pin_audio;
 lk_cmd_set_pin_t u_SET_PIN(
@@ -125,14 +150,16 @@ lk_cmd_set_pin_t u_SET_PIN(
     hold_pin_audio);
 
 reg DMG_MBC_RESET_complete;
-cart_req_t DMG_MBC_RESET_cart_req;
-wire DMG_MBC_RESET_cart_req_valid;
+wire DMG_MBC_RESET_req_valid;
+wire [15:0] DMG_MBC_RESET_req_address;
+wire [7:0] DMG_MBC_RESET_req_data;
 lk_cmd_dmg_mbc_reset_t u_DMG_MBC_RESET(
     clk,
     (command == CMD_DMG_MBC_RESET),
     DMG_MBC_RESET_complete,
-    DMG_MBC_RESET_cart_req_valid,
-    DMG_MBC_RESET_cart_req,
+    DMG_MBC_RESET_req_valid,
+    DMG_MBC_RESET_req_address,
+    DMG_MBC_RESET_req_data,
     cart_complete
 );
 
@@ -146,13 +173,36 @@ always @(posedge clk) begin
     end
 end
 
+reg cart_req_valid_next;
+cart_req_t cart_req_next;
 always @(*) begin
-    cart_req_valid = 1'b0;
-    cart_req = '{default: 0};
-    if (command == CMD_DMG_MBC_RESET) begin
-        cart_req_valid = DMG_MBC_RESET_cart_req_valid;
-        cart_req = DMG_MBC_RESET_cart_req;
-    end
+    cart_req_valid_next = 1'b0;
+    cart_req_next = '{default: 0};
+    unique case (command)
+        CMD_DMG_MBC_RESET: begin
+            cart_req_valid_next = DMG_MBC_RESET_req_valid;
+            cart_req_next = '{
+                is_flash: 1'b0,
+                is_write: 1'b1,
+                address: DMG_MBC_RESET_req_address,
+                data: DMG_MBC_RESET_req_data
+            };
+        end
+        CMD_DMG_CART_READ: begin
+            cart_req_valid_next = DMG_CART_READ_req_valid;
+            cart_req_next = '{
+                is_flash: 1'b0,
+                is_write: 1'b0,
+                address: DMG_CART_READ_req_address,
+                data: 8'd0
+            };
+        end
+        default: ;
+    endcase
+end
+always @(posedge clk) begin
+    cart_req_valid <= cart_req_valid_next;
+    cart_req <= cart_req_next;
 end
 
 reg complete;
@@ -164,6 +214,7 @@ always @(*) begin
         CMD_GET_VARIABLE: complete = GET_VARIABLE_complete;
         CMD_SET_PIN: complete = SET_PIN_complete;
         CMD_DMG_MBC_RESET: complete = DMG_MBC_RESET_complete;
+        CMD_DMG_CART_READ: complete = DMG_CART_READ_complete;
         // Single-cycle and invalid
         default: ;
     endcase
@@ -192,6 +243,10 @@ always @(*) begin
         CMD_GET_VARIABLE: begin
             exec_tx_valid = GET_VARIABLE_tx_valid;
             exec_tx_data = GET_VARIABLE_tx_data;
+        end
+        CMD_DMG_CART_READ: begin
+            exec_tx_valid = DMG_CART_READ_tx_valid;
+            exec_tx_data = DMG_CART_READ_tx_data;
         end
         default: ;
     endcase
@@ -285,10 +340,20 @@ always @(posedge clk) begin
     tx_data <= next_tx_data;
  end
 
-always @(posedge clk) begin
-    if (reset_r) vars <= '{default: 0};
-    else if (SET_VARIABLE_complete) vars <= SET_VARIABLE_vars_out;
+vars_t vars_next;
+always @(*) begin
+    if (reset_r) begin
+        vars_next = '{default: 0};
+    end else begin
+        vars_next = vars;
+        unique case(command)
+            CMD_SET_VARIABLE: vars_next = SET_VARIABLE_vars_out;
+            CMD_DMG_CART_READ: vars_next.address = vars.address + vars.transfer_size;
+            default: ;
+        endcase
+    end
 end
+always @(posedge clk) vars <= vars_next;
 
 always @(posedge clk) begin
     cart_vars <= '{
