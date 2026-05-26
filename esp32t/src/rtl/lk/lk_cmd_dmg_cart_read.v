@@ -57,18 +57,13 @@ end
 reg [15:0] waiting;
 reg [15:0] waiting_next;
 
-// Only using for S_EXEC as in other states, we're not going to queue up another request,
-// even if the cart request queue is ready
-wire signed [1:0] exec_waiting_delta = { 1'b0, cart_req_ready } - { 1'b0, cart_complete };
-
 always @(*) begin
     waiting_next = waiting;
-    unique case (state)
-        S_INIT: waiting_next = 16'd0;
-        S_EXEC: waiting_next = waiting + exec_waiting_delta;
-        S_WAIT: if (cart_complete) waiting_next = waiting - 1'd1;
-        default: ;
-    endcase
+    if (state == S_INIT) begin
+        waiting_next = var_transfer_size;
+    end else if (cart_complete) begin
+        waiting_next = waiting -  16'd1;
+    end
 end
 always @(posedge clk) waiting <= waiting_next;
 
@@ -85,7 +80,7 @@ always @(*) begin
     tx_valid_next = 1'b0;
     tx_data_next = 8'd0;
 
-    if (enable && cart_complete) begin
+    if (cart_complete) begin
         tx_valid_next = 1'b1;
         tx_data_next = cart_complete_data;
     end
@@ -103,8 +98,8 @@ always @(*) begin
     end else begin
         unique case(state)
             S_INIT: state_next = S_EXEC;
-            S_EXEC: if (remaining == 0) state_next = S_WAIT;
-            S_WAIT: if (waiting == 0) state_next = S_COMPLETE;
+            S_EXEC: if (remaining_next == 0) state_next = S_WAIT;
+            S_WAIT: if (waiting_next == 0) state_next = S_COMPLETE;
             default: ;
         endcase
     end

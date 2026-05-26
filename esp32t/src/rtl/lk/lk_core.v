@@ -348,7 +348,7 @@ always @(*) begin
         vars_next = vars;
         unique case(command)
             CMD_SET_VARIABLE: vars_next = SET_VARIABLE_vars_out;
-            CMD_DMG_CART_READ: vars_next.address = vars.address + vars.transfer_size;
+            CMD_DMG_CART_READ: if (DMG_CART_READ_complete) vars_next.address = vars.address + vars.transfer_size;
             default: ;
         endcase
     end
