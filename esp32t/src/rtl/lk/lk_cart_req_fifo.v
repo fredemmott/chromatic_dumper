@@ -36,15 +36,24 @@ end
 
 cart_req_t reqs[0:7];
 
-cart_req_t next_out;
-always @(*) begin
-    if (enqueue && empty) begin
-        next_out = in;
+cart_req_t mem_read;
+always @(posedge clk) mem_read <= reqs[read_idx_next];
+
+reg use_previous_in;
+cart_req_t previous_in;
+always @(posedge clk) begin
+    previous_in <= in;
+    if (reset) begin
+        use_previous_in <= 1'b0;
     end else begin
-        next_out = reqs[read_idx];
+        use_previous_in <= enqueue && empty;
     end
 end
-always @(posedge clk) out <= next_out;
+
+always @(*) begin
+    out = use_previous_in ? previous_in : mem_read;
+end
+
 always @(posedge clk) if (enqueue) reqs[write_idx] <= in;
 
 endmodule
