@@ -138,6 +138,25 @@ lk_cmd_dmg_cart_read_t u_DMG_CART_READ(
     vars.transfer_size
 );
 
+wire DMG_CART_WRITE_complete;
+wire DMG_CART_WRITE_req_valid;
+wire [15:0] DMG_CART_WRITE_req_address;
+wire [7:0] DMG_CART_WRITE_req_data;
+
+lk_cmd_dmg_cart_write_t u_DMG_CART_WRITE(
+    clk,
+    (command == CMD_DMG_CART_WRITE),
+    DMG_CART_WRITE_complete,
+
+    rx_valid,
+    rx_data,
+
+    DMG_CART_WRITE_req_valid,
+    DMG_CART_WRITE_req_address,
+    DMG_CART_WRITE_req_data,
+    cart_complete
+);
+
 wire CART_WRITE_FLASH_CMD_complete;
 wire CART_WRITE_FLASH_CMD_req_valid;
 wire [15:0] CART_WRITE_FLASH_CMD_req_address;
@@ -216,6 +235,15 @@ always @(*) begin
                 data: 8'd0
             };
         end
+        CMD_DMG_CART_WRITE: begin
+            cart_req_valid_next = DMG_CART_WRITE_req_valid;
+            cart_req_next = '{
+                is_flash: 1'b0,
+                is_write: 1'b1,
+                address: DMG_CART_WRITE_req_address,
+                data: DMG_CART_WRITE_req_data
+            };
+        end
         CMD_CART_WRITE_FLASH_CMD: begin
             cart_req_valid_next = CART_WRITE_FLASH_CMD_req_valid;
             cart_req_next = '{
@@ -243,6 +271,7 @@ always @(*) begin
         CMD_SET_PIN: complete = SET_PIN_complete;
         CMD_DMG_MBC_RESET: complete = DMG_MBC_RESET_complete;
         CMD_DMG_CART_READ: complete = DMG_CART_READ_complete;
+        CMD_DMG_CART_WRITE: complete = DMG_CART_WRITE_complete;
         CMD_CART_WRITE_FLASH_CMD: complete = CART_WRITE_FLASH_CMD_complete;
         // Single-cycle and invalid
         default: ;
@@ -257,6 +286,7 @@ always @(*) begin
 
     unique case (command)
         CMD_DMG_MBC_RESET,
+        CMD_DMG_CART_WRITE,
         CMD_SET_ADDR_AS_INPUTS,
         CMD_SET_PIN,
         CMD_SET_VARIABLE,
@@ -372,18 +402,21 @@ always @(posedge clk) begin
 
 vars_t vars_next;
 always @(*) begin
+    vars_next = vars;
+    unique case(command)
+        CMD_SET_VARIABLE: vars_next = SET_VARIABLE_vars_out;
+        CMD_DMG_CART_READ: if (DMG_CART_READ_complete) vars_next.address = vars.address + vars.transfer_size;
+        CMD_DMG_CART_WRITE: if (DMG_CART_WRITE_complete) vars_next.address = vars.address + vars.transfer_size;
+        default: ;
+    endcase
+end
+always @(posedge clk) begin
     if (reset_r) begin
-        vars_next = '{default: 0};
+        vars <= '{default: 0};
     end else begin
-        vars_next = vars;
-        unique case(command)
-            CMD_SET_VARIABLE: vars_next = SET_VARIABLE_vars_out;
-            CMD_DMG_CART_READ: if (DMG_CART_READ_complete) vars_next.address = vars.address + vars.transfer_size;
-            default: ;
-        endcase
+        vars <= vars_next;
     end
 end
-always @(posedge clk) vars <= vars_next;
 
 always @(posedge clk) begin
     cart_vars <= '{
