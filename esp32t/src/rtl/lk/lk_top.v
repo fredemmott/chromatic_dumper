@@ -107,70 +107,75 @@ always @(posedge clk) begin
     cart_req_almost_full_o <= (cart_req_count_next >= 6);
 end
 
-wire cart_req_valid;
-wire cart_reqs_almost_full;
+wire cart_req_started;
 
-module cart_req_pipeline_stage_t(
-    input wire clk,
-    input wire reset,
+// FIFO
+wire req_enqueue = cart_req_valid_i;
+wire req_dequeue = cart_req_started;
 
-    input  wire shift_i,
+reg [2:0] req_read_idx;
+reg [2:0] req_read_idx_next;
+reg [2:0] req_write_idx;
+reg [2:0] req_write_idx_next;
 
-    input  wire       req_valid_i,
-    input  cart_req_t req_i,
-    output reg        req_valid_o,
-    output cart_req_t req_o
-);
-
-assign shift_o = shift_i || !req_valid_o;
+always @(*) begin
+    req_read_idx_next = req_read_idx;
+    req_write_idx_next = req_write_idx;
+    unique case ({req_enqueue, req_dequeue})
+        // enqueue only
+        2'b10: req_write_idx_next = req_write_idx + 3'b1;
+        // dequeue only
+        2'b01: req_read_idx_next = req_read_idx +  3'b1;
+        // enqueue + dequeue
+        2'b11: begin
+            req_write_idx_next = req_write_idx + 3'b1;
+            req_read_idx_next = req_read_idx + 3'b1;
+        end
+        // neither
+        2'b00: ;
+    endcase
+end
 
 always @(posedge clk) begin
     if (reset) begin
-        req_valid_o <= 1'b0;
-        req_o <= '{default: 0};
-    end else if (shift_o) begin
-        req_valid_o <= req_valid_i;
-        req_o <= req_i;
+        req_read_idx <= 1'b0;
+        req_write_idx <= 1'b0;
+    end else begin
+        req_read_idx <= req_read_idx_next;
+        req_write_idx <= req_write_idx_next;
     end
 end
 
-endmodule
-
-wire       cart_shift_chain [0:8];
-wire [8:0] cart_valid_chain;
-cart_req_t cart_req_chain   [0:8];
-
-genvar i;
-generate
-    for (i = 0; i < 8; i = i + 1) begin : pipe_stages
-        assign cart_shift_chain[i] = cart_shift_chain[i + 1] || !cart_valid_chain[i+1];
-        cart_req_pipeline_stage_t u_cart_reqs(
-            .clk(clk),
-            .reset(reset),
-
-            // Control (shifting)                   reader -> writer    (i + 1 -> i)
-            .shift_i(cart_shift_chain[i+1]),
-
-            // Data                                 writer -> reader    (i -> i + 1)
-            .req_valid_i(cart_valid_chain[i]),
-            .req_valid_o(cart_valid_chain[i+1]),
-            .req_i(cart_req_chain[i]),
-            .req_o(cart_req_chain[i+1])
-        );
+cart_req_t reqs[0:7];
+cart_req_t req_q;
+always @(*) begin
+    if (req_enqueue && req_dequeue && (req_read_idx == req_write_idx)) begin
+        req_q = cart_req_i;
+    end else begin
+        req_q = reqs[req_read_idx];
     end
-endgenerate
-
-// Reader
+end
+always @(posedge clk) if (req_enqueue) reqs[req_write_idx] <= cart_req_i;
+/// END FIFO
+// Delay for routing
+reg cart_req_valid_d;
+reg cart_req_valid;
+cart_req_t cart_req_d;
 cart_req_t cart_req;
-assign cart_req_valid = cart_valid_chain[8];
-assign cart_req = cart_req_chain[8];
-//assign cart_req_valid =  1'b1;
-//assign cart_req = '{default: 0};
-assign cart_shift_chain[8] = cart_complete; // shift when we finish one
+always @(posedge clk) begin
+    if (reset) begin
+        cart_req_valid <= 1'b0;
+        cart_req_valid_d <= 1'b0;
+        cart_req <= '{default: 0};
+        cart_req_d <= '{default: 0};
+    end else begin
+        cart_req_valid_d <= (cart_req_count != 4'b0);
+        cart_req_d <= req_q;
+        cart_req_valid <= cart_req_valid_d;
+        cart_req <= cart_req_d;
+    end
+end
 
-// Writer
-assign cart_valid_chain[0] = cart_req_valid_i;
-assign cart_req_chain[0] = cart_req_i;
 
 lk_cart_t u_cart_executor(
     .clk(clk),
@@ -178,6 +183,7 @@ lk_cart_t u_cart_executor(
 
     .req_valid(cart_req_valid),
     .req(cart_req),
+    .req_started(cart_req_started),
     .req_complete(cart_complete),
 
     .hold_pin_audio(cart_vars.hold_pin_audio),

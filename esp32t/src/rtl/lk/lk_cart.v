@@ -6,6 +6,7 @@ module lk_cart_t(
 
     input wire req_valid,
     input cart_req_t req,
+    output reg req_started,
     output reg req_complete,
 
     input wire hold_pin_audio,
@@ -40,9 +41,11 @@ state_t state;
 reg current_req_valid;
 cart_req_t current_req;
 always @(posedge clk) begin
+    req_started <= 1'b0;
     unique case (state)
         S_IDLE: begin
             if (req_valid) begin
+                req_started <= 1'b1;
                 current_req <= req;
                 current_req_valid <= 1'b1;
             end else begin
