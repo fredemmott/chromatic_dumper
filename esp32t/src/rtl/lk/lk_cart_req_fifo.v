@@ -35,7 +35,16 @@ always @(posedge clk) begin
 end
 
 cart_req_t reqs[0:7];
-always @(posedge clk) out <= reqs[read_idx];
+
+cart_req_t next_out;
+always @(*) begin
+    if (enqueue && empty) begin
+        next_out = in;
+    end else begin
+        next_out = reqs[read_idx];
+    end
+end
+always @(posedge clk) out <= next_out;
 always @(posedge clk) if (enqueue) reqs[write_idx] <= in;
 
 endmodule
