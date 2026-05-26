@@ -113,7 +113,7 @@ wire reqs_empty;
 cart_req_t req_q;
 lk_cart_req_fifo_t u_cart_req_fifo(
     .clk(clk),
-    .reset(reset),
+    .reset(reset_r),
     .enqueue(cart_req_valid_i),
     .dequeue(req_dequeue),
     .empty(reqs_empty),
@@ -131,7 +131,7 @@ cart_req_t cart_req;
 wire cart_req_started;
 reg req_dequeue_d;
 always @(posedge clk) begin
-    if (reset) begin
+    if (reset_r) begin
         cart_req_valid <= 1'b0;
         cart_req_valid_d <= 1'b0;
         cart_req <= '{default: 0};
