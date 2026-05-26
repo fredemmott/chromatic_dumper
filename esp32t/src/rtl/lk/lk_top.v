@@ -110,69 +110,45 @@ end
 wire cart_req_started;
 
 // FIFO
-wire req_enqueue = cart_req_valid_i;
-wire req_dequeue = cart_req_started;
-
-reg [2:0] req_read_idx;
-reg [2:0] req_read_idx_next;
-reg [2:0] req_write_idx;
-reg [2:0] req_write_idx_next;
-
-always @(*) begin
-    req_read_idx_next = req_read_idx;
-    req_write_idx_next = req_write_idx;
-    unique case ({req_enqueue, req_dequeue})
-        // enqueue only
-        2'b10: req_write_idx_next = req_write_idx + 3'b1;
-        // dequeue only
-        2'b01: req_read_idx_next = req_read_idx +  3'b1;
-        // enqueue + dequeue
-        2'b11: begin
-            req_write_idx_next = req_write_idx + 3'b1;
-            req_read_idx_next = req_read_idx + 3'b1;
-        end
-        // neither
-        2'b00: ;
-    endcase
-end
-
-always @(posedge clk) begin
-    if (reset) begin
-        req_read_idx <= 1'b0;
-        req_write_idx <= 1'b0;
-    end else begin
-        req_read_idx <= req_read_idx_next;
-        req_write_idx <= req_write_idx_next;
-    end
-end
-
-cart_req_t reqs[0:7];
+reg req_dequeue;
+wire reqs_empty;
 cart_req_t req_q;
-always @(*) begin
-    if (req_enqueue && req_dequeue && (req_read_idx == req_write_idx)) begin
-        req_q = cart_req_i;
-    end else begin
-        req_q = reqs[req_read_idx];
-    end
-end
-always @(posedge clk) if (req_enqueue) reqs[req_write_idx] <= cart_req_i;
+lk_cart_req_fifo_t u_cart_req_fifo(
+    .clk(clk),
+    .reset(reset),
+    .enqueue(cart_req_valid_i),
+    .dequeue(req_dequeue),
+    .empty(reqs_empty),
+    .in(cart_req_i),
+    .out(req_q)
+);
+
 /// END FIFO
 // Delay for routing
 reg cart_req_valid_d;
 reg cart_req_valid;
 cart_req_t cart_req_d;
 cart_req_t cart_req;
+
+wire cart_req_started;
+reg req_dequeue_d;
 always @(posedge clk) begin
     if (reset) begin
         cart_req_valid <= 1'b0;
         cart_req_valid_d <= 1'b0;
         cart_req <= '{default: 0};
         cart_req_d <= '{default: 0};
+
+        req_dequeue_d <= 1'b0;
+        req_dequeue <= 1'b0;
     end else begin
-        cart_req_valid_d <= (cart_req_count != 4'b0);
+        cart_req_valid_d <= !reqs_empty;
         cart_req_d <= req_q;
         cart_req_valid <= cart_req_valid_d;
         cart_req <= cart_req_d;
+
+        req_dequeue_d <= cart_req_started;
+        req_dequeue <= req_dequeue_d;
     end
 end
 
