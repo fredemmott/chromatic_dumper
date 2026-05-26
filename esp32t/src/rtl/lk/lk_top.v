@@ -107,8 +107,6 @@ always @(posedge clk) begin
     cart_req_almost_full_o <= (cart_req_count_next >= 6);
 end
 
-wire cart_req_started;
-
 // FIFO
 reg req_dequeue;
 wire reqs_empty;
