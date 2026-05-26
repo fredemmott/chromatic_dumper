@@ -261,22 +261,24 @@ always @(posedge clk) begin
     cart_req <= cart_req_next;
 end
 
-reg complete;
+reg complete_next;
 always @(*) begin
-    complete = 1'b1;
+    complete_next = 1'b1;
     unique case (command)
-        CMD_QUERY_FW_INFO: complete = QUERY_FW_INFO_complete;
-        CMD_SET_VARIABLE: complete = SET_VARIABLE_complete;
-        CMD_GET_VARIABLE: complete = GET_VARIABLE_complete;
-        CMD_SET_PIN: complete = SET_PIN_complete;
-        CMD_DMG_MBC_RESET: complete = DMG_MBC_RESET_complete;
-        CMD_DMG_CART_READ: complete = DMG_CART_READ_complete;
-        CMD_DMG_CART_WRITE: complete = DMG_CART_WRITE_complete;
-        CMD_CART_WRITE_FLASH_CMD: complete = CART_WRITE_FLASH_CMD_complete;
+        CMD_QUERY_FW_INFO: complete_next = QUERY_FW_INFO_complete;
+        CMD_SET_VARIABLE: complete_next = SET_VARIABLE_complete;
+        CMD_GET_VARIABLE: complete_next = GET_VARIABLE_complete;
+        CMD_SET_PIN: complete_next = SET_PIN_complete;
+        CMD_DMG_MBC_RESET: complete_next = DMG_MBC_RESET_complete;
+        CMD_DMG_CART_READ: complete_next = DMG_CART_READ_complete;
+        CMD_DMG_CART_WRITE: complete_next = DMG_CART_WRITE_complete;
+        CMD_CART_WRITE_FLASH_CMD: complete_next = CART_WRITE_FLASH_CMD_complete;
         // Single-cycle and invalid
         default: ;
     endcase
 end
+reg complete;
+always @(posedge clk) complete <= complete_next;
 
 reg exec_tx_valid;
 reg [7:0] exec_tx_data;
