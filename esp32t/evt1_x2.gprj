@@ -62,7 +62,6 @@
         <File path="src/rtl/USB/USBUVCUART/usbuvcuart_top.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/lk/lk_cart.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/lk/lk_cart_req_fifo.v" type="file.verilog" enable="1"/>
-        <File path="src/rtl/lk/lk_cmd_cart_write_flash_cmd.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/lk/lk_cmd_dmg_cart_read.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/lk/lk_cmd_dmg_cart_write.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/lk/lk_cmd_dmg_mbc_reset.v" type="file.verilog" enable="1"/>

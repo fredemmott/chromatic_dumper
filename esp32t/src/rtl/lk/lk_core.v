@@ -185,7 +185,14 @@ lk_cmd_dmg_cart_write_t u_DMG_CART_WRITE(
 wire CART_WRITE_FLASH_CMD_req_valid;
 wire [15:0] CART_WRITE_FLASH_CMD_req_address;
 wire [7:0] CART_WRITE_FLASH_CMD_req_data;
-lk_cmd_cart_write_flash_cmd_t u_CART_WRITE_FLASH_CMD(
+lk_cmd_dmg_cart_write_t #(
+    // byte [0]:    is flash cart (unused)
+    //      [1..4]: address (2 MSB for AGB only)
+    //      [5..6]: data (MSB for AGB only)
+    .ADDRESS_MSB_RX_IDX(3),
+    .DATA_RX_IDX(6),
+    .LAST_RX_IDX(6)
+) u_CART_WRITE_FLASH_CMD(
     clk,
     enabled[CMD_CART_WRITE_FLASH_CMD],
     complete[CMD_CART_WRITE_FLASH_CMD],
