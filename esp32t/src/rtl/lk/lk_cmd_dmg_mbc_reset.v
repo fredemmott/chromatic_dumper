@@ -7,7 +7,7 @@ module lk_cmd_dmg_mbc_reset_t(
     output reg cart_req_valid,
     output reg [15:0] cart_req_address,
     output reg [7:0] cart_req_data,
-    input reg cart_complete
+    input wire cart_complete
 );
     typedef struct {
         logic [15:0] address;
@@ -71,12 +71,12 @@ module lk_cmd_dmg_mbc_reset_t(
     end
 
     typedef enum {
-        S_INIT,
-        S_REQ,
+        S_EXEC,
         S_WAIT,
         S_COMPLETE
     } state_t;
     state_t state;
+    assign complete = (state == S_COMPLETE);
 
     reg [2:0] idx;
 
@@ -84,35 +84,32 @@ module lk_cmd_dmg_mbc_reset_t(
         if (!enable) begin
             idx <= 2'd0;
         end else begin
-            if (cart_complete) idx <= idx + 1;
+            idx <= idx + 1;
         end
     end
 
-    always @(posedge clk) begin
-        cart_req_valid <= (state == S_REQ);
-        cart_req_address <= command.address;
-        cart_req_data <= command.data;
+    always @(*) begin
+        cart_req_valid = (state == S_EXEC);
+        cart_req_address = command.address;
+        cart_req_data = command.data;
     end
 
     state_t next_state;
     always @(*) begin
         next_state = state;
-        if (!enable) begin
-            next_state = S_INIT;
-        end else begin
-            unique case (state)
-                S_INIT: if (enable) next_state = S_REQ;
-                S_REQ: if (idx == (COMMAND_COUNT - 1)) next_state = S_WAIT;
-                S_WAIT: if (req_waiting == 0) next_state = S_COMPLETE;
-                S_COMPLETE: ;
-                default: ;
-            endcase
-        end
+        unique case (state)
+            S_EXEC: if (idx == (COMMAND_COUNT - 1)) next_state = S_WAIT;
+            S_WAIT: if (req_waiting == 0) next_state = S_COMPLETE;
+            S_COMPLETE: ;
+            default: ;
+        endcase
     end
 
     always @(posedge clk) begin
-        state <= next_state;
-        if (!enable) complete <= 1'b0;
-        else complete <= (state == S_COMPLETE);
+        if (!enable) begin
+            state <= S_EXEC;
+        end else begin
+            state <= next_state;
+        end
     end
 endmodule
