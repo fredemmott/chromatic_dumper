@@ -54,24 +54,23 @@ typedef enum {
     S_DONE
 } state_t;
 state_t state;
+assign complete = (state == S_DONE);
 
 state_t next_state;
 always @(*) begin
     next_state = state;
-    if (!enable) begin
-        next_state = S_RX;
-    end else begin
-        unique case (state)
-            S_RX: if (rx_idx == 4) next_state = S_TX;
-            S_TX: if (tx_idx == 3) next_state = S_DONE;
-            S_DONE: next_state = S_RX;
-            default: ;
-        endcase
-    end
+    unique case (state)
+        S_RX: if (rx_idx == 4) next_state = S_TX;
+        S_TX: if (tx_idx == 3) next_state = S_DONE;
+        default: ;
+    endcase
 end
 always @(posedge clk) begin
-    complete <= (next_state == S_DONE);
-    state <= next_state;
+    if (!enable) begin
+        state <= S_RX;
+    end else begin
+        state <= next_state;
+    end
 end
 
 always @(posedge clk) begin
