@@ -182,6 +182,24 @@ lk_cmd_dmg_cart_write_t u_DMG_CART_WRITE(
 );
 `ACK_WHEN_COMPLETE(CMD_DMG_CART_WRITE)
 
+wire DMG_FLASH_WRITE_BYTE_req_valid;
+wire [15:0] DMG_FLASH_WRITE_BYTE_req_address;
+wire [7:0] DMG_FLASH_WRITE_BYTE_req_data;
+lk_cmd_dmg_cart_write_t u_DMG_FLASH_WRITE_BYTE(
+    clk,
+    enabled[CMD_DMG_FLASH_WRITE_BYTE],
+    complete[CMD_DMG_FLASH_WRITE_BYTE],
+
+    rx_valid,
+    rx_data,
+
+    DMG_FLASH_WRITE_BYTE_req_valid,
+    DMG_FLASH_WRITE_BYTE_req_address,
+    DMG_FLASH_WRITE_BYTE_req_data,
+    cart_complete
+);
+`ACK_WHEN_COMPLETE(CMD_DMG_FLASH_WRITE_BYTE)
+
 wire CART_WRITE_FLASH_CMD_req_valid;
 wire [15:0] CART_WRITE_FLASH_CMD_req_address;
 wire [7:0] CART_WRITE_FLASH_CMD_req_data;
@@ -241,6 +259,7 @@ wire cart_enabled_next =
         enabled[CMD_DMG_MBC_RESET] |
         enabled[CMD_DMG_CART_READ] |
         enabled[CMD_DMG_CART_WRITE] |
+        enabled[CMD_DMG_FLASH_WRITE_BYTE] |
         enabled[CMD_CART_WRITE_FLASH_CMD] |
         enabled[CMD_SET_VOLTAGE_5V] |
         (cart_enabled & !enabled[CMD_SET_ADDR_AS_INPUTS]);
@@ -292,6 +311,15 @@ always @(*) begin
             is_write: 1'b1,
             address: CART_WRITE_FLASH_CMD_req_address,
             data: CART_WRITE_FLASH_CMD_req_data
+        };
+    end
+    if (enabled[CMD_DMG_FLASH_WRITE_BYTE]) begin
+        cart_req_valid_next |= DMG_FLASH_WRITE_BYTE_req_valid;
+        cart_req_next |= '{
+            is_flash: 1'b1,
+            is_write: 1'b1,
+            address: DMG_FLASH_WRITE_BYTE_req_address,
+            data: DMG_FLASH_WRITE_BYTE_req_data
         };
     end
 end
