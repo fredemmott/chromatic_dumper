@@ -1,7 +1,5 @@
 package lk_types;
-
 typedef enum {
-    CMD_INVALID,
     CMD_STUB_NOOP_ACK,
     CMD_QUERY_FW_INFO,
     CMD_SET_VARIABLE,
@@ -12,7 +10,8 @@ typedef enum {
     CMD_GET_VARIABLE,
     CMD_DMG_CART_READ,
     CMD_DMG_CART_WRITE,
-    CMD_CART_WRITE_FLASH_CMD/*,
+    CMD_CART_WRITE_FLASH_CMD,
+    /*
     CMD_SET_FLASH_CMD,
     CMD_CLK_TOGGLE,
     CMD_GET_VARIABLE,
@@ -24,7 +23,9 @@ typedef enum {
     CMD_FLASH_PROGRAM,
     CMD_CALC_CRC32,
     */
+    CMD_COUNT
 } command_t;
+parameter command_t CMD_INVALID = CMD_COUNT;
 // TODO:
 parameter command_t CMD_NOT_IMPLEMENTED = CMD_INVALID;
 

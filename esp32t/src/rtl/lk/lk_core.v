@@ -73,40 +73,52 @@ wire cart_req_ready = !cart_req_almost_full;
 reg reset_r = 1;
 always @(posedge clk) reset_r <= reset;
 
-vars_t vars = '{default: 0};
+vars_t vars;
+command_t command;
 
-command_t command = CMD_INVALID;
+logic [CMD_COUNT - 1:0] enabled;
+logic [CMD_COUNT - 1:0] complete;
+logic [CMD_COUNT - 1:0] complete_and_enabled;
+logic exec_complete;
+assign complete_and_enabled = (complete & enabled);
+assign exec_complete = |complete_and_enabled;
 
-wire QUERY_FW_INFO_complete;
+always @(*) begin
+    enabled = '{default: 0};
+    if (command < CMD_COUNT) begin
+        enabled[command] = 1;
+    end
+end
+
+assign complete[CMD_STUB_NOOP_ACK] = 1'b1;
+
 wire QUERY_FW_INFO_tx_valid;
 wire [7:0] QUERY_FW_INFO_tx_data;
 lk_cmd_query_fw_info_t u_QUERY_FW_INFO(
     clk,
-    (command == CMD_QUERY_FW_INFO),
-    QUERY_FW_INFO_complete,
+    enabled[CMD_QUERY_FW_INFO],
+    complete[CMD_QUERY_FW_INFO],
     QUERY_FW_INFO_tx_valid,
     QUERY_FW_INFO_tx_data
 );
 
-wire SET_VARIABLE_complete;
 vars_t SET_VARIABLE_vars_out;
 lk_cmd_set_variable_t u_SET_VARIABLE(
     clk,
-    (command == CMD_SET_VARIABLE),
-    SET_VARIABLE_complete,
+    enabled[CMD_SET_VARIABLE],
+    complete[CMD_SET_VARIABLE],
     rx_valid,
     rx_data,
     vars,
     SET_VARIABLE_vars_out
 );
 
-wire GET_VARIABLE_complete;
 wire GET_VARIABLE_tx_valid;
 wire [7:0] GET_VARIABLE_tx_data;
 lk_cmd_get_variable_t u_GET_VARIABLE(
     clk,
-    (command == CMD_GET_VARIABLE),
-    GET_VARIABLE_complete,
+    enabled[CMD_GET_VARIABLE],
+    complete[CMD_GET_VARIABLE],
     rx_valid,
     rx_data,
     GET_VARIABLE_tx_valid,
@@ -114,7 +126,6 @@ lk_cmd_get_variable_t u_GET_VARIABLE(
     vars
 );
 
-wire DMG_CART_READ_complete;
 wire DMG_CART_READ_tx_valid;
 wire [7:0] DMG_CART_READ_tx_data;
 wire DMG_CART_READ_req_valid;
@@ -122,8 +133,8 @@ wire [15:0] DMG_CART_READ_req_address;
 
 lk_cmd_dmg_cart_read_t u_DMG_CART_READ(
     clk,
-    (command == CMD_DMG_CART_READ),
-    DMG_CART_READ_complete,
+    enabled[CMD_DMG_CART_READ],
+    complete[CMD_DMG_CART_READ],
 
     DMG_CART_READ_tx_valid,
     DMG_CART_READ_tx_data,
@@ -138,15 +149,14 @@ lk_cmd_dmg_cart_read_t u_DMG_CART_READ(
     vars.transfer_size
 );
 
-wire DMG_CART_WRITE_complete;
 wire DMG_CART_WRITE_req_valid;
 wire [15:0] DMG_CART_WRITE_req_address;
 wire [7:0] DMG_CART_WRITE_req_data;
 
 lk_cmd_dmg_cart_write_t u_DMG_CART_WRITE(
     clk,
-    (command == CMD_DMG_CART_WRITE),
-    DMG_CART_WRITE_complete,
+    enabled[CMD_DMG_CART_WRITE],
+    complete[CMD_DMG_CART_WRITE],
 
     rx_valid,
     rx_data,
@@ -157,15 +167,14 @@ lk_cmd_dmg_cart_write_t u_DMG_CART_WRITE(
     cart_complete
 );
 
-wire CART_WRITE_FLASH_CMD_complete;
 wire CART_WRITE_FLASH_CMD_req_valid;
 wire [15:0] CART_WRITE_FLASH_CMD_req_address;
 wire [7:0] CART_WRITE_FLASH_CMD_req_data;
 
 lk_cmd_cart_write_flash_cmd_t u_CART_WRITE_FLASH_CMD(
     clk,
-    (command == CMD_CART_WRITE_FLASH_CMD),
-    CART_WRITE_FLASH_CMD_complete,
+    enabled[CMD_CART_WRITE_FLASH_CMD],
+    complete[CMD_CART_WRITE_FLASH_CMD],
 
     rx_valid,
     rx_data,
@@ -176,37 +185,37 @@ lk_cmd_cart_write_flash_cmd_t u_CART_WRITE_FLASH_CMD(
     cart_complete
 );
 
-wire SET_PIN_complete;
 reg hold_pin_audio;
 lk_cmd_set_pin_t u_SET_PIN(
     clk,
     reset_r,
-    (command == CMD_SET_PIN),
-    SET_PIN_complete,
+    enabled[CMD_SET_PIN],
+    complete[CMD_SET_PIN],
     rx_valid,
     rx_data,
     hold_pin_audio);
 
-reg DMG_MBC_RESET_complete;
 wire DMG_MBC_RESET_req_valid;
 wire [15:0] DMG_MBC_RESET_req_address;
 wire [7:0] DMG_MBC_RESET_req_data;
 lk_cmd_dmg_mbc_reset_t u_DMG_MBC_RESET(
     clk,
-    (command == CMD_DMG_MBC_RESET),
-    DMG_MBC_RESET_complete,
+    enabled[CMD_DMG_MBC_RESET],
+    complete[CMD_DMG_MBC_RESET],
     DMG_MBC_RESET_req_valid,
     DMG_MBC_RESET_req_address,
     DMG_MBC_RESET_req_data,
     cart_complete
 );
 
+assign complete[CMD_SET_VOLTAGE_5V] = 1'b1;
+assign complete[CMD_SET_ADDR_AS_INPUTS] = 1'b1;
 always @(posedge clk) begin
     if (reset_r) begin
         cart_enabled <= 1'b0;
-    end else if (command == CMD_SET_VOLTAGE_5V) begin
+    end else if (enabled[CMD_SET_VOLTAGE_5V]) begin
         cart_enabled <= 1'b1;
-    end else if (command == CMD_SET_ADDR_AS_INPUTS) begin
+    end else if (enabled[CMD_SET_ADDR_AS_INPUTS]) begin
         cart_enabled <= 1'b0;
     end
 end
@@ -261,25 +270,6 @@ always @(posedge clk) begin
     cart_req <= cart_req_next;
 end
 
-reg complete_next;
-always @(*) begin
-    complete_next = 1'b1;
-    unique case (command)
-        CMD_QUERY_FW_INFO: complete_next = QUERY_FW_INFO_complete;
-        CMD_SET_VARIABLE: complete_next = SET_VARIABLE_complete;
-        CMD_GET_VARIABLE: complete_next = GET_VARIABLE_complete;
-        CMD_SET_PIN: complete_next = SET_PIN_complete;
-        CMD_DMG_MBC_RESET: complete_next = DMG_MBC_RESET_complete;
-        CMD_DMG_CART_READ: complete_next = DMG_CART_READ_complete;
-        CMD_DMG_CART_WRITE: complete_next = DMG_CART_WRITE_complete;
-        CMD_CART_WRITE_FLASH_CMD: complete_next = CART_WRITE_FLASH_CMD_complete;
-        // Single-cycle and invalid
-        default: ;
-    endcase
-end
-reg complete;
-always @(posedge clk) complete <= complete_next;
-
 reg exec_tx_valid;
 reg [7:0] exec_tx_data;
 always @(*) begin
@@ -295,7 +285,7 @@ always @(*) begin
         CMD_SET_VOLTAGE_5V,
         CMD_CART_WRITE_FLASH_CMD,
         CMD_STUB_NOOP_ACK: begin
-            exec_tx_valid = complete;
+            exec_tx_valid = exec_complete;
             exec_tx_data = 8'd1;
         end
         CMD_QUERY_FW_INFO: begin
@@ -369,7 +359,7 @@ always @(posedge clk) begin
                 command <= rx_command;
                 state <= S_EXEC;
             end
-            S_EXEC: if (complete) begin
+            S_EXEC: if (exec_complete) begin
                 state <= S_IDLE;
                 command <= CMD_INVALID;
             end
@@ -405,10 +395,11 @@ always @(posedge clk) begin
 vars_t vars_next;
 always @(*) begin
     vars_next = vars;
-    unique case(command)
-        CMD_SET_VARIABLE: vars_next = SET_VARIABLE_vars_out;
-        CMD_DMG_CART_READ: if (DMG_CART_READ_complete) vars_next.address = vars.address + vars.transfer_size;
-        CMD_DMG_CART_WRITE: if (DMG_CART_WRITE_complete) vars_next.address = vars.address + vars.transfer_size;
+    unique case (1'b1)
+        complete_and_enabled[CMD_SET_VARIABLE]: vars_next = SET_VARIABLE_vars_out;
+        complete_and_enabled[CMD_DMG_CART_READ],
+        complete_and_enabled[CMD_DMG_CART_WRITE]:
+            vars_next.address = vars.address + vars.transfer_size;
         default: ;
     endcase
 end
