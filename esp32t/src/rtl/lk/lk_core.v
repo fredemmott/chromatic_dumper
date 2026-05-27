@@ -225,8 +225,8 @@ cart_req_t cart_req_next;
 always @(*) begin
     cart_req_valid_next = 1'b0;
     cart_req_next = '{default: 0};
-    unique case (command)
-        CMD_DMG_MBC_RESET: begin
+    unique case (1'b1)
+        enabled[CMD_DMG_MBC_RESET]: begin
             cart_req_valid_next = DMG_MBC_RESET_req_valid;
             cart_req_next = '{
                 is_flash: 1'b0,
@@ -235,7 +235,7 @@ always @(*) begin
                 data: DMG_MBC_RESET_req_data
             };
         end
-        CMD_DMG_CART_READ: begin
+        enabled[CMD_DMG_CART_READ]: begin
             cart_req_valid_next = DMG_CART_READ_req_valid;
             cart_req_next = '{
                 is_flash: 1'b0,
@@ -244,7 +244,7 @@ always @(*) begin
                 data: 8'd0
             };
         end
-        CMD_DMG_CART_WRITE: begin
+        enabled[CMD_DMG_CART_WRITE]: begin
             cart_req_valid_next = DMG_CART_WRITE_req_valid;
             cart_req_next = '{
                 is_flash: 1'b0,
@@ -253,7 +253,7 @@ always @(*) begin
                 data: DMG_CART_WRITE_req_data
             };
         end
-        CMD_CART_WRITE_FLASH_CMD: begin
+        enabled[CMD_CART_WRITE_FLASH_CMD]: begin
             cart_req_valid_next = CART_WRITE_FLASH_CMD_req_valid;
             cart_req_next = '{
                 is_flash: 1'b1,
