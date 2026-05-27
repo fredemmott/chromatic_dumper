@@ -229,13 +229,19 @@ assign complete[CMD_SET_VOLTAGE_5V] = 1'b1;
 `ACK_WHEN_COMPLETE(CMD_SET_VOLTAGE_5V)
 assign complete[CMD_SET_ADDR_AS_INPUTS] = 1'b1;
 `ACK_WHEN_COMPLETE(CMD_SET_ADDR_AS_INPUTS)
+
+wire cart_enabled_next =
+        enabled[CMD_DMG_MBC_RESET] |
+        enabled[CMD_DMG_CART_READ] |
+        enabled[CMD_DMG_CART_WRITE] |
+        enabled[CMD_CART_WRITE_FLASH_CMD] |
+        enabled[CMD_SET_VOLTAGE_5V] |
+        (cart_enabled & !enabled[CMD_SET_ADDR_AS_INPUTS]);
 always @(posedge clk) begin
     if (reset_r) begin
         cart_enabled <= 1'b0;
-    end else if (enabled[CMD_SET_VOLTAGE_5V]) begin
-        cart_enabled <= 1'b1;
-    end else if (enabled[CMD_SET_ADDR_AS_INPUTS]) begin
-        cart_enabled <= 1'b0;
+    end else begin
+        cart_enabled <= cart_enabled_next;
     end
 end
 
