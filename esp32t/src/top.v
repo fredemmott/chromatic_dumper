@@ -113,6 +113,9 @@ module top #(parameter ISSIMU=0)
     input               VBAT_ADC_P,
     input               VBAT_ADC_N
 );
+    (* syn_preserve = 1 *) reg lk_enabled;
+    (* syn_preserve = 1 *) reg lk_enabled_d;
+    (* syn_preserve = 1 *) reg lk_emu_lockout;
 
     assign POWER_DOWN_IO = 1'bZ;
     assign SDIO_LS = 1'd1;
@@ -380,12 +383,12 @@ module top #(parameter ISSIMU=0)
         else if (!xclk_lock_o) lock_o_count <= lock_o_count + 1'd1;
     end
 
+    reg lk_emu_lockout;
     // CART_DET = 0 (no cart inserted)
-
     always@(posedge xClk)
         memrst <= CART_DET_sr[17:2] == 16'h7FFF ||
                   CART_DET_sr[17:2] == 16'h8000 ||
-                  lk_enabled ||
+                  lk_emu_lockout ||
                   ~xclk_lock_o;
 
     mem_system_top #(ISSIMU)
@@ -739,7 +742,11 @@ module top #(parameter ISSIMU=0)
         .lk_rx_data(LK_RX_DATA)
     );
 
-    assign lk_enabled = LK_ENABLED;
+    always @(posedge xClk) begin
+        lk_enabled_d <= LK_ENABLED;
+        lk_enabled <= lk_enabled_d;
+        lk_emu_lockout <= lk_enabled_d;
+    end
 
     wire [13:0] hAdcValue_r1;
     wire hAdcReq_ext;

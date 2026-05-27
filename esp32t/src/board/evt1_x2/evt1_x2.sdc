@@ -37,6 +37,7 @@ set_clock_groups -asynchronous -group [get_clocks {PHY_CLKOUT}] -group [get_cloc
 
 set_clock_groups -asynchronous -group [get_clocks {PHY_CLKOUT}] -group [get_clocks {xclk}]
 set_false_path -to [get_regs {*/lk_cdc_*0_s0}]
+set_false_path -from [get_regs {lk_enabled_d*}]
 
 // Correct (loosen) the timing requirements for reseting the DRAM.
 //
