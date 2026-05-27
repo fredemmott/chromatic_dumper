@@ -90,16 +90,34 @@ always @(*) begin
     end
 end
 
-assign complete[CMD_STUB_NOOP_ACK] = 1'b1;
+logic [CMD_COUNT - 1:0] tx_valid_bus;
+logic [7:0] tx_data_bus [0:CMD_COUNT - 1];
 
-wire QUERY_FW_INFO_tx_valid;
-wire [7:0] QUERY_FW_INFO_tx_data;
+reg exec_tx_valid;
+reg [7:0] exec_tx_data;
+always @(*) begin
+    exec_tx_valid = |(enabled & tx_valid_bus);
+    exec_tx_data = 8'h00;
+    for (int i = 0; i < CMD_COUNT; i = i + 1) begin
+        exec_tx_data |= (enabled[i] ? tx_data_bus[i] : 8'h00);
+    end
+end
+
+///// Start Commands /////
+
+`define ACK_WHEN_COMPLETE(CMD) \
+  assign tx_valid_bus[CMD] = complete[CMD]; \
+  assign tx_data_bus[CMD] = 8'd1;
+
+assign complete[CMD_STUB_NOOP_ACK] = 1'b1;
+`ACK_WHEN_COMPLETE(CMD_STUB_NOOP_ACK)
+
 lk_cmd_query_fw_info_t u_QUERY_FW_INFO(
     clk,
     enabled[CMD_QUERY_FW_INFO],
     complete[CMD_QUERY_FW_INFO],
-    QUERY_FW_INFO_tx_valid,
-    QUERY_FW_INFO_tx_data
+    tx_valid_bus[CMD_QUERY_FW_INFO],
+    tx_data_bus[CMD_QUERY_FW_INFO]
 );
 
 vars_t SET_VARIABLE_vars_out;
@@ -112,22 +130,19 @@ lk_cmd_set_variable_t u_SET_VARIABLE(
     vars,
     SET_VARIABLE_vars_out
 );
+`ACK_WHEN_COMPLETE(CMD_SET_VARIABLE)
 
-wire GET_VARIABLE_tx_valid;
-wire [7:0] GET_VARIABLE_tx_data;
 lk_cmd_get_variable_t u_GET_VARIABLE(
     clk,
     enabled[CMD_GET_VARIABLE],
     complete[CMD_GET_VARIABLE],
     rx_valid,
     rx_data,
-    GET_VARIABLE_tx_valid,
-    GET_VARIABLE_tx_data,
+    tx_valid_bus[CMD_GET_VARIABLE],
+    tx_data_bus[CMD_GET_VARIABLE],
     vars
 );
 
-wire DMG_CART_READ_tx_valid;
-wire [7:0] DMG_CART_READ_tx_data;
 wire DMG_CART_READ_req_valid;
 wire [15:0] DMG_CART_READ_req_address;
 
@@ -136,8 +151,8 @@ lk_cmd_dmg_cart_read_t u_DMG_CART_READ(
     enabled[CMD_DMG_CART_READ],
     complete[CMD_DMG_CART_READ],
 
-    DMG_CART_READ_tx_valid,
-    DMG_CART_READ_tx_data,
+    tx_valid_bus[CMD_DMG_CART_READ],
+    tx_data_bus[CMD_DMG_CART_READ],
 
     cart_req_ready,
     DMG_CART_READ_req_valid,
@@ -152,7 +167,6 @@ lk_cmd_dmg_cart_read_t u_DMG_CART_READ(
 wire DMG_CART_WRITE_req_valid;
 wire [15:0] DMG_CART_WRITE_req_address;
 wire [7:0] DMG_CART_WRITE_req_data;
-
 lk_cmd_dmg_cart_write_t u_DMG_CART_WRITE(
     clk,
     enabled[CMD_DMG_CART_WRITE],
@@ -166,11 +180,11 @@ lk_cmd_dmg_cart_write_t u_DMG_CART_WRITE(
     DMG_CART_WRITE_req_data,
     cart_complete
 );
+`ACK_WHEN_COMPLETE(CMD_DMG_CART_WRITE)
 
 wire CART_WRITE_FLASH_CMD_req_valid;
 wire [15:0] CART_WRITE_FLASH_CMD_req_address;
 wire [7:0] CART_WRITE_FLASH_CMD_req_data;
-
 lk_cmd_cart_write_flash_cmd_t u_CART_WRITE_FLASH_CMD(
     clk,
     enabled[CMD_CART_WRITE_FLASH_CMD],
@@ -184,6 +198,7 @@ lk_cmd_cart_write_flash_cmd_t u_CART_WRITE_FLASH_CMD(
     CART_WRITE_FLASH_CMD_req_data,
     cart_complete
 );
+`ACK_WHEN_COMPLETE(CMD_CART_WRITE_FLASH_CMD)
 
 reg hold_pin_audio;
 lk_cmd_set_pin_t u_SET_PIN(
@@ -194,6 +209,7 @@ lk_cmd_set_pin_t u_SET_PIN(
     rx_valid,
     rx_data,
     hold_pin_audio);
+`ACK_WHEN_COMPLETE(CMD_SET_PIN)
 
 wire DMG_MBC_RESET_req_valid;
 wire [15:0] DMG_MBC_RESET_req_address;
@@ -207,9 +223,12 @@ lk_cmd_dmg_mbc_reset_t u_DMG_MBC_RESET(
     DMG_MBC_RESET_req_data,
     cart_complete
 );
+`ACK_WHEN_COMPLETE(CMD_DMG_MBC_RESET)
 
 assign complete[CMD_SET_VOLTAGE_5V] = 1'b1;
+`ACK_WHEN_COMPLETE(CMD_SET_VOLTAGE_5V)
 assign complete[CMD_SET_ADDR_AS_INPUTS] = 1'b1;
+`ACK_WHEN_COMPLETE(CMD_SET_ADDR_AS_INPUTS)
 always @(posedge clk) begin
     if (reset_r) begin
         cart_enabled <= 1'b0;
@@ -268,40 +287,6 @@ end
 always @(posedge clk) begin
     cart_req_valid <= cart_req_valid_next;
     cart_req <= cart_req_next;
-end
-
-reg exec_tx_valid;
-reg [7:0] exec_tx_data;
-always @(*) begin
-    exec_tx_valid = 1'b0;
-    exec_tx_data = 8'd0;
-
-    unique case (command)
-        CMD_DMG_MBC_RESET,
-        CMD_DMG_CART_WRITE,
-        CMD_SET_ADDR_AS_INPUTS,
-        CMD_SET_PIN,
-        CMD_SET_VARIABLE,
-        CMD_SET_VOLTAGE_5V,
-        CMD_CART_WRITE_FLASH_CMD,
-        CMD_STUB_NOOP_ACK: begin
-            exec_tx_valid = exec_complete;
-            exec_tx_data = 8'd1;
-        end
-        CMD_QUERY_FW_INFO: begin
-            exec_tx_valid = QUERY_FW_INFO_tx_valid;
-            exec_tx_data = QUERY_FW_INFO_tx_data;
-        end
-        CMD_GET_VARIABLE: begin
-            exec_tx_valid = GET_VARIABLE_tx_valid;
-            exec_tx_data = GET_VARIABLE_tx_data;
-        end
-        CMD_DMG_CART_READ: begin
-            exec_tx_valid = DMG_CART_READ_tx_valid;
-            exec_tx_data = DMG_CART_READ_tx_data;
-        end
-        default: ;
-    endcase
 end
 
 command_t cmd_rom [0:255];
