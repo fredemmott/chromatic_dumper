@@ -72,7 +72,7 @@ typedef struct {
     logic dmg_write_cs_pulse;
 } cart_vars_t;
 
-typedef struct {
+typedef struct packed {
     logic        is_flash;
     logic        is_write;
     logic [15:0] address;

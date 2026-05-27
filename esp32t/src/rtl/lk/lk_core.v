@@ -241,48 +241,46 @@ end
 
 reg cart_req_valid_next;
 cart_req_t cart_req_next;
+
 always @(*) begin
     cart_req_valid_next = 1'b0;
     cart_req_next = '{default: 0};
-    unique case (1'b1)
-        enabled[CMD_DMG_MBC_RESET]: begin
-            cart_req_valid_next = DMG_MBC_RESET_req_valid;
-            cart_req_next = '{
-                is_flash: 1'b0,
-                is_write: 1'b1,
-                address: DMG_MBC_RESET_req_address,
-                data: DMG_MBC_RESET_req_data
-            };
-        end
-        enabled[CMD_DMG_CART_READ]: begin
-            cart_req_valid_next = DMG_CART_READ_req_valid;
-            cart_req_next = '{
-                is_flash: 1'b0,
-                is_write: 1'b0,
-                address: DMG_CART_READ_req_address,
-                data: 8'd0
-            };
-        end
-        enabled[CMD_DMG_CART_WRITE]: begin
-            cart_req_valid_next = DMG_CART_WRITE_req_valid;
-            cart_req_next = '{
-                is_flash: 1'b0,
-                is_write: 1'b1,
-                address: DMG_CART_WRITE_req_address,
-                data: DMG_CART_WRITE_req_data
-            };
-        end
-        enabled[CMD_CART_WRITE_FLASH_CMD]: begin
-            cart_req_valid_next = CART_WRITE_FLASH_CMD_req_valid;
-            cart_req_next = '{
-                is_flash: 1'b1,
-                is_write: 1'b1,
-                address: CART_WRITE_FLASH_CMD_req_address,
-                data: CART_WRITE_FLASH_CMD_req_data
-            };
-        end
-        default: ;
-    endcase
+    if (enabled[CMD_DMG_MBC_RESET]) begin
+        cart_req_valid_next |= DMG_MBC_RESET_req_valid;
+        cart_req_next |= '{
+            is_flash: 1'b0,
+            is_write: 1'b1,
+            address: DMG_MBC_RESET_req_address,
+            data: DMG_MBC_RESET_req_data
+        };
+    end
+    if (enabled[CMD_DMG_CART_READ]) begin
+        cart_req_valid_next |= DMG_CART_READ_req_valid;
+        cart_req_next |= '{
+            is_flash: 1'b0,
+            is_write: 1'b0,
+            address: DMG_CART_READ_req_address,
+            data: 8'd0
+        };
+    end
+    if (enabled[CMD_DMG_CART_WRITE]) begin
+        cart_req_valid_next |= DMG_CART_WRITE_req_valid;
+        cart_req_next |= '{
+            is_flash: 1'b0,
+            is_write: 1'b1,
+            address: DMG_CART_WRITE_req_address,
+            data: DMG_CART_WRITE_req_data
+        };
+    end
+    if (enabled[CMD_CART_WRITE_FLASH_CMD]) begin
+        cart_req_valid_next |= CART_WRITE_FLASH_CMD_req_valid;
+        cart_req_next |= '{
+            is_flash: 1'b1,
+            is_write: 1'b1,
+            address: CART_WRITE_FLASH_CMD_req_address,
+            data: CART_WRITE_FLASH_CMD_req_data
+        };
+    end
 end
 always @(posedge clk) begin
     cart_req_valid <= cart_req_valid_next;
