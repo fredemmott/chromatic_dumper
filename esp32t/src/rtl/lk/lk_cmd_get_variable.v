@@ -33,8 +33,8 @@ always @(*) begin
             VAR_ID_ADDRESS: var_value = vars.address;
             VAR_ID_TRANSFER_SIZE: var_value = vars.transfer_size;
             VAR_ID_STATUS_REGISTER: var_value = { 8'd0, vars.status_register };
-            VAR_ID_CART_MODE: var_value = { 8'd0, vars.cart_mode };
-            VAR_ID_DMG_ACCESS_MODE: var_value = { 8'd0, vars.dmg_access_mode };
+            VAR_ID_CART_MODE: var_value = { 14'd0, vars.cart_mode };
+            VAR_ID_DMG_ACCESS_MODE: var_value = { 13'd0, vars.dmg_access_mode };
             VAR_ID_FLASH_WE_PIN: var_value = { 15'd0, vars.flash_we_pin };
             VAR_ID_DMG_READ_CS_PULSE: var_value = { 15'd0, vars.dmg_read_cs_pulse };
             VAR_ID_DMG_WRITE_CS_PULSE: var_value = { 15'd0, vars.dmg_write_cs_pulse };

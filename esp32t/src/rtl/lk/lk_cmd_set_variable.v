@@ -34,8 +34,8 @@ always @(*) begin
             VAR_ID_ADDRESS: vars_out_next.address = var_value;
             VAR_ID_TRANSFER_SIZE: vars_out_next.transfer_size = var_value;
             VAR_ID_STATUS_REGISTER: vars_out_next.status_register = var_value[7:0];
-            VAR_ID_CART_MODE: vars_out_next.cart_mode = var_value[7:0];
-            VAR_ID_DMG_ACCESS_MODE: vars_out_next.dmg_access_mode = var_value[7:0];
+            VAR_ID_CART_MODE: vars_out_next.cart_mode = var_value[1:0];
+            VAR_ID_DMG_ACCESS_MODE: vars_out_next.dmg_access_mode = var_value[2:0];
             VAR_ID_FLASH_WE_PIN: vars_out_next.flash_we_pin = var_value[1:0];
             VAR_ID_DMG_READ_CS_PULSE: vars_out_next.dmg_read_cs_pulse = var_value[0];
             VAR_ID_DMG_WRITE_CS_PULSE: vars_out_next.dmg_write_cs_pulse = var_value[0];

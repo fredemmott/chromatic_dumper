@@ -46,8 +46,8 @@ typedef struct {
     logic [15:0] address;
     logic [15:0] transfer_size;
     logic [7:0]  status_register;
-    logic [7:0]  cart_mode;
-    logic [7:0]  dmg_access_mode;
+    logic [1:0]  cart_mode;
+    logic [2:0]  dmg_access_mode;
     logic [1:0]  flash_we_pin;
     logic        dmg_read_cs_pulse;
     logic        dmg_write_cs_pulse;
@@ -56,7 +56,14 @@ localparam FLASH_WE_PIN_WR = 2'd1;
 localparam FLASH_WE_PIN_AUDIO  = 2'd2;
 localparam FLASH_WE_PIN_WR_AND_RESET = 2'd3;
 
-// Adjust FIFO in lk_top.v if these change size:
+// unused:
+//
+// localparam DMG_ACCESS_MODE_ROM_READ = 3'd1;
+// localparam DMG_ACCESS_MODE_RAM_READ = 3'd3;
+// localparam DMG_ACCESS_MODE_RAM_WRITE = 3'd4;
+//
+// localparam CART_MODE_DMG = 2'd1;
+// localparam CART_MODE_AGB = 2'd2;
 
 typedef struct {
     logic hold_pin_audio;
