@@ -81,10 +81,10 @@ wire cart_complete;
 logic cart_complete_sr [0:1];
 logic [7:0] cart_complete_data_sr [0:1];
 always @(posedge clk) begin
-    cart_complete_sr[1] <= cart_complete_sr[0];
-    cart_complete_data_sr[1] <= cart_complete_data_sr[0];
     cart_complete_sr[0] <= cart_complete;
+    cart_complete_sr[1] <= cart_complete_sr[0];
     cart_complete_data_sr[0] <= cart_d_in;
+    cart_complete_data_sr[1] <= cart_complete_data_sr[0];
 end
 assign cart_complete_o = cart_complete_sr[1];
 assign cart_complete_data_o = cart_complete_data_sr[1];
