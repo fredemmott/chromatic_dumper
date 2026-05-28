@@ -10,7 +10,7 @@ typedef enum {
     CMD_GET_VARIABLE,
     CMD_DMG_CART_READ,
     CMD_DMG_CART_WRITE,
-    CMD_CART_WRITE_FLASH_CMD,
+    //CMD_CART_WRITE_FLASH_CMD,
     CMD_DMG_FLASH_WRITE_BYTE,
     /*
     CMD_SET_FLASH_CMD,
@@ -26,6 +26,7 @@ typedef enum {
     CMD_COUNT
 } command_t;
 parameter command_t CMD_INVALID = CMD_COUNT;
+parameter command_t CMD_CART_WRITE_FLASH_CMD = CMD_COUNT;
 // TODO:
 parameter command_t CMD_NOT_IMPLEMENTED = CMD_INVALID;
 

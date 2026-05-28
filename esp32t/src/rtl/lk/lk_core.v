@@ -200,6 +200,7 @@ lk_cmd_dmg_cart_write_t u_DMG_FLASH_WRITE_BYTE(
 );
 `ACK_WHEN_COMPLETE(CMD_DMG_FLASH_WRITE_BYTE)
 
+/*
 wire CART_WRITE_FLASH_CMD_req_valid;
 wire [15:0] CART_WRITE_FLASH_CMD_req_address;
 wire [7:0] CART_WRITE_FLASH_CMD_req_data;
@@ -224,6 +225,7 @@ lk_cmd_dmg_cart_write_t #(
     cart_complete
 );
 `ACK_WHEN_COMPLETE(CMD_CART_WRITE_FLASH_CMD)
+*/
 
 reg hold_pin_audio;
 lk_cmd_set_pin_t u_SET_PIN(
@@ -260,7 +262,7 @@ wire cart_enabled_next =
         enabled[CMD_DMG_CART_READ] |
         enabled[CMD_DMG_CART_WRITE] |
         enabled[CMD_DMG_FLASH_WRITE_BYTE] |
-        enabled[CMD_CART_WRITE_FLASH_CMD] |
+        //enabled[CMD_CART_WRITE_FLASH_CMD] |
         enabled[CMD_SET_VOLTAGE_5V] |
         (cart_enabled & !enabled[CMD_SET_ADDR_AS_INPUTS]);
 always @(posedge clk) begin
@@ -304,6 +306,7 @@ always @(*) begin
             data: DMG_CART_WRITE_req_data
         };
     end
+    /*
     if (enabled[CMD_CART_WRITE_FLASH_CMD]) begin
         cart_req_valid_next |= CART_WRITE_FLASH_CMD_req_valid;
         cart_req_next |= '{
@@ -313,6 +316,7 @@ always @(*) begin
             data: CART_WRITE_FLASH_CMD_req_data
         };
     end
+    */
     if (enabled[CMD_DMG_FLASH_WRITE_BYTE]) begin
         cart_req_valid_next |= DMG_FLASH_WRITE_BYTE_req_valid;
         cart_req_next |= '{
