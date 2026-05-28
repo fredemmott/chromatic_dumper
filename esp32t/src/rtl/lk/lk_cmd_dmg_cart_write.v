@@ -1,10 +1,4 @@
-// byte [0..3]: address top 16 are always 0 for DMG
-//      [4]   : value
-module lk_cmd_dmg_cart_write_t #(
-    parameter ADDRESS_MSB_RX_IDX = 2, // MSB that we actually pay attention to
-    parameter DATA_RX_IDX = 4,
-    parameter LAST_RX_IDX = 4
-) (
+module lk_cmd_dmg_cart_write_t (
     input  wire        clk,
     input  wire        enable,
     output reg         complete,
@@ -18,9 +12,6 @@ module lk_cmd_dmg_cart_write_t #(
     input  reg         cart_complete
 );
 
-localparam ADDRESS_LSB_RX_IDX = ADDRESS_MSB_RX_IDX + 1;
-localparam RX_IDX_WIDTH = $clog2(LAST_RX_IDX + 1);
-
 typedef enum {
     S_RX,
     S_EXEC,
@@ -31,7 +22,13 @@ state_t state;
 assign complete = (state == S_COMPLETE);
 assign cart_req_valid = (state == S_EXEC);
 
-reg [RX_IDX_WIDTH - 1:0] idx;
+// byte [0..3]: address top 16 are always 0 for DMG
+//      [4]   : value
+localparam LAST_RX_IDX = 4;
+reg [2:0] idx;
+reg [7:0] rx_buf [0:LAST_RX_IDX];
+assign cart_req_address = { rx_buf[2], rx_buf[3] };
+assign cart_req_data = rx_buf[4];
 
 state_t state_next;
 always @(*) begin
@@ -54,9 +51,6 @@ always @(posedge clk) begin
     end
 end
 
-reg [7:0] rx_buf [0:LAST_RX_IDX];
-assign cart_req_address = { rx_buf[ADDRESS_MSB_RX_IDX], rx_buf[ADDRESS_LSB_RX_IDX] };
-assign cart_req_data = rx_buf[DATA_RX_IDX];
 
 integer i;
 always @(posedge clk) begin
