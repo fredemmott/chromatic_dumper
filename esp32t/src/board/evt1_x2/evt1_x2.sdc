@@ -46,12 +46,19 @@ set_multicycle_path -hold 1  -from [get_regs {u_lk/u_core/*}] -to   [get_regs {u
 set_multicycle_path -setup 2 -to   [get_regs {u_lk/u_core/*}] -from [get_regs {u_lk/rx_valid_o* u_lk/rx_data_o* u_lk/tx_valid* u_lk/tx_data* u_lk/cart_complete*sr*}]
 set_multicycle_path -hold 1  -to   [get_regs {u_lk/u_core/*}] -from [get_regs {u_lk/rx_valid_o* u_lk/rx_data_o* u_lk/tx_valid* u_lk/tx_data* u_lk/cart_complete*sr*}]
 
-set_multicycle_path -setup 2 -from [get_regs {u_lk/u_core/*}] -to   [get_regs {u_lk/u_cart_req_fifo/previous_in* u_lk/u_cart_req_fifo/use_previous* u_lk/u_cart_req_fifo/reqs* u_lk/u_cart_req_fifo/write_idx*}]
-set_multicycle_path -hold 1  -from [get_regs {u_lk/u_core/*}] -to   [get_regs {u_lk/u_cart_req_fifo/previous_in* u_lk/u_cart_req_fifo/use_previous* u_lk/u_cart_req_fifo/reqs* u_lk/u_cart_req_fifo/write_idx*}]
 set_multicycle_path -setup 2 -to   [get_regs {u_lk/u_core/*}] -from [get_regs {u_lk/cart_complete*sr*}]
 set_multicycle_path -hold 1  -to   [get_regs {u_lk/u_core/*}] -from [get_regs {u_lk/cart_complete*sr*}]
 
-// Correct (loosen) the timing requirements for reseting the DRAM.
+// FIFO can be distant from u_lk/u_core
+set_multicycle_path -setup 2 -to   [get_regs {u_lk/u_cart_req_fifo/*}] -from [get_regs {u_lk/req_enqueue*}]
+set_multicycle_path -hold 1  -to   [get_regs {u_lk/u_cart_req_fifo/*}] -from [get_regs {u_lk/req_enqueue*}]
+// FIFO can be distant from u_lk
+set_multicycle_path -setup 2 -from [get_regs {u_lk/u_cart_req_fifo/*}] -to   [get_regs {u_lk/cart_req_d* u_lk/cart_req_valid_d_s0}]
+set_multicycle_path -hold 1  -from [get_regs {u_lk/u_cart_req_fifo/*}] -to   [get_regs {u_lk/cart_req_d* u_lk/cart_req_valid_d_s0}]
+set_multicycle_path -setup 2 -to   [get_regs {u_lk/u_cart_req_fifo/*}] -from [get_regs {u_lk/req_dequeue_s0}]
+set_multicycle_path -hold 1  -to   [get_regs {u_lk/u_cart_req_fifo/*}] -from [get_regs {u_lk/req_dequeue_s0}]
+
+// Correct (loosen) the timing requirements for resetting the DRAM.
 //
 // Not logically needed for FlashGBX LK, but the added complexity makes the routing harder
 set_multicycle_path -from [get_clocks {xclk}] -to [get_clocks {xclk2}] -setup 2

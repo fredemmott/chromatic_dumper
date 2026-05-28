@@ -89,8 +89,9 @@ end
 assign cart_complete_o = cart_complete_sr[1];
 assign cart_complete_data_o = cart_complete_data_sr[1];
 
-reg [3:0] cart_req_count;
-reg [3:0] cart_req_count_next;
+// Capacity of 512
+reg [9:0] cart_req_count;
+reg [9:0] cart_req_count_next;
 always @(*) begin
     if (reset) begin
         cart_req_count_next = 0;
@@ -102,27 +103,47 @@ always @(*) begin
         endcase
     end
 end
-always @(posedge clk) begin
-    cart_req_count <= cart_req_count_next;
-    cart_req_almost_full_o <= (cart_req_count_next >= 6);
-end
+// backpressure at 504 as it's an efficient number to check
+always @(posedge clk) cart_req_almost_full_o <= (cart_req_count >= 9'b1_111_1000);
+always @(posedge clk) cart_req_count <= cart_req_count_next;
 
 // FIFO
+reg req_enqueue;
+cart_req_t req_enqueue_data;
 reg req_dequeue;
 wire reqs_empty;
 cart_req_t req_q;
 lk_cart_req_fifo_t u_cart_req_fifo(
     .clk(clk),
     .reset(reset_r),
-    .enqueue(cart_req_valid_i),
-    .dequeue(req_dequeue),
+
     .empty(reqs_empty),
-    .in(cart_req_i),
+
+    .enqueue(req_enqueue),
+    .dequeue(req_dequeue),
+
+    .in(req_enqueue_data),
     .out(req_q)
 );
 
 /// END FIFO
 // Delay for routing
+reg req_enqueue_d;
+cart_req_t req_enqueue_data_d;
+
+always @(posedge clk) begin
+    if (reset) begin
+       req_enqueue_d <= 1'b0;
+       req_enqueue <= 1'b0;
+    end else begin
+        req_enqueue_d <= cart_req_valid_i;
+        req_enqueue_data_d <= cart_req_i;
+
+        req_enqueue <= req_enqueue_d;
+        req_enqueue_data <= req_enqueue_data_d;
+    end
+end
+
 reg cart_req_valid_d;
 reg cart_req_valid;
 cart_req_t cart_req_d;
@@ -141,8 +162,8 @@ always @(posedge clk) begin
         req_dequeue <= 1'b0;
     end else begin
         cart_req_valid_d <= !reqs_empty;
-        cart_req_d <= req_q;
         cart_req_valid <= cart_req_valid_d;
+        cart_req_d <= req_q;
         cart_req <= cart_req_d;
 
         req_dequeue_d <= cart_req_started;
