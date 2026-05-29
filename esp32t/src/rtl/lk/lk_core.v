@@ -83,15 +83,16 @@ logic exec_complete;
 assign enabled_and_complete = (enabled & complete);
 assign exec_complete = |enabled_and_complete;
 
-logic [CART_CMD_COUNT - 1:0] cart_req_valid_bus;
-
-
 always @(*) begin
     enabled = '{default: 0};
     if (command < CMD_COUNT) begin
         enabled[command] = 1;
     end
 end
+
+logic [CART_CMD_COUNT - 1:0] cart_req_valid_bus;
+logic [15:0] cart_address_bus [0:CART_CMD_COUNT - 1];
+logic [7:0] cart_data_bus [0:CART_WRITE_CMD_COUNT - 1];
 
 logic [CMD_COUNT - 1:0] tx_valid_bus;
 logic [7:0] tx_data_bus [0:CMD_COUNT - 1];
@@ -146,8 +147,6 @@ lk_cmd_get_variable_t u_GET_VARIABLE(
     vars
 );
 
-wire [15:0] DMG_CART_READ_req_address;
-
 lk_cmd_dmg_cart_read_t u_DMG_CART_READ(
     clk,
     enabled[CMD_DMG_CART_READ],
@@ -158,7 +157,7 @@ lk_cmd_dmg_cart_read_t u_DMG_CART_READ(
 
     cart_req_ready,
     cart_req_valid_bus[CMD_DMG_CART_READ],
-    DMG_CART_READ_req_address,
+    cart_address_bus[CMD_DMG_CART_READ],
     cart_complete,
     cart_complete_data,
 
@@ -166,13 +165,6 @@ lk_cmd_dmg_cart_read_t u_DMG_CART_READ(
     vars.transfer_size
 );
 
-// DMG_FLASH_WRITE_BYTE is identical to DMG_CART_WRITE, except that the is_flash bit is set
-assign complete[CMD_DMG_FLASH_WRITE_BYTE] = complete[CMD_DMG_CART_WRITE];
-assign cart_req_valid_bus[CMD_DMG_FLASH_WRITE_BYTE] = cart_req_valid_bus[CMD_DMG_CART_WRITE];
-`ACK_WHEN_COMPLETE(CMD_DMG_FLASH_WRITE_BYTE)
-
-wire [15:0] DMG_CART_WRITE_req_address;
-wire [7:0] DMG_CART_WRITE_req_data;
 lk_cmd_dmg_cart_write_t u_DMG_CART_WRITE(
     clk,
     enabled[CMD_DMG_CART_WRITE] || enabled[CMD_DMG_FLASH_WRITE_BYTE],
@@ -182,12 +174,18 @@ lk_cmd_dmg_cart_write_t u_DMG_CART_WRITE(
     rx_data,
 
     cart_req_valid_bus[CMD_DMG_CART_WRITE],
-    DMG_CART_WRITE_req_address,
-    DMG_CART_WRITE_req_data,
+    cart_address_bus[CMD_DMG_CART_WRITE],
+    cart_data_bus[CMD_DMG_CART_WRITE],
     cart_complete
 );
 `ACK_WHEN_COMPLETE(CMD_DMG_CART_WRITE)
 
+// DMG_FLASH_WRITE_BYTE is identical to DMG_CART_WRITE, except that the is_flash bit is set
+assign complete[CMD_DMG_FLASH_WRITE_BYTE] = complete[CMD_DMG_CART_WRITE];
+assign cart_req_valid_bus[CMD_DMG_FLASH_WRITE_BYTE] = cart_req_valid_bus[CMD_DMG_CART_WRITE];
+assign cart_address_bus[CMD_DMG_FLASH_WRITE_BYTE] = cart_address_bus[CMD_DMG_CART_WRITE];
+assign cart_data_bus[CMD_DMG_FLASH_WRITE_BYTE] = cart_data_bus[CMD_DMG_CART_WRITE];
+`ACK_WHEN_COMPLETE(CMD_DMG_FLASH_WRITE_BYTE)
 
 /*
 wire CART_WRITE_FLASH_CMD_req_valid;
@@ -227,15 +225,13 @@ lk_cmd_set_pin_t u_SET_PIN(
     hold_pin_audio);
 `ACK_WHEN_COMPLETE(CMD_SET_PIN)
 
-wire [15:0] DMG_MBC_RESET_req_address;
-wire [7:0] DMG_MBC_RESET_req_data;
 lk_cmd_dmg_mbc_reset_t u_DMG_MBC_RESET(
     clk,
     enabled[CMD_DMG_MBC_RESET],
     complete[CMD_DMG_MBC_RESET],
     cart_req_valid_bus[CMD_DMG_MBC_RESET],
-    DMG_MBC_RESET_req_address,
-    DMG_MBC_RESET_req_data,
+    cart_address_bus[CMD_DMG_MBC_RESET],
+    cart_data_bus[CMD_DMG_MBC_RESET],
     cart_complete
 );
 `ACK_WHEN_COMPLETE(CMD_DMG_MBC_RESET)
@@ -261,34 +257,24 @@ always @(posedge clk) begin
     end
 end
 
+localparam CART_CMD_WIDTH = $clog2(CART_CMD_COUNT);
+localparam CART_WRITE_CMD_WIDTH = $clog2(CART_WRITE_CMD_COUNT);
+logic [CART_CMD_WIDTH - 1:0] cart_command;
+logic [CART_WRITE_CMD_WIDTH - 1:0] cart_write_command;
+assign cart_command = command[CART_CMD_WIDTH - 1:0];
+assign cart_write_command = command[CART_WRITE_CMD_WIDTH - 1:0];
+
 reg cart_req_valid_next;
 cart_req_t cart_req_next;
 
 always @(*) begin
-    cart_req_valid_next = 0;
-    for (int i = 0; i < CART_CMD_COUNT; i = i + 1) begin
-        cart_req_valid_next |= (enabled[i] & cart_req_valid_bus[i]);
-    end
-
-    cart_req_next = '{default: 0};
-
-    cart_req_next.is_flash = enabled[CMD_DMG_FLASH_WRITE_BYTE];
-    cart_req_next.is_write =
-        enabled[CMD_DMG_MBC_RESET] |
-        enabled[CMD_DMG_CART_WRITE] |
-        enabled[CMD_DMG_FLASH_WRITE_BYTE];
-
-    if (enabled[CMD_DMG_MBC_RESET]) begin
-        cart_req_next.address |= DMG_MBC_RESET_req_address;
-        cart_req_next.data |= DMG_MBC_RESET_req_data;
-    end
-    if (enabled[CMD_DMG_CART_READ]) begin
-        cart_req_next.address |= DMG_CART_READ_req_address;
-    end
-    if (enabled[CMD_DMG_CART_WRITE] | enabled[CMD_DMG_FLASH_WRITE_BYTE]) begin
-        cart_req_next.address |= DMG_CART_WRITE_req_address;
-        cart_req_next.data |= DMG_CART_WRITE_req_data;
-    end
+    cart_req_valid_next = |(enabled[CART_CMD_COUNT - 1:0] & cart_req_valid_bus);
+    cart_req_next = '{
+        is_flash: enabled[CMD_DMG_FLASH_WRITE_BYTE],
+        is_write: |(enabled[CART_WRITE_CMD_COUNT - 1: 0]),
+        address: cart_address_bus[cart_command],
+        data: cart_data_bus[cart_write_command]
+    };
 end
 always @(posedge clk) begin
     cart_req_valid <= cart_req_valid_next;

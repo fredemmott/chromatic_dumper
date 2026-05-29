@@ -1,10 +1,11 @@
 package lk_types;
 typedef enum {
-    // Cartridge commands first
+    // Cartridge write commands first
     CMD_DMG_MBC_RESET,
-    CMD_DMG_CART_READ,
     CMD_DMG_CART_WRITE,
     CMD_DMG_FLASH_WRITE_BYTE,
+    // Now cartridge read
+    CMD_DMG_CART_READ, // CART_WRITE_CMD_COUNT
     // Now everything else
     CMD_STUB_NOOP_ACK, // == CART_CMD_COUNT
     CMD_QUERY_FW_INFO,
@@ -27,6 +28,8 @@ typedef enum {
     */
     CMD_COUNT
 } command_t;
+
+parameter command_t CART_WRITE_CMD_COUNT = CMD_DMG_CART_READ;
 parameter command_t CART_CMD_COUNT = CMD_STUB_NOOP_ACK;
 parameter command_t CMD_INVALID = CMD_COUNT;
 parameter command_t CMD_NOT_IMPLEMENTED = CMD_COUNT;
@@ -76,7 +79,7 @@ typedef struct {
     logic dmg_write_cs_pulse;
 } cart_vars_t;
 
-typedef struct packed {
+typedef struct {
     logic        is_flash;
     logic        is_write;
     logic [15:0] address;
