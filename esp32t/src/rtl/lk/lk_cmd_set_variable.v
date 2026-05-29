@@ -24,7 +24,7 @@ reg [7:0] var_key;
 reg [15:0] var_value;
 
 var_id_t var_id;
-assign var_id = make_var16_id(var_size, var_key);
+assign var_id = decode_var_id(var_size, var_key);
 
 vars_t vars_out_next;
 always @(*) begin

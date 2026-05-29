@@ -21,11 +21,11 @@ end
 
 reg [7:0] var_size;
 reg [7:0] var_key;
-reg [15:0] var_value;
 
 var_id_t var_id;
-assign var_id = make_var16_id(var_size, var_key);
+assign var_id = decode_var_id(var_size, var_key);
 
+reg [15:0] var_value;
 always @(*) begin
     var_value = 16'd0;
     begin
