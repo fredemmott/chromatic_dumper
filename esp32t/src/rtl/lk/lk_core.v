@@ -78,10 +78,13 @@ command_t command;
 
 logic [CMD_COUNT - 1:0] enabled;
 logic [CMD_COUNT - 1:0] complete;
-logic [CMD_COUNT - 1:0] complete_and_enabled;
+logic [CMD_COUNT - 1:0] enabled_and_complete;
 logic exec_complete;
-assign complete_and_enabled = (complete & enabled);
-assign exec_complete = |complete_and_enabled;
+assign enabled_and_complete = (enabled & complete);
+assign exec_complete = |enabled_and_complete;
+
+logic [CART_CMD_COUNT - 1:0] cart_req_valid_bus;
+
 
 always @(*) begin
     enabled = '{default: 0};
@@ -143,7 +146,6 @@ lk_cmd_get_variable_t u_GET_VARIABLE(
     vars
 );
 
-wire DMG_CART_READ_req_valid;
 wire [15:0] DMG_CART_READ_req_address;
 
 lk_cmd_dmg_cart_read_t u_DMG_CART_READ(
@@ -155,7 +157,7 @@ lk_cmd_dmg_cart_read_t u_DMG_CART_READ(
     tx_data_bus[CMD_DMG_CART_READ],
 
     cart_req_ready,
-    DMG_CART_READ_req_valid,
+    cart_req_valid_bus[CMD_DMG_CART_READ],
     DMG_CART_READ_req_address,
     cart_complete,
     cart_complete_data,
@@ -164,7 +166,11 @@ lk_cmd_dmg_cart_read_t u_DMG_CART_READ(
     vars.transfer_size
 );
 
-wire DMG_CART_WRITE_req_valid;
+// DMG_FLASH_WRITE_BYTE is identical to DMG_CART_WRITE, except that the is_flash bit is set
+assign complete[CMD_DMG_FLASH_WRITE_BYTE] = complete[CMD_DMG_CART_WRITE];
+assign cart_req_valid_bus[CMD_DMG_FLASH_WRITE_BYTE] = cart_req_valid_bus[CMD_DMG_CART_WRITE];
+`ACK_WHEN_COMPLETE(CMD_DMG_FLASH_WRITE_BYTE)
+
 wire [15:0] DMG_CART_WRITE_req_address;
 wire [7:0] DMG_CART_WRITE_req_data;
 lk_cmd_dmg_cart_write_t u_DMG_CART_WRITE(
@@ -175,15 +181,13 @@ lk_cmd_dmg_cart_write_t u_DMG_CART_WRITE(
     rx_valid,
     rx_data,
 
-    DMG_CART_WRITE_req_valid,
+    cart_req_valid_bus[CMD_DMG_CART_WRITE],
     DMG_CART_WRITE_req_address,
     DMG_CART_WRITE_req_data,
     cart_complete
 );
 `ACK_WHEN_COMPLETE(CMD_DMG_CART_WRITE)
 
-assign complete[CMD_DMG_FLASH_WRITE_BYTE] = complete[CMD_DMG_CART_WRITE];
-`ACK_WHEN_COMPLETE(CMD_DMG_FLASH_WRITE_BYTE)
 
 /*
 wire CART_WRITE_FLASH_CMD_req_valid;
@@ -223,14 +227,13 @@ lk_cmd_set_pin_t u_SET_PIN(
     hold_pin_audio);
 `ACK_WHEN_COMPLETE(CMD_SET_PIN)
 
-wire DMG_MBC_RESET_req_valid;
 wire [15:0] DMG_MBC_RESET_req_address;
 wire [7:0] DMG_MBC_RESET_req_data;
 lk_cmd_dmg_mbc_reset_t u_DMG_MBC_RESET(
     clk,
     enabled[CMD_DMG_MBC_RESET],
     complete[CMD_DMG_MBC_RESET],
-    DMG_MBC_RESET_req_valid,
+    cart_req_valid_bus[CMD_DMG_MBC_RESET],
     DMG_MBC_RESET_req_address,
     DMG_MBC_RESET_req_data,
     cart_complete
@@ -262,35 +265,29 @@ reg cart_req_valid_next;
 cart_req_t cart_req_next;
 
 always @(*) begin
-    cart_req_valid_next = 1'b0;
+    cart_req_valid_next = 0;
+    for (int i = 0; i < CART_CMD_COUNT; i = i + 1) begin
+        cart_req_valid_next |= (enabled[i] & cart_req_valid_bus[i]);
+    end
+
     cart_req_next = '{default: 0};
 
+    cart_req_next.is_flash = enabled[CMD_DMG_FLASH_WRITE_BYTE];
+    cart_req_next.is_write =
+        enabled[CMD_DMG_MBC_RESET] |
+        enabled[CMD_DMG_CART_WRITE] |
+        enabled[CMD_DMG_FLASH_WRITE_BYTE];
+
     if (enabled[CMD_DMG_MBC_RESET]) begin
-        cart_req_valid_next |= DMG_MBC_RESET_req_valid;
-        cart_req_next |= '{
-            is_flash: 1'b0,
-            is_write: 1'b1,
-            address: DMG_MBC_RESET_req_address,
-            data: DMG_MBC_RESET_req_data
-        };
+        cart_req_next.address |= DMG_MBC_RESET_req_address;
+        cart_req_next.data |= DMG_MBC_RESET_req_data;
     end
     if (enabled[CMD_DMG_CART_READ]) begin
-        cart_req_valid_next |= DMG_CART_READ_req_valid;
-        cart_req_next |= '{
-            is_flash: 1'b0,
-            is_write: 1'b0,
-            address: DMG_CART_READ_req_address,
-            data: 8'd0
-        };
+        cart_req_next.address |= DMG_CART_READ_req_address;
     end
     if (enabled[CMD_DMG_CART_WRITE] | enabled[CMD_DMG_FLASH_WRITE_BYTE]) begin
-        cart_req_valid_next |= DMG_CART_WRITE_req_valid;
-        cart_req_next |= '{
-            is_flash: enabled[CMD_DMG_FLASH_WRITE_BYTE],
-            is_write: 1'b1,
-            address: DMG_CART_WRITE_req_address,
-            data: DMG_CART_WRITE_req_data
-        };
+        cart_req_next.address |= DMG_CART_WRITE_req_address;
+        cart_req_next.data |= DMG_CART_WRITE_req_data;
     end
 end
 always @(posedge clk) begin
@@ -390,9 +387,9 @@ vars_t vars_next;
 always @(*) begin
     vars_next = vars;
     unique case (1'b1)
-        complete_and_enabled[CMD_SET_VARIABLE]: vars_next = SET_VARIABLE_vars_out;
-        complete_and_enabled[CMD_DMG_CART_READ],
-        complete_and_enabled[CMD_DMG_CART_WRITE]:
+        enabled_and_complete[CMD_SET_VARIABLE]: vars_next = SET_VARIABLE_vars_out;
+        enabled_and_complete[CMD_DMG_CART_READ],
+        enabled_and_complete[CMD_DMG_CART_WRITE]:
             vars_next.address = vars.address + vars.transfer_size;
         default: ;
     endcase

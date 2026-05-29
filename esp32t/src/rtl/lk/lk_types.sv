@@ -1,17 +1,19 @@
 package lk_types;
 typedef enum {
-    CMD_STUB_NOOP_ACK,
+    // Cartridge commands first
+    CMD_DMG_MBC_RESET,
+    CMD_DMG_CART_READ,
+    CMD_DMG_CART_WRITE,
+    CMD_DMG_FLASH_WRITE_BYTE,
+    // Now everything else
+    CMD_STUB_NOOP_ACK, // == CART_CMD_COUNT
     CMD_QUERY_FW_INFO,
     CMD_SET_VARIABLE,
     CMD_SET_VOLTAGE_5V,
     CMD_SET_ADDR_AS_INPUTS,
     CMD_SET_PIN,
-    CMD_DMG_MBC_RESET,
     CMD_GET_VARIABLE,
-    CMD_DMG_CART_READ,
-    CMD_DMG_CART_WRITE,
     //CMD_CART_WRITE_FLASH_CMD,
-    CMD_DMG_FLASH_WRITE_BYTE,
     /*
     CMD_SET_FLASH_CMD,
     CMD_CLK_TOGGLE,
@@ -25,11 +27,13 @@ typedef enum {
     */
     CMD_COUNT
 } command_t;
+parameter command_t CART_CMD_COUNT = CMD_STUB_NOOP_ACK;
 parameter command_t CMD_INVALID = CMD_COUNT;
-parameter command_t CMD_CART_WRITE_FLASH_CMD = CMD_COUNT;
-// TODO:
-parameter command_t CMD_NOT_IMPLEMENTED = CMD_INVALID;
+parameter command_t CMD_NOT_IMPLEMENTED = CMD_COUNT;
 
+// TODO:
+
+parameter command_t CMD_CART_WRITE_FLASH_CMD = CMD_NOT_IMPLEMENTED;
 parameter command_t CMD_SET_FLASH_CMD = CMD_NOT_IMPLEMENTED;
 parameter command_t CMD_CLK_TOGGLE = CMD_NOT_IMPLEMENTED;
 parameter command_t CMD_GET_VAR_STATE = CMD_NOT_IMPLEMENTED;
