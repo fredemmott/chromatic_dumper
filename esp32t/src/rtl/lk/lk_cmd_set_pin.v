@@ -14,16 +14,32 @@ module lk_cmd_set_pin_t(
 // that's used by any callers
 localparam PIN_BIT_AUDIO = 30;
 
-reg rx_valid_r;
-reg [7:0] rx_data_r;
-always @(posedge clk) begin
-    rx_valid_r <= rx_valid;
-    rx_data_r <= rx_data;
-end
+typedef enum {
+    S_RX,
+    S_UPDATE,
+    S_COMPLETE
+} state_t;
+state_t state;
+assign complete = (state == S_COMPLETE);
 
-reg [31:0] pin_bits;
+logic [31:0] pin_bits;
+logic value;
+
 reg [2:0] idx;
-reg value;
+
+state_t next_state;
+always @(*) begin
+    next_state = state;
+    unique case (state)
+        S_RX: if (rx_valid && (idx == 3'd4)) next_state = S_UPDATE;
+        S_UPDATE: next_state = S_COMPLETE;
+        default: ;
+    endcase
+end
+always @(posedge clk) begin
+    if (!enable) state <= S_RX;
+    else state <= next_state;
+end
 
 reg pin_audio_next;
 always @(*) begin
@@ -41,26 +57,20 @@ always @(posedge clk) begin
 end
 
 always @(posedge clk) begin
-    if (!enable) begin
-        idx <= 3'd0;
-    end else if (rx_valid_r) begin
-        idx <= idx + 1'd1;
-    end
+    if (!enable) idx <= 3'd0;
+    else if (rx_valid) idx <= idx + 1'd1;
 end
-always @(posedge clk) complete <= (idx >= 3'd4);
 
 always @(posedge clk) begin
-    if (!enable) begin
-        pin_bits <= 32'd0;
-    end else if (rx_valid_r) begin
-        // byte [0..3]  bits
-        //      [4]     value (1 or 0)
+    if (rx_valid) begin
+        // byte [0..3] : pin bits
+        //      [4]    : value
         unique case (idx)
-            0: pin_bits[31:24] <= rx_data_r;
-            1: pin_bits[23:16] <= rx_data_r;
-            2: pin_bits[15:8] <= rx_data_r;
-            3: pin_bits[7:0] <= rx_data_r;
-            4: value <= rx_data_r[0];
+            0: pin_bits[31:24] <= rx_data;
+            1: pin_bits[23:16] <= rx_data;
+            2: pin_bits[15:8] <= rx_data;
+            3: pin_bits[7:0] <= rx_data;
+            4: value <= rx_data[0];
             default: ;
         endcase
     end
