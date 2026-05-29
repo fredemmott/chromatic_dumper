@@ -50,8 +50,8 @@ set_multicycle_path -setup 2 -to   [get_regs {u_lk/u_core/*}] -from [get_regs {u
 set_multicycle_path -hold 1  -to   [get_regs {u_lk/u_core/*}] -from [get_regs {u_lk/cart_complete*sr*}]
 
 // FIFO can be distant from u_lk/u_core
-set_multicycle_path -setup 2 -from [get_regs {u_lk/req_enqueue*}] -to [get_regs {u_lk/u_cart_req_fifo/*}]
-set_multicycle_path -hold 1  -from [get_regs {u_lk/req_enqueue*}] -to [get_regs {u_lk/u_cart_req_fifo/*}]
+//set_multicycle_path -setup 2 -from [get_regs {u_lk/u_core/*}] -to [get_regs {u_lk/req_enqueue_d_* u_lk/req_enqueue_data_d*}]
+//set_multicycle_path -hold 1  -from [get_regs {u_lk/u_core/*}] -to [get_regs {u_lk/req_enqueue_d_* u_lk/req_enqueue_data_d*}]
 // FIFO can be distant from u_lk
 set_multicycle_path -setup 2 -from [get_regs {u_lk/cart_req_valid_d* u_lk/cart_req_d*}] -to [get_regs {u_lk/u_cart_executor/*}]
 set_multicycle_path -hold 1  -from [get_regs {u_lk/cart_req_valid_d* u_lk/cart_req_d*}] -to [get_regs {u_lk/u_cart_executor/*}]
