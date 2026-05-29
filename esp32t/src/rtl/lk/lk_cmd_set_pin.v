@@ -32,7 +32,13 @@ always @(*) begin
         pin_audio_next = value;
     end
 end
-always @(posedge clk) pin_audio <= pin_audio_next;
+always @(posedge clk) begin
+    if (reset) begin
+        pin_audio <= 1'b0;
+    end else begin
+        pin_audio <= pin_audio_next;
+    end
+end
 
 always @(posedge clk) begin
     if (!enable) begin
@@ -44,7 +50,9 @@ end
 always @(posedge clk) complete <= (idx >= 3'd4);
 
 always @(posedge clk) begin
-    if (rx_valid_r) begin
+    if (!enable) begin
+        pin_bits <= 32'd0;
+    end else if (rx_valid_r) begin
         // byte [0..3]  bits
         //      [4]     value (1 or 0)
         unique case (idx)
