@@ -76,7 +76,7 @@ end
 always @(posedge clk) begin
     if (!enable) begin
         rx_idx <= 0;
-    end else if ((state == S_RX) && rx_valid_r) begin
+    end else if (rx_valid_r) begin
         rx_idx <= rx_idx + 1;
     end
 end
@@ -90,7 +90,7 @@ always @(posedge clk) begin
 end
 
 always @(posedge clk) begin
-    if ((state == S_RX) && rx_valid_r) begin
+    if (rx_valid_r) begin
         unique case (rx_idx)
             0: var_size <= rx_data_r;
             4: var_key <= rx_data_r;
