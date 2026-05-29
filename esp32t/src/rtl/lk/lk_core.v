@@ -97,15 +97,10 @@ logic [7:0] cart_data_bus [0:CART_WRITE_CMD_COUNT - 1];
 logic [CMD_COUNT - 1:0] tx_valid_bus;
 logic [7:0] tx_data_bus [0:CMD_COUNT - 1];
 
-reg exec_tx_valid;
-reg [7:0] exec_tx_data;
-always @(*) begin
-    exec_tx_valid = |(enabled & tx_valid_bus);
-    exec_tx_data = 8'h00;
-    for (int i = 0; i < CMD_COUNT; i = i + 1) begin
-        exec_tx_data |= (enabled[i] ? tx_data_bus[i] : 8'h00);
-    end
-end
+logic exec_tx_valid;
+logic [7:0] exec_tx_data;
+assign exec_tx_valid = tx_valid_bus[command];
+assign exec_tx_data = tx_data_bus[command];
 
 ///// Start Commands /////
 
