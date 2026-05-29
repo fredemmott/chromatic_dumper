@@ -264,6 +264,7 @@ cart_req_t cart_req_next;
 always @(*) begin
     cart_req_valid_next = 1'b0;
     cart_req_next = '{default: 0};
+
     if (enabled[CMD_DMG_MBC_RESET]) begin
         cart_req_valid_next |= DMG_MBC_RESET_req_valid;
         cart_req_next |= '{
@@ -291,17 +292,6 @@ always @(*) begin
             data: DMG_CART_WRITE_req_data
         };
     end
-    /*
-    if (enabled[CMD_CART_WRITE_FLASH_CMD]) begin
-        cart_req_valid_next |= CART_WRITE_FLASH_CMD_req_valid;
-        cart_req_next |= '{
-            is_flash: 1'b1,
-            is_write: 1'b1,
-            address: CART_WRITE_FLASH_CMD_req_address,
-            data: CART_WRITE_FLASH_CMD_req_data
-        };
-    end
-    */
 end
 always @(posedge clk) begin
     cart_req_valid <= cart_req_valid_next;
