@@ -106,18 +106,23 @@ always @(posedge coreClk) begin
     end
 end
 
+logic cart_complete_enqueue_d;
+fifo_response_t cart_complete_data_d;
 always @(posedge cartClk) begin
     cart_complete_enqueue <= cart_complete;
     cart_complete_data <= '{
         cart_d_in: cart_d_in,
         _padding: '0
     };
+
+    cart_complete_enqueue_d <= cart_complete_enqueue;
+    cart_complete_data_d <= cart_complete_data;
 end
 
 lk_cart_fifo_t u_cart_complete_fifo(
     .WrClk(cartClk),
-    .WrEn(cart_complete_enqueue),
-    .Data(cart_complete_data),
+    .WrEn(cart_complete_enqueue_d),
+    .Data(cart_complete_data_d),
 
     .RdClk(coreClk),
     .RdEn(cart_complete_dequeue),
@@ -181,7 +186,6 @@ assign req_data = '{
 logic cart_req_valid;
 logic cart_req_started;
 
-assign cart_req_valid = !reqs_empty;
 always @(posedge cartClk) req_dequeue <= cart_req_started && !reqs_empty;
 
 (* syn_preserve *) reg [1:0] lk_cdc_hold_pin_audio;
@@ -191,25 +195,31 @@ always @(posedge cartClk) begin
 end
 assign hold_pin_audio = lk_cdc_hold_pin_audio[1];
 
+fifo_req_t req_q_d;
+always @(posedge cartClk) begin
+    cart_req_valid <= !reqs_empty;
+    req_q_d <= req_q;
+end
+
 lk_cart_t u_cart_executor(
     .clk(cartClk),
     .reset(cartReset),
 
     .req_valid(cart_req_valid),
     .req('{
-        is_flash: req_q.is_flash,
-        is_write: req_q.is_write,
-        address: req_q.address,
-        data: req_q.data
+        is_flash: req_q_d.is_flash,
+        is_write: req_q_d.is_write,
+        address: req_q_d.address,
+        data: req_q_d.data
     }),
     .req_started(cart_req_started),
     .req_complete(cart_complete),
 
     .hold_pin_audio(hold_pin_audio),
 
-    .var_flash_we_pin(req_q.flash_we_pin),
-    .var_dmg_read_cs_pulse(req_q.dmg_read_cs_pulse),
-    .var_dmg_write_cs_pulse(req_q.dmg_write_cs_pulse),
+    .var_flash_we_pin(req_q_d.flash_we_pin),
+    .var_dmg_read_cs_pulse(req_q_d.dmg_read_cs_pulse),
+    .var_dmg_write_cs_pulse(req_q_d.dmg_write_cs_pulse),
 
     .cart_a(cart_a),
     .cart_clk(cart_clk),
