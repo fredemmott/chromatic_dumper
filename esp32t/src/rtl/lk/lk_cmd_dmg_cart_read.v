@@ -70,8 +70,13 @@ always @(posedge clk) waiting <= waiting_next;
 wire req_valid_next = (state == S_EXEC) && cart_req_ready;
 
 always @(posedge clk) begin
-    cart_req_valid <= req_valid_next;
-    cart_req_address <= address;
+    if (!enable) begin
+        cart_req_valid <= 1'b0;
+        cart_req_address <= '0;
+    end else begin
+        cart_req_valid <= req_valid_next;
+        cart_req_address <= address;
+    end
 end
 
 reg tx_valid_next;

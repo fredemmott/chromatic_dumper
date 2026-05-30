@@ -88,10 +88,15 @@ module lk_cmd_dmg_mbc_reset_t(
         end
     end
 
-    always @(*) begin
-        cart_req_valid = (state == S_EXEC);
-        cart_req_address = command.address;
-        cart_req_data = command.data;
+    always @(posedge clk) begin
+        cart_req_valid <= (state == S_EXEC);
+        if (!enable) begin
+            cart_req_address <= '0;
+            cart_req_data <= '0;
+        end else begin
+            cart_req_address = command.address;
+            cart_req_data = command.data;
+        end
     end
 
     state_t next_state;

@@ -19,16 +19,23 @@ typedef enum {
     S_COMPLETE
 } state_t;
 state_t state;
-assign complete = (state == S_COMPLETE);
-assign cart_req_valid = (state == S_EXEC);
 
 // byte [0..3]: address top 16 are always 0 for DMG
 //      [4]   : value
 localparam LAST_RX_IDX = 4;
 reg [2:0] idx;
 reg [7:0] rx_buf [0:LAST_RX_IDX];
-assign cart_req_address = { rx_buf[2], rx_buf[3] };
-assign cart_req_data = rx_buf[4];
+always @(posedge clk) begin
+    cart_req_valid <= (state == S_EXEC);
+    complete <= (state == S_COMPLETE);
+    if (!enable) begin
+        cart_req_address <= '0;
+        cart_req_data <= '0;
+    end else begin
+        cart_req_address <= { rx_buf[2], rx_buf[3] };
+        cart_req_data <= rx_buf[4];
+    end
+end
 
 state_t state_next;
 always @(*) begin

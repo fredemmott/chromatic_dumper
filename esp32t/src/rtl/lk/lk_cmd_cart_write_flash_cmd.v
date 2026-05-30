@@ -90,16 +90,21 @@ wire rx_command = rx_valid_r && (state == S_RX_COMMAND);
 
 always @(posedge clk) begin
     cart_req_valid <= 1'b0;
-    if (rx_command) begin
-        unique case (idx)
-            2: cart_req_address[15:8] <= rx_data_r;
-            3: cart_req_address[7:0] <= rx_data_r;
-            5: begin
-                cart_req_data <= rx_data_r;
-                cart_req_valid <= 1'b1;
-            end
-            default: ; // others are MSB data for AGB only
-        endcase
+    if (!enable) begin
+        cart_req_address <= '0;
+        cart_req_data <= '0;
+    end else begin
+        if (rx_command) begin
+            unique case (idx)
+                2: cart_req_address[15:8] <= rx_data_r;
+                3: cart_req_address[7:0] <= rx_data_r;
+                5: begin
+                    cart_req_data <= rx_data_r;
+                    cart_req_valid <= 1'b1;
+                end
+                default: ; // others are MSB data for AGB only
+            endcase
+        end
     end
 end
 
