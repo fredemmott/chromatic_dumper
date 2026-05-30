@@ -64,6 +64,7 @@ cart_vars_t  cart_vars_i;
 logic        cart_complete_o;
 logic [7:0]  cart_complete_data_o;
 
+(* syn_netlist_hierarchy = 1 *)
 lk_core u_core(
     .clk(coreClk),
     .reset(coreReset),
