@@ -34,7 +34,7 @@ typedef enum {
 } state_t;
 
 state_t state;
-assign complete = (state == S_COMPLETE);
+always @(posedge clk) complete <= (state == S_COMPLETE);
 
 // byte 0: 'is flashcart' (unused)
 //      1: number of commands
