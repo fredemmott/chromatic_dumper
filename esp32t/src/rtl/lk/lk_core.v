@@ -182,18 +182,7 @@ assign cart_address_bus[CMD_DMG_FLASH_WRITE_BYTE] = cart_address_bus[CMD_DMG_CAR
 assign cart_data_bus[CMD_DMG_FLASH_WRITE_BYTE] = cart_data_bus[CMD_DMG_CART_WRITE];
 `ACK_WHEN_COMPLETE(CMD_DMG_FLASH_WRITE_BYTE)
 
-/*
-wire CART_WRITE_FLASH_CMD_req_valid;
-wire [15:0] CART_WRITE_FLASH_CMD_req_address;
-wire [7:0] CART_WRITE_FLASH_CMD_req_data;
-lk_cmd_dmg_cart_write_t #(
-    // byte [0]:    is flash cart (unused)
-    //      [1..4]: address (2 MSB for AGB only)
-    //      [5..6]: data (MSB for AGB only)
-    .ADDRESS_MSB_RX_IDX(3),
-    .DATA_RX_IDX(6),
-    .LAST_RX_IDX(6)
-) u_CART_WRITE_FLASH_CMD(
+lk_cmd_cart_write_flash_cmd_t u_CART_WRITE_FLASH_CMD(
     clk,
     enabled[CMD_CART_WRITE_FLASH_CMD],
     complete[CMD_CART_WRITE_FLASH_CMD],
@@ -201,13 +190,12 @@ lk_cmd_dmg_cart_write_t #(
     rx_valid,
     rx_data,
 
-    CART_WRITE_FLASH_CMD_req_valid,
-    CART_WRITE_FLASH_CMD_req_address,
-    CART_WRITE_FLASH_CMD_req_data,
+    cart_req_valid_bus[CMD_CART_WRITE_FLASH_CMD],
+    cart_address_bus[CMD_CART_WRITE_FLASH_CMD],
+    cart_data_bus[CMD_CART_WRITE_FLASH_CMD],
     cart_complete
 );
 `ACK_WHEN_COMPLETE(CMD_CART_WRITE_FLASH_CMD)
-*/
 
 reg hold_pin_audio;
 lk_cmd_set_pin_t u_SET_PIN(
@@ -265,11 +253,19 @@ cart_req_t cart_req_next;
 always @(*) begin
     cart_req_valid_next = |(enabled[CART_CMD_COUNT - 1:0] & cart_req_valid_bus);
     cart_req_next = '{
-        is_flash: enabled[CMD_DMG_FLASH_WRITE_BYTE],
-        is_write: |(enabled[CART_WRITE_CMD_COUNT - 1: 0]),
-        address: cart_address_bus[cart_command],
-        data: cart_data_bus[cart_write_command]
+        is_flash: command < CART_FLASH_WRITE_CMD_COUNT,
+        is_write: command < CART_WRITE_CMD_COUNT,
+        address: 16'd0,
+        data: 8'd0
     };
+    for (int i = 0; i < CART_CMD_COUNT; i = i + 1) begin
+        if (command == i) begin
+            cart_req_next.address = cart_address_bus[i];
+            if (i < CART_WRITE_CMD_COUNT) begin
+                cart_req_next.data = cart_data_bus[i];
+            end
+        end
+    end
 end
 always @(posedge clk) begin
     cart_req_valid <= cart_req_valid_next;

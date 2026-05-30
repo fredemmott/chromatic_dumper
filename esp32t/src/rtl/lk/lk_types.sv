@@ -1,11 +1,13 @@
 package lk_types;
 typedef enum {
-    // Cartridge write commands first
-    CMD_DMG_MBC_RESET,
-    CMD_DMG_CART_WRITE,
+    // Cartridge flash write commands first
     CMD_DMG_FLASH_WRITE_BYTE,
+    CMD_CART_WRITE_FLASH_CMD,
+    // Then other cartridge write commands
+    CMD_DMG_CART_WRITE, // == CART_FLASH_WRITE_CMD_COUNT
+    CMD_DMG_MBC_RESET,
     // Now cartridge read
-    CMD_DMG_CART_READ, // CART_WRITE_CMD_COUNT
+    CMD_DMG_CART_READ, // == CART_WRITE_CMD_COUNT
     // Now everything else
     CMD_STUB_NOOP_ACK, // == CART_CMD_COUNT
     CMD_QUERY_FW_INFO,
@@ -14,7 +16,6 @@ typedef enum {
     CMD_SET_ADDR_AS_INPUTS,
     CMD_SET_PIN,
     CMD_GET_VARIABLE,
-    //CMD_CART_WRITE_FLASH_CMD,
     /*
     CMD_SET_FLASH_CMD,
     CMD_CLK_TOGGLE,
@@ -29,14 +30,13 @@ typedef enum {
     CMD_COUNT
 } command_t;
 
+parameter command_t CART_FLASH_WRITE_CMD_COUNT = CMD_DMG_CART_WRITE;
 parameter command_t CART_WRITE_CMD_COUNT = CMD_DMG_CART_READ;
 parameter command_t CART_CMD_COUNT = CMD_STUB_NOOP_ACK;
 parameter command_t CMD_INVALID = CMD_COUNT;
 parameter command_t CMD_NOT_IMPLEMENTED = CMD_COUNT;
 
 // TODO:
-
-parameter command_t CMD_CART_WRITE_FLASH_CMD = CMD_NOT_IMPLEMENTED;
 parameter command_t CMD_SET_FLASH_CMD = CMD_NOT_IMPLEMENTED;
 parameter command_t CMD_CLK_TOGGLE = CMD_NOT_IMPLEMENTED;
 parameter command_t CMD_GET_VAR_STATE = CMD_NOT_IMPLEMENTED;
