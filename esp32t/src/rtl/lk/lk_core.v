@@ -224,14 +224,18 @@ assign complete[CMD_SET_VOLTAGE_5V] = 1'b1;
 assign complete[CMD_SET_ADDR_AS_INPUTS] = 1'b1;
 `ACK_WHEN_COMPLETE(CMD_SET_ADDR_AS_INPUTS)
 
-wire cart_enabled_next =
-        enabled[CMD_DMG_MBC_RESET] |
-        enabled[CMD_DMG_CART_READ] |
-        enabled[CMD_DMG_CART_WRITE] |
-        enabled[CMD_DMG_FLASH_WRITE_BYTE] |
-        //enabled[CMD_CART_WRITE_FLASH_CMD] |
-        enabled[CMD_SET_VOLTAGE_5V] |
-        (cart_enabled & !enabled[CMD_SET_ADDR_AS_INPUTS]);
+reg is_cart_command;
+
+logic cart_enabled_next;
+always @(*) begin
+    cart_enabled_next = cart_enabled;
+    if (enabled[CMD_SET_ADDR_AS_INPUTS]) begin
+        cart_enabled_next = 1'b0;
+    end else if (is_cart_command) begin
+        cart_enabled_next = 1'b1;
+    end
+end
+//wire cart_enabled_next = ((command < CART_CMD_COUNT) | cart_enabled) && (command != CMD_SET_ADDR_AS_INPUTS);
 always @(posedge clk) begin
     if (reset_r) begin
         cart_enabled <= 1'b0;
@@ -310,6 +314,14 @@ enum {
 
 command_t rx_command;
 always @(posedge clk) rx_command <= cmd_rom[rx_data];
+
+always @(posedge clk) begin
+    unique case (state)
+        S_RESET, S_IDLE: is_cart_command <= 1'b0;
+        S_DECODE: is_cart_command <= (rx_command < CART_CMD_COUNT);
+        default: ;
+    endcase
+end
 
 always @(posedge clk) begin
     if (reset_r) begin
