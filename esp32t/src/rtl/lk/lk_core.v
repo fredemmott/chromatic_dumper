@@ -92,7 +92,7 @@ end
 
 logic [CART_CMD_COUNT - 1:0] cart_req_valid_bus;
 logic [15:0] cart_address_bus [0:CART_CMD_COUNT - 1];
-logic [7:0] cart_data_bus [0:CART_WRITE_CMD_COUNT - 1];
+logic [7:0] cart_data_bus [0:CART_CMD_COUNT - 1];
 
 logic [CMD_COUNT - 1:0] tx_valid_bus;
 logic [7:0] tx_data_bus [0:CMD_COUNT - 1];
@@ -240,12 +240,13 @@ always @(posedge clk) begin
     end
 end
 
-localparam CART_CMD_WIDTH = $clog2(CART_CMD_COUNT);
-localparam CART_WRITE_CMD_WIDTH = $clog2(CART_WRITE_CMD_COUNT);
-logic [CART_CMD_WIDTH - 1:0] cart_command;
-logic [CART_WRITE_CMD_WIDTH - 1:0] cart_write_command;
-assign cart_command = command[CART_CMD_WIDTH - 1:0];
-assign cart_write_command = command[CART_WRITE_CMD_WIDTH - 1:0];
+// These will be constant-folded
+always @(*) begin
+    for (int i = CART_WRITE_CMD_COUNT; i < CART_CMD_COUNT; i = i + 1) begin
+        cart_data_bus[i] = 8'd0;
+    end
+end
+
 
 reg cart_req_valid_next;
 cart_req_t cart_req_next;
@@ -259,12 +260,8 @@ always @(*) begin
         data: 8'd0
     };
     for (int i = 0; i < CART_CMD_COUNT; i = i + 1) begin
-        if (command == i) begin
-            cart_req_next.address = cart_address_bus[i];
-            if (i < CART_WRITE_CMD_COUNT) begin
-                cart_req_next.data = cart_data_bus[i];
-            end
-        end
+        cart_req_next.address |= cart_address_bus[i];
+        cart_req_next.data    |= cart_data_bus[i];
     end
 end
 always @(posedge clk) begin
