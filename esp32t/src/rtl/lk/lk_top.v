@@ -1,10 +1,8 @@
-// Update the `set_clock_groups -asynchronous...` in evt1_x2.sdc if this changes
-`define LK_CLOCK xClk
-
 import lk_types::*;
 
 module lk_top(
-    input  wire        clk,
+    input  wire        coreClk,
+    input  wire        cartClk,
     input  wire        reset,
 
     // USB-CDC
@@ -27,35 +25,48 @@ module lk_top(
     output reg         cart_audio
 );
 
-reg reset_r;
-always @(posedge clk) reset_r <= reset;
+(* syn_preserve *) reg [1:0] lk_cdc_core_reset;
+always @(posedge coreClk or posedge reset) begin
+    if (reset) lk_cdc_core_reset <= 2'b11;
+    else       lk_cdc_core_reset <= { lk_cdc_core_reset[0], 1'b0 };
+end
+wire coreReset = lk_cdc_core_reset[1];
 
-// TODO: test removing this
-wire cart_enabled_i;
-always @(posedge clk) cart_enabled <= cart_enabled_i;
+(* syn_preserve *) reg [1:0] lk_cdc_cart_reset;
+always @(posedge cartClk or posedge reset) begin
+    if (reset) lk_cdc_cart_reset <= 2'b11;
+    else       lk_cdc_cart_reset <= { lk_cdc_cart_reset[0], 1'b0 };
+end
+wire cartReset = lk_cdc_cart_reset[1];
+
+(* syn_preserve *) reg [1:0] lk_cdc_cart_enabled;
+always @(posedge cartClk) begin
+    lk_cdc_cart_enabled[0] <= cart_enabled_i;
+    lk_cdc_cart_enabled[1] <= lk_cdc_cart_enabled[0];
+end
+assign cart_enabled = lk_cdc_cart_enabled[1];
 
 reg rx_valid_o;
 reg [7:0] rx_data_o;
 wire tx_valid_i;
 wire [7:0] tx_data_i;
-always @(posedge clk) begin
+always @(posedge coreClk) begin
     rx_valid_o <= rx_valid;
     rx_data_o <= rx_data;
     tx_valid <= tx_valid_i;
     tx_data <= tx_data_i;
 end
 
-reg          cart_req_almost_full_o;
-wire         cart_req_valid_i;
+logic        cart_req_almost_full_o;
+logic        cart_req_valid_i;
 cart_req_t   cart_req_i;
 cart_vars_t  cart_vars_i;
-reg          cart_complete_o;
-reg [7:0]    cart_complete_data_o;
-
+logic        cart_complete_o;
+logic [7:0]  cart_complete_data_o;
 
 lk_core u_core(
-    .clk(clk),
-    .reset(reset_r),
+    .clk(coreClk),
+    .reset(coreReset),
 
     .rx_valid(rx_valid_o),
     .rx_data(rx_data_o),
@@ -73,119 +84,132 @@ lk_core u_core(
     .cart_complete_data(cart_complete_data_o)
 );
 
-cart_vars_t cart_vars;
-always @(posedge clk) cart_vars <= cart_vars_i;
-
 wire cart_complete;
 
-logic cart_complete_sr [0:1];
-logic [7:0] cart_complete_data_sr [0:1];
-always @(posedge clk) begin
-    cart_complete_sr[0] <= cart_complete;
-    cart_complete_sr[1] <= cart_complete_sr[0];
-    cart_complete_data_sr[0] <= cart_d_in;
-    cart_complete_data_sr[1] <= cart_complete_data_sr[0];
-end
-assign cart_complete_o = cart_complete_sr[1];
-assign cart_complete_data_o = cart_complete_data_sr[1];
+typedef struct packed {
+    logic [7:0] cart_d_in;
+    logic [23:0] _padding;
+} fifo_response_t;
+fifo_response_t cart_complete_data;
+fifo_response_t cart_complete_q;
+logic cart_complete_enqueue;
 
-// Capacity of 512
-reg [9:0] cart_req_count;
-reg [9:0] cart_req_count_next;
-always @(*) begin
-    if (reset) begin
-        cart_req_count_next = 0;
-    end else begin
-        unique case ({cart_complete_o, cart_req_valid_i})
-            2'b10: cart_req_count_next = cart_req_count - 1'b1;
-            2'b01: cart_req_count_next = cart_req_count + 1'b1;
-            default: cart_req_count_next = cart_req_count;
-        endcase
+wire cart_complete_empty;
+reg cart_complete_dequeue;
+always @(posedge coreClk) begin
+    cart_complete_dequeue <= 1'b0;
+    cart_complete_o <= 1'b0;
+    cart_complete_data_o <= cart_complete_q.cart_d_in;
+    if (!(coreReset || cart_complete_empty || cart_complete_dequeue)) begin
+        cart_complete_dequeue <= 1'b1;
+        cart_complete_o <= 1'b1;
     end
 end
-// backpressure at 504 as it's an efficient number to check
-always @(posedge clk) cart_req_almost_full_o <= (cart_req_count >= 9'b1_111_1000);
-always @(posedge clk) cart_req_count <= cart_req_count_next;
+
+always @(posedge cartClk) begin
+    cart_complete_enqueue <= cart_complete;
+    cart_complete_data <= '{
+        cart_d_in: cart_d_in,
+        _padding: '0
+    };
+end
+
+lk_cart_fifo_t u_cart_complete_fifo(
+    .WrClk(cartClk),
+    .WrEn(cart_complete_enqueue),
+    .Data(cart_complete_data),
+
+    .RdClk(coreClk),
+    .RdEn(cart_complete_dequeue),
+    .Q(cart_complete_q),
+    .Empty(cart_complete_empty),
+
+    .Almost_Full(), // Reader is 4x faster than writer, don't bother with this wire
+    .Full() // ditto
+);
 
 // FIFO
-reg req_enqueue;
+logic req_enqueue;
 cart_req_t req_enqueue_data;
-reg req_dequeue;
-wire reqs_empty;
-cart_req_t req_q;
-lk_cart_req_fifo_t u_cart_req_fifo(
-    .clk(clk),
-    .reset(reset_r),
+logic req_dequeue;
+logic reqs_empty;
 
-    .empty(reqs_empty),
+typedef struct packed {
+    logic        is_flash;
+    logic        is_write;
+    logic [15:0] address;
+    logic [7:0]  data;
 
-    .enqueue(req_enqueue),
-    .dequeue(req_dequeue),
+    logic [1:0]  flash_we_pin;
+    logic        dmg_read_cs_pulse;
+    logic        dmg_write_cs_pulse;
 
-    .in(req_enqueue_data),
-    .out(req_q)
+    logic [1:0]  _padding; // 32-bit
+} fifo_req_t;
+fifo_req_t req_data;
+fifo_req_t req_q;
+
+lk_cart_fifo_t u_cart_req_fifo(
+    .WrClk(coreClk),
+    .WrEn(req_enqueue),
+    .Data(req_data),
+    .Almost_Full(cart_req_almost_full_o),
+
+    .RdClk(cartClk),
+    .RdEn(req_dequeue),
+    .Q(req_q),
+    .Empty(reqs_empty),
+
+    .Full() // Depend on almost_full
 );
 
 /// END FIFO
-// Delay for routing
-reg req_enqueue_d;
-cart_req_t req_enqueue_data_d;
+assign req_enqueue = cart_req_valid_i;
+assign req_data = '{
+    is_flash: cart_req_i.is_flash,
+    is_write: cart_req_i.is_write,
+    address:  cart_req_i.address,
+    data:     cart_req_i.data,
 
-always @(posedge clk) begin
-    if (reset) begin
-       req_enqueue_d <= 1'b0;
-       req_enqueue <= 1'b0;
-    end else begin
-        req_enqueue_d <= cart_req_valid_i;
-        req_enqueue_data_d <= cart_req_i;
+    flash_we_pin: cart_vars_i.flash_we_pin,
+    dmg_read_cs_pulse: cart_vars_i.dmg_read_cs_pulse,
+    dmg_write_cs_pulse: cart_vars_i.dmg_write_cs_pulse,
 
-        req_enqueue <= req_enqueue_d;
-        req_enqueue_data <= req_enqueue_data_d;
-    end
+    _padding: '0
+};
+
+logic cart_req_valid;
+logic cart_req_started;
+
+assign cart_req_valid = !reqs_empty;
+always @(posedge cartClk) req_dequeue <= cart_req_started && !reqs_empty;
+
+(* syn_preserve *) reg [1:0] lk_cdc_hold_pin_audio;
+always @(posedge cartClk) begin
+    lk_cdc_hold_pin_audio[0] <= cart_vars_i.hold_pin_audio;
+    lk_cdc_hold_pin_audio[1] <= lk_cdc_hold_pin_audio[0];
 end
-
-reg cart_req_valid_d;
-reg cart_req_valid;
-cart_req_t cart_req_d;
-cart_req_t cart_req;
-
-wire cart_req_started;
-reg req_dequeue_d;
-always @(posedge clk) begin
-    if (reset_r) begin
-        cart_req_valid <= 1'b0;
-        cart_req_valid_d <= 1'b0;
-        cart_req <= '{default: 0};
-        cart_req_d <= '{default: 0};
-
-        req_dequeue_d <= 1'b0;
-        req_dequeue <= 1'b0;
-    end else begin
-        cart_req_valid_d <= !reqs_empty;
-        cart_req_valid <= cart_req_valid_d;
-        cart_req_d <= req_q;
-        cart_req <= cart_req_d;
-
-        req_dequeue_d <= cart_req_started;
-        req_dequeue <= req_dequeue_d;
-    end
-end
-
+assign hold_pin_audio = lk_cdc_hold_pin_audio[1];
 
 lk_cart_t u_cart_executor(
-    .clk(clk),
-    .reset(reset_r),
+    .clk(cartClk),
+    .reset(cartReset),
 
     .req_valid(cart_req_valid),
-    .req(cart_req),
+    .req('{
+        is_flash: req_q.is_flash,
+        is_write: req_q.is_write,
+        address: req_q.address,
+        data: req_q.data
+    }),
     .req_started(cart_req_started),
     .req_complete(cart_complete),
 
-    .hold_pin_audio(cart_vars.hold_pin_audio),
+    .hold_pin_audio(hold_pin_audio),
 
-    .var_flash_we_pin(cart_vars.flash_we_pin),
-    .var_dmg_read_cs_pulse(cart_vars.dmg_read_cs_pulse),
-    .var_dmg_write_cs_pulse(cart_vars.dmg_write_cs_pulse),
+    .var_flash_we_pin(req_q.flash_we_pin),
+    .var_dmg_read_cs_pulse(req_q.dmg_read_cs_pulse),
+    .var_dmg_write_cs_pulse(req_q.dmg_write_cs_pulse),
 
     .cart_a(cart_a),
     .cart_clk(cart_clk),

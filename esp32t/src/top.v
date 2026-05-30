@@ -846,7 +846,8 @@ module top #(parameter ISSIMU=0)
 
     // FlashGBX "LK" protocol
     lk_top u_lk(
-        .clk            (`LK_CLOCK),
+        .coreClk        (xClk),
+        .cartClk        (hClk),
         .reset          (!lk_enabled),
         .rx_valid       (LK_RX_DVAL),
         .rx_data        (LK_RX_DATA),

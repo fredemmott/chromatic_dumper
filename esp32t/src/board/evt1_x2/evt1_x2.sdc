@@ -41,20 +41,10 @@ set_false_path -to [get_regs {*/lk_cdc_*0_s0}]
 // Copies within `top` to decouple from PHY
 set_false_path -from [get_regs {lk_enabled_d*}]
 
-set_multicycle_path -setup 2 -from [get_regs {u_lk/u_core/*}] -to   [get_regs {u_lk/rx_valid_o* u_lk/rx_data_o* u_lk/tx_valid* u_lk/tx_data* u_lk/cart_complete*sr*}]
-set_multicycle_path -hold 1  -from [get_regs {u_lk/u_core/*}] -to   [get_regs {u_lk/rx_valid_o* u_lk/rx_data_o* u_lk/tx_valid* u_lk/tx_data* u_lk/cart_complete*sr*}]
-set_multicycle_path -setup 2 -to   [get_regs {u_lk/u_core/*}] -from [get_regs {u_lk/rx_valid_o* u_lk/rx_data_o* u_lk/tx_valid* u_lk/tx_data* u_lk/cart_complete*sr*}]
-set_multicycle_path -hold 1  -to   [get_regs {u_lk/u_core/*}] -from [get_regs {u_lk/rx_valid_o* u_lk/rx_data_o* u_lk/tx_valid* u_lk/tx_data* u_lk/cart_complete*sr*}]
-
-set_multicycle_path -setup 2 -to   [get_regs {u_lk/u_core/*}] -from [get_regs {u_lk/cart_complete*sr*}]
-set_multicycle_path -hold 1  -to   [get_regs {u_lk/u_core/*}] -from [get_regs {u_lk/cart_complete*sr*}]
-
-// FIFO can be distant from u_lk/u_core
-//set_multicycle_path -setup 2 -from [get_regs {u_lk/u_core/*}] -to [get_regs {u_lk/req_enqueue_d_* u_lk/req_enqueue_data_d*}]
-//set_multicycle_path -hold 1  -from [get_regs {u_lk/u_core/*}] -to [get_regs {u_lk/req_enqueue_d_* u_lk/req_enqueue_data_d*}]
-// FIFO can be distant from u_lk
-set_multicycle_path -setup 2 -from [get_regs {u_lk/cart_req_valid_d* u_lk/cart_req_d*}] -to [get_regs {u_lk/u_cart_executor/*}]
-set_multicycle_path -hold 1  -from [get_regs {u_lk/cart_req_valid_d* u_lk/cart_req_d*}] -to [get_regs {u_lk/u_cart_executor/*}]
+set_multicycle_path -setup 2 -from [get_regs {u_lk/u_core/*}] -to   [get_regs {u_lk/rx_valid_o* u_lk/rx_data_o* u_lk/tx_valid* u_lk/tx_data*}]
+set_multicycle_path -hold 1  -from [get_regs {u_lk/u_core/*}] -to   [get_regs {u_lk/rx_valid_o* u_lk/rx_data_o* u_lk/tx_valid* u_lk/tx_data*}]
+set_multicycle_path -setup 2 -to   [get_regs {u_lk/u_core/*}] -from [get_regs {u_lk/rx_valid_o* u_lk/rx_data_o* u_lk/tx_valid* u_lk/tx_data*}]
+set_multicycle_path -hold 1  -to   [get_regs {u_lk/u_core/*}] -from [get_regs {u_lk/rx_valid_o* u_lk/rx_data_o* u_lk/tx_valid* u_lk/tx_data*}]
 
 // Correct (loosen) the timing requirements for resetting the DRAM.
 //
