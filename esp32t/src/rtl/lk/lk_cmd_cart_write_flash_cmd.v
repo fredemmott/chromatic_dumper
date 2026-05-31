@@ -27,7 +27,8 @@ logic [7:0] commands_pending;
 typedef enum {
     S_RX_HEADER,
     S_RX_COMMAND,
-    S_WAIT,
+    S_READ_STATUS,
+    S_WAIT_COMMANDS,
     S_COMPLETE
 } state_t;
 
@@ -47,16 +48,21 @@ wire rx_command_byte = (state == S_RX_COMMAND) && rx_valid_r;
 
 always @(posedge clk) begin
     cart_req_valid <= 1'b0;
-    if (rx_valid_r) begin
-        unique case (idx)
-            2: cart_req_address[15:8] <= rx_data_r;
-            3: cart_req_address[7:0] <= rx_data_r;
-            5: begin
-                cart_req_valid <= 1'b1;
-                cart_req_data <= rx_data_r;
-            end
-            default: ;
-        endcase
+    if (!enable) begin
+        cart_req_address <= 16'd0;
+        cart_req_data <= 8'd0;
+    end else if (state == S_RX_COMMAND) begin
+        if (rx_valid_r) begin
+            unique case (idx)
+                2: cart_req_address[15:8] <= rx_data_r;
+                3: cart_req_address[7:0] <= rx_data_r;
+                5: begin
+                    cart_req_valid <= 1'b1;
+                    cart_req_data <= rx_data_r;
+                end
+                default: ;
+            endcase
+        end
     end
 end
 
@@ -87,20 +93,26 @@ end
 
 wire rx_final_command = rx_command_complete && !commands_to_rx;
 
+state_t next_state;
+always @(*) begin
+    next_state = state;
+    unique case(state)
+        S_RX_HEADER: begin
+            if (rx_command_count) begin
+                next_state = (|rx_data_r) ? S_RX_COMMAND : S_COMPLETE;
+            end
+        end
+        S_RX_COMMAND: if (rx_final_command) next_state = S_WAIT_COMMANDS;
+        S_WAIT_COMMANDS: if (!commands_pending) next_state = S_COMPLETE;
+        default: ;
+    endcase
+end
+
 always @(posedge clk) begin
     if (!enable) begin
         state <= S_RX_HEADER;
     end else begin
-        unique case(state)
-            S_RX_HEADER: begin
-                if (rx_command_count) begin
-                    state <= (|rx_data_r) ? S_RX_COMMAND : S_COMPLETE;
-                end
-            end
-            S_RX_COMMAND: if (rx_final_command) state <= S_WAIT;
-            S_WAIT: if (!commands_pending) state <= S_COMPLETE;
-            default: ;
-        endcase
+        state <= next_state;
     end
 end
 
