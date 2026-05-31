@@ -58,53 +58,61 @@ always @(posedge clk) begin
     end
 end
 
-reg req_hold_audio;
-reg req_hold_wr;
-reg req_hold_rst;
+reg req_pulse_audio;
+reg req_pulse_wr;
+reg req_pulse_rst;
 always @(*) begin
-    req_hold_audio = hold_pin_audio;
-    req_hold_wr = 1'b1;
-    req_hold_rst = 1'b1;
+    req_pulse_audio = 1'b0;
+    req_pulse_wr = 1'b1;
+    req_pulse_rst = 1'b0;
 
     if (current_req_is_flash_write) begin
+        req_pulse_wr = 1'b0;
         unique case (var_flash_we_pin)
-            FLASH_WE_PIN_AUDIO: req_hold_audio = 1'b1;
-            FLASH_WE_PIN_WR: req_hold_wr = 1'b0;
+            FLASH_WE_PIN_AUDIO: req_pulse_audio = 1'b1;
+            FLASH_WE_PIN_WR: req_pulse_wr = 1'b1;
             FLASH_WE_PIN_WR_AND_RESET: begin
-                req_hold_wr = 1'b0;
-                req_hold_rst = 1'b0;
+                req_pulse_wr = 1'b1;
+                req_pulse_rst = 1'b1;
             end
             default: ;
         endcase
     end
 end
 
-always @(posedge clk) begin
-    // Latched
-    cart_audio <= req_hold_audio;
-    cart_rst <= req_hold_rst;
-end
-
-reg        cart_next_clk;
 reg        cart_next_cs;
 reg        cart_next_rd;
 reg        cart_next_wr;
+reg        cart_next_rst;
+reg        cart_next_audio;
+reg        cart_next_clk;
 always @(*) begin
     // Pulsed
-    cart_next_clk = 1'b1;
     cart_next_cs = 1'b1;
     cart_next_rd = 1'b1;
-    cart_next_wr = req_hold_wr;
+    cart_next_wr = 1'b1;
+    cart_next_rst = 1'b1;
+    cart_next_clk = 1'b1;
+    cart_next_audio = hold_pin_audio;
 
     unique case (state)
         S_WAIT: begin
-            if (var_dmg_read_cs_pulse) cart_next_cs = 1'b0;
+            cart_next_cs = ~var_dmg_read_cs_pulse;
             cart_next_rd = 1'b0;
         end
-        S_WR_LOW, S_WR_HOLD: begin
+        S_WR_LOW: begin
             cart_next_clk = 1'b0;
-            cart_next_wr = 1'b0;
-            if (var_dmg_write_cs_pulse) cart_next_cs = 1'b0;
+            cart_next_wr = ~req_pulse_wr;
+            cart_next_rst = ~req_pulse_rst;
+            cart_next_cs = ~var_dmg_write_cs_pulse;
+            cart_next_audio = hold_pin_audio ^ req_pulse_audio;
+        end
+        S_WR_HOLD: begin
+            // release clk
+            cart_next_wr = ~req_pulse_wr;
+            cart_next_rst = ~req_pulse_rst;
+            cart_next_cs = ~var_dmg_write_cs_pulse;
+            cart_next_audio = hold_pin_audio ^ req_pulse_audio;
         end
         default: ;
     endcase
@@ -112,15 +120,19 @@ end
 
 always @(posedge clk) begin
     if (reset) begin
-        cart_clk <= 1'b1;
         cart_cs <= 1'b1;
         cart_rd <= 1'b1;
         cart_wr <= 1'b1;
+        cart_rst <= 1'b1;
+        cart_clk <= 1'b1;
+        cart_audio <= 1'b0;
     end else begin
-        cart_clk <= cart_next_clk;
         cart_cs <= cart_next_cs;
         cart_rd <= cart_next_rd;
         cart_wr <= cart_next_wr;
+        cart_rst <= cart_next_rst;
+        cart_clk <= cart_next_clk;
+        cart_audio <= cart_next_audio;
     end
 end
 
