@@ -283,6 +283,7 @@ initial begin
     // Must match `DEVICE_CMD` in `LK_Device.py`
     cmd_rom[8'hA1] = CMD_QUERY_FW_INFO;
     cmd_rom[8'hA3] = CMD_SET_MODE_DMG;
+    cmd_rom[8'hA4] = CMD_SET_VOLTAGE_3_3V;
     cmd_rom[8'hA5] = CMD_SET_VOLTAGE_5V;
     cmd_rom[8'hA6] = CMD_SET_VARIABLE;
     cmd_rom[8'hA7] = CMD_SET_FLASH_CMD;

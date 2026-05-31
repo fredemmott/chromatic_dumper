@@ -37,6 +37,7 @@ parameter command_t CMD_INVALID = CMD_COUNT;
 parameter command_t CMD_NOT_IMPLEMENTED = CMD_COUNT;
 
 // TODO:
+
 parameter command_t CMD_SET_FLASH_CMD = CMD_NOT_IMPLEMENTED;
 parameter command_t CMD_CLK_TOGGLE = CMD_NOT_IMPLEMENTED;
 parameter command_t CMD_GET_VAR_STATE = CMD_NOT_IMPLEMENTED;
@@ -46,8 +47,15 @@ parameter command_t CMD_DMG_SET_BANK_CHANGE_CMD = CMD_NOT_IMPLEMENTED;
 parameter command_t CMD_FLASH_PROGRAM = CMD_NOT_IMPLEMENTED;
 parameter command_t CMD_CALC_CRC32 = CMD_NOT_IMPLEMENTED;
 
-parameter command_t CMD_DISABLE_PULLUPS = CMD_STUB_NOOP_ACK;
+// I was unable to find a DMG cartridge that doesn't already do the voltage conversion, and this
+// flag is set in FlashGBX's configs for a lot of cartridges that need 5V. Going to ignore it as:
+// - we're DMG-only
+// - it doesn't appear that the Chromatic hardware can implement it
+parameter command_t CMD_SET_VOLTAGE_3_3V = CMD_STUB_NOOP_ACK;
+// We're always in DMG mode
 parameter command_t CMD_SET_MODE_DMG = CMD_STUB_NOOP_ACK;
+// Unclear which pins this should affect, and is currently only set for some AGB cartridges, so doesn't affect us
+parameter command_t CMD_DISABLE_PULLUPS = CMD_STUB_NOOP_ACK;
 
 typedef struct {
     logic [15:0] address;
