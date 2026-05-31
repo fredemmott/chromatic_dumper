@@ -42,6 +42,7 @@ end
 // Header:
 //
 // byte [0]: command set (ignored, only supporting AMD for now)
+//      [1]: flash method (ignored, always doing FLASH_METHOD_UNBUFFERED for now)
 //
 // Commands (always exactly 6):
 //
@@ -52,7 +53,8 @@ reg [2:0] SFC_cmd_idx;
 reg [2:0] SFC_byte_idx;
 
 typedef enum {
-    SFC_RX_HEADER,
+    SFC_RX_COMMAND_SET,
+    SFC_RX_FLASH_METHOD,
     SFC_RX_COMMAND,
     SFC_COMPLETE
 } SFC_state_t;
@@ -66,7 +68,8 @@ SFC_state_t SFC_state_next;
 always @(*) begin
     SFC_state_next = SFC_state;
     unique case (SFC_state)
-        SFC_RX_HEADER: if (rx_valid_r) SFC_state_next = SFC_RX_COMMAND;
+        SFC_RX_COMMAND_SET: if (rx_valid_r) SFC_state_next = SFC_RX_FLASH_METHOD;
+        SFC_RX_FLASH_METHOD: if (rx_valid_r) SFC_state_next = SFC_RX_COMMAND;
         SFC_RX_COMMAND: if (SFC_rx_all_commands_complete) SFC_state_next = SFC_COMPLETE;
         // SFC_COMPLETE: /* terminal until !enabled */ ;
         default: ;
@@ -74,7 +77,7 @@ always @(*) begin
 end
 always @(posedge clk) begin
     if (!SET_FLASH_CMD_enable) begin
-        SFC_state <= SFC_RX_HEADER;
+        SFC_state <= SFC_RX_COMMAND_SET;
     end else begin
         SFC_state <= SFC_state_next;
     end
@@ -84,9 +87,10 @@ always @(posedge clk) begin
     if (SFC_state != SFC_RX_COMMAND) begin
         SFC_byte_idx <= '0;
     end else if (rx_valid_r) begin
-        SFC_byte_idx <= SFC_byte_idx + 1'd1;
+        SFC_byte_idx <= SFC_byte_idx + 3'd1;
     end
 end
+
 always @(posedge clk) begin
     if (SFC_state != SFC_RX_COMMAND) begin
         SFC_cmd_idx <= '0;
