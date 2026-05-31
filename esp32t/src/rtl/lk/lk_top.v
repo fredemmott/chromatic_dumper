@@ -202,6 +202,7 @@ always @(posedge cartClk) begin
     req_q_d <= req_q;
 end
 
+(* syn_netlist_hierarchy = 1 *)
 lk_cart_t u_cart_executor(
     .clk(cartClk),
     .reset(cartReset),
