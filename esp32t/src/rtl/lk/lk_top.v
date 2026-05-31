@@ -143,6 +143,7 @@ logic reqs_empty;
 typedef struct packed {
     logic        is_flash;
     logic        is_write;
+    logic        wait_for_status;
     logic [15:0] address;
     logic [7:0]  data;
 
@@ -150,7 +151,7 @@ typedef struct packed {
     logic        dmg_read_cs_pulse;
     logic        dmg_write_cs_pulse;
 
-    logic [1:0]  _padding; // 32-bit
+    logic        _padding; // 32-bit
 } fifo_req_t;
 fifo_req_t req_data;
 fifo_req_t req_q;
@@ -172,10 +173,11 @@ lk_cart_fifo_t u_cart_req_fifo(
 /// END FIFO
 assign req_enqueue = cart_req_valid_i;
 assign req_data = '{
-    is_flash: cart_req_i.is_flash,
-    is_write: cart_req_i.is_write,
-    address:  cart_req_i.address,
-    data:     cart_req_i.data,
+    is_flash:        cart_req_i.is_flash,
+    is_write:        cart_req_i.is_write,
+    wait_for_status: cart_req_i.wait_for_status,
+    address:         cart_req_i.address,
+    data:            cart_req_i.data,
 
     flash_we_pin: cart_vars_i.flash_we_pin,
     dmg_read_cs_pulse: cart_vars_i.dmg_read_cs_pulse,
@@ -211,6 +213,7 @@ lk_cart_t u_cart_executor(
     .req('{
         is_flash: req_q_d.is_flash,
         is_write: req_q_d.is_write,
+        wait_for_status: req_q_d.wait_for_status,
         address: req_q_d.address,
         data: req_q_d.data
     }),
@@ -230,6 +233,7 @@ lk_cart_t u_cart_executor(
     .cart_wr(cart_wr),
     .cart_rst(cart_rst),
     .cart_data_dir_e(cart_data_dir_e),
+    .cart_d_in(cart_d_in),
     .cart_d_out(cart_d_out),
     .cart_audio(cart_audio)
 );

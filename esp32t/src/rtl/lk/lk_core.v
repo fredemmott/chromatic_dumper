@@ -224,6 +224,33 @@ assign complete[CMD_SET_VOLTAGE_5V] = 1'b1;
 assign complete[CMD_SET_ADDR_AS_INPUTS] = 1'b1;
 `ACK_WHEN_COMPLETE(CMD_SET_ADDR_AS_INPUTS)
 
+wire FLASH_PROGRAM_cart_wait_for_status;
+lk_cmd_flash_program_t u_FLASH_PROGRAM(
+    .clk(clk),
+
+    .rx_valid(rx_valid),
+    .rx_data(rx_data),
+
+    .SET_FLASH_CMD_enable(enabled[CMD_SET_FLASH_CMD]),
+    .SET_FLASH_CMD_complete(complete[CMD_SET_FLASH_CMD]),
+
+    .FLASH_PROGRAM_enable(enabled[CMD_FLASH_PROGRAM]),
+    .FLASH_PROGRAM_complete(complete[CMD_FLASH_PROGRAM]),
+
+    .cart_req_valid(cart_req_valid_bus[CMD_FLASH_PROGRAM]),
+    .cart_req_address(cart_address_bus[CMD_FLASH_PROGRAM]),
+    .cart_req_data(cart_data_bus[CMD_FLASH_PROGRAM]),
+    .cart_req_wait_for_status(FLASH_PROGRAM_cart_wait_for_status),
+
+    .cart_ready(cart_req_ready),
+    .cart_complete(cart_complete),
+
+    .var_address(vars.address),
+    .var_transfer_size(vars.transfer_size[11:0])  // we cap at 2KB to fit in one BRAM slot
+);
+`ACK_WHEN_COMPLETE(CMD_SET_FLASH_CMD)
+`ACK_WHEN_COMPLETE(CMD_FLASH_PROGRAM)
+
 reg is_cart_command;
 
 logic cart_enabled_next;
@@ -260,6 +287,7 @@ always @(*) begin
     cart_req_next = '{
         is_flash: command < CART_FLASH_WRITE_CMD_COUNT,
         is_write: command < CART_WRITE_CMD_COUNT,
+        wait_for_status: FLASH_PROGRAM_cart_wait_for_status,
         address: 16'd0,
         data: 8'd0
     };
@@ -375,6 +403,7 @@ always @(*) begin
     vars_next = vars;
     unique case (1'b1)
         enabled_and_complete[CMD_SET_VARIABLE]: vars_next = SET_VARIABLE_vars_out;
+        enabled_and_complete[CMD_FLASH_PROGRAM],
         enabled_and_complete[CMD_DMG_CART_READ],
         enabled_and_complete[CMD_DMG_CART_WRITE]:
             vars_next.address = vars.address + vars.transfer_size;

@@ -3,13 +3,13 @@ module lk_cmd_cart_write_flash_cmd_t(
     input  wire        enable,
     output reg         complete,
 
-    input  reg         rx_valid,
-    input  reg  [7:0]  rx_data,
+    input  wire        rx_valid,
+    input  wire [7:0]  rx_data,
 
     output reg         cart_req_valid,
     output reg  [15:0] cart_req_address,
     output reg  [7:0]  cart_req_data,
-    input  reg         cart_complete
+    input  wire        cart_complete
 );
 
 reg rx_valid_r;

@@ -66,6 +66,7 @@
         <File path="src/rtl/lk/lk_cmd_dmg_cart_read.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/lk/lk_cmd_dmg_cart_write.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/lk/lk_cmd_dmg_mbc_reset.v" type="file.verilog" enable="1"/>
+        <File path="src/rtl/lk/lk_cmd_flash_program.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/lk/lk_cmd_get_variable.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/lk/lk_cmd_query_fw_info.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/lk/lk_cmd_set_pin.v" type="file.verilog" enable="1"/>
@@ -74,6 +75,7 @@
         <File path="src/rtl/lk/lk_top.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/lk/lk_types.sv" type="file.verilog" enable="1"/>
         <File path="src/rtl/lk/lk_var_ids.v" type="file.verilog" enable="1"/>
+        <File path="src/rtl/lk/lk_var_storage.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/lk/serial_mux/lk_mcu_observer.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/lk/serial_mux/lk_serial_id.v" type="file.verilog" enable="1"/>
         <File path="src/top.v" type="file.verilog" enable="1"/>

@@ -22,7 +22,8 @@ module lk_cart_t(
     output reg        cart_wr,
     output reg        cart_rst,
     output reg        cart_data_dir_e,
-    output reg [7:0]  cart_d_out,
+    input  wire [7:0] cart_d_in,
+    output reg  [7:0] cart_d_out,
     output reg        cart_audio
 );
 
@@ -34,18 +35,23 @@ typedef enum {
     S_WR_LOW,  // write: WR low
     S_WR_HOLD,
     S_WR_HIGH, // write: WR high + drive data
+    S_SETUP_FOR_STATUS,
+    S_WAIT_FOR_STATUS, // wait for the cartridge to indicate that a write was successful
     S_DONE     // single-cycle done pulse
 } state_t;
 state_t state;
 
 reg current_req_is_write;
 reg current_req_is_flash_write;
+reg current_req_wait_for_status;
+reg [7:0] current_req_data;
 always @(posedge clk) begin
     req_started <= 1'b0;
     if (reset || (state == S_DONE)) begin
         cart_a <= 16'hFFFF;
         cart_d_out <= 8'hFF;
         cart_data_dir_e <= 1'b1; // read
+        current_req_wait_for_status <= 1'b0;
     end else if ((state == S_IDLE) && req_valid) begin
         req_started <= 1'b1;
 
@@ -55,6 +61,10 @@ always @(posedge clk) begin
 
         current_req_is_write <= req.is_write;
         current_req_is_flash_write <= (req.is_flash && req.is_write);
+        current_req_wait_for_status <= req.wait_for_status;
+        current_req_data <= req.data;
+    end else if (state == S_SETUP_FOR_STATUS) begin
+        cart_data_dir_e <= 1'b1; // is read
     end
 end
 
@@ -114,6 +124,9 @@ always @(*) begin
             cart_next_cs = ~var_dmg_write_cs_pulse;
             cart_next_audio = hold_pin_audio ^ req_pulse_audio;
         end
+        S_WAIT_FOR_STATUS: begin
+            cart_next_rd = 1'b0;
+        end
         default: ;
     endcase
 end
@@ -156,7 +169,17 @@ always @(*) begin
         S_WAIT: if (wait_cnt == 0) next_state = S_DONE;
         S_WR_LOW: if (wait_cnt == 0) next_state = S_WR_HOLD;
         S_WR_HOLD: if (wait_cnt == 0) next_state = S_WR_HIGH;
-        S_WR_HIGH: if (wait_cnt == 0) next_state = S_DONE;
+        S_WR_HIGH: begin
+            if (wait_cnt == 0) begin
+                if (current_req_wait_for_status) begin
+                    next_state = S_SETUP_FOR_STATUS;
+                end else begin
+                    next_state = S_DONE;
+                end
+            end
+        end
+        S_SETUP_FOR_STATUS: if (wait_cnt == 0) next_state = S_WAIT_FOR_STATUS;
+        S_WAIT_FOR_STATUS: if (current_req_data[7] == cart_d_in[7]) next_state = S_DONE;
         S_DONE: next_state = S_IDLE;
         default: ;
     endcase
@@ -175,6 +198,7 @@ always @(posedge clk) begin
             S_WR_LOW:  wait_cnt <= CART_WR_HOLD;
             S_WR_HOLD: wait_cnt <= CART_WR_HOLD;
             S_WR_HIGH: wait_cnt <= CART_WR_HOLD;
+            S_SETUP_FOR_STATUS: wait_cnt <= CART_SETUP;
             default:   wait_cnt <= 5'd0;
         endcase
     end
