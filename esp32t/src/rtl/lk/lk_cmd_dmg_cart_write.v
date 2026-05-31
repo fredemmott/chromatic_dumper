@@ -14,26 +14,30 @@ module lk_cmd_dmg_cart_write_t (
 
 typedef enum {
     S_RX,
-    S_EXEC,
     S_WAIT,
     S_COMPLETE
 } state_t;
 state_t state;
+always @(posedge clk) complete <= (state == S_COMPLETE);
 
 // byte [0..3]: address top 16 are always 0 for DMG
 //      [4]   : value
-localparam LAST_RX_IDX = 4;
 reg [2:0] idx;
-reg [7:0] rx_buf [0:LAST_RX_IDX];
 always @(posedge clk) begin
-    cart_req_valid <= (state == S_EXEC);
-    complete <= (state == S_COMPLETE);
+    cart_req_valid <= 1'b0;
     if (!enable) begin
         cart_req_address <= '0;
         cart_req_data <= '0;
-    end else begin
-        cart_req_address <= { rx_buf[2], rx_buf[3] };
-        cart_req_data <= rx_buf[4];
+    end else if (rx_valid) begin
+        unique case (idx)
+            2: cart_req_address[15:8] <= rx_data;
+            3: cart_req_address[7:0] <= rx_data;
+            4: begin
+                cart_req_data <= rx_data;
+                cart_req_valid <= 1'b1;
+            end
+            default: ;
+        endcase
     end
 end
 
@@ -41,8 +45,7 @@ state_t state_next;
 always @(*) begin
     state_next = state;
     unique case(state)
-        S_RX: if (idx >= LAST_RX_IDX) state_next = S_EXEC;
-        S_EXEC: state_next = S_WAIT;
+        S_RX: if (rx_valid && (idx == 4)) state_next = S_WAIT;
         S_WAIT: if (cart_complete) state_next = S_COMPLETE;
         default: ;
     endcase
@@ -55,17 +58,6 @@ always @(posedge clk) begin
     end else begin
         state <= state_next;
         if (rx_valid) idx <= idx + 1'd1;
-    end
-end
-
-
-integer i;
-always @(posedge clk) begin
-    if (rx_valid) begin
-        for (i = 0; i < LAST_RX_IDX; i = i + 1) begin
-            rx_buf[i] <= rx_buf[i + 1];
-        end
-        rx_buf[LAST_RX_IDX] <= rx_data;
     end
 end
 
