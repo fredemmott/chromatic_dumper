@@ -1,53 +1,6 @@
 // cart_reader.v
-// Chromatic FPGA Cart Reader
-//
-// Implements the LK (FlashGBX/Joey Jr) protocol over USB CDC serial (parallel byte
-// interface from usbuvcuart_top EP3).
-//
-// Protocol summary (from LK_Device.py / hw_JoeyJr.py):
-//   0x55 0xAA → device sends ID string (must contain "FW L"; must NOT contain "Joey")
-//   'L' 'K'   → device sends 0xFF (LK firmware enabled)
-//   'K' 'L'   → device sends 0xFF (LK firmware disabled)
-//   0xA1 (QUERY_FW_INFO) → 1-byte size + 8 bytes info + optional name/flags
-//   0xA3 (SET_MODE_DMG)   → ACK 0x01
-//   0xA4/0xA5 (SET_VOLTAGE) → ACK 0x01
-//   0xA6 (SET_VARIABLE)   → size(1)+key(4)+value(4), ACK 0x01
-//   0xAB/0xAC (PULL_UPS)  → ACK 0x01
-//   0xAD (GET_VARIABLE)   → size(1)+key(4), respond 4 bytes
-//   0xA8 (SET_ADDR_INPUTS)→ ACK 0x01
-//   0xA9 (CLK_TOGGLE)     → count(4), ACK 0x01
-//   0xAE (GET_VAR_STATE)  → dump of all vars
-//   0xAF (SET_VAR_STATE)  → receive all vars
-//   0xB1 (DMG_CART_READ)  → read TRANSFER_SIZE bytes at ADDRESS from cart (or cache)
-//   0xB2 (DMG_CART_WRITE) → addr(4)+val(1), ACK 0x01, cache invalidated
-//   0xB3 (DMG_CART_WRITE_SRAM) → then recv TRANSFER_SIZE bytes, write each, ACK 0x01
-//   0xB4 (DMG_MBC_RESET)  → ACK 0x01
-//   0xB8 (DMG_SET_BANK_CHANGE_CMD) → recv params, ACK 0x01
-//   0xBA (DMG_CART_READ_MEASURE) → same as 0xB1
-//   0xD1 (DMG_FLASH_WRITE_BYTE) → addr(4)+val(1), ACK 0x01, cache invalidated
-//   0xD3 (FLASH_PROGRAM)  → recv TRANSFER_SIZE bytes, write each, ACK 0x01 or 0x03
-//   0xD4 (CART_WRITE_FLASH_CMD) → fc(1)+num(1)+[addr(4)+val(2)]×num, ACK 0x01
-//   0xD5 (CALC_CRC32)     → ACK 0x01 (stub)
-//   0xF2/0xF3 (PWR_ON/OFF)→ ACK 0x01
-//   0xF4 (QUERY_CART_PWR) → respond 0x01 (cart always on)
-//   0xF5 (SET_PIN)        → recv 5 bytes, ACK 0x01
-//
-//
-// pClk is ~60 MHz (USB PHY clock from Gowin_PLL_UVC).
-// Cart timing: 16-cycle CS/RD assertion (~267 ns) + 16-cycle wait → safe for 5V GB.
-
-`default_nettype none
-
 import lk_types::*;
-
 module lk_core #(
-    // Number of clock cycles CS/RD is asserted before latching data.
-    // At 60 MHz, 16 cycles ≈ 267 ns (GB min CS low = 200 ns).
-    parameter CART_RD_HOLD = 16,
-    // Write pulse width (WR low).  At 60 MHz, 10 cycles ≈ 167 ns.
-    parameter CART_WR_HOLD = 10,
-    // Address-to-CS setup cycles.
-    parameter CART_SETUP   = 4
 )(
     input  wire        clk,
     input  wire        reset,
@@ -60,371 +13,244 @@ module lk_core #(
 
     output reg         cart_enabled,
 
-    input  wire        cart_req_almost_full,
-    output reg         cart_req_valid,
-    output cart_req_t  cart_req,
-    output cart_vars_t cart_vars,
+    output reg         enqueue_o,
+    output cart_req_t  req_o,
+    output cart_vars_t vars_o,
 
+    output reg         dequeue_o,
     input wire         cart_complete,
     input wire [7:0]   cart_complete_data
 );
-wire cart_req_ready = !cart_req_almost_full;
-// This is just to simplify routing; this is safe because in top_v, reset is ~lk_enabled, synchronized with clk
-reg reset_r = 1;
-always @(posedge clk) reset_r <= reset;
 
-vars_t vars;
+reg rx_valid_r;
+reg [7:0] rx_data_r;
+
+typedef enum {
+    CMD_DISABLE_CART,
+    CMD_SET_VARIABLES,
+    CMD_ENQUEUE,
+    CMD_POLL,
+    CMD_IDLE
+} command_t;
+localparam command_t CMD_COUNT = CMD_IDLE;
 command_t command;
 
-logic [CMD_COUNT - 1:0] enabled;
-logic [CMD_COUNT - 1:0] complete;
-logic [CMD_COUNT - 1:0] enabled_and_complete;
-logic exec_complete;
-assign enabled_and_complete = (enabled & complete);
-assign exec_complete = |enabled_and_complete;
+logic [CMD_COUNT - 1:0] complete_bus;
+wire command_complete = |complete_bus;
 
-always @(*) begin
-    enabled = '{default: 0};
-    if (command < CMD_COUNT) begin
-        enabled[command] = 1;
-    end
-end
-
-logic [CART_CMD_COUNT - 1:0] cart_req_valid_bus;
-logic [15:0] cart_address_bus [0:CART_CMD_COUNT - 1];
-logic [7:0] cart_data_bus [0:CART_CMD_COUNT - 1];
-
-logic [CMD_COUNT - 1:0] tx_valid_bus;
-logic [7:0] tx_data_bus [0:CMD_COUNT - 1];
-
-logic exec_tx_valid;
-logic [7:0] exec_tx_data;
-assign exec_tx_valid = tx_valid_bus[command];
-assign exec_tx_data = tx_data_bus[command];
-
-///// Start Commands /////
-
-`define ACK_WHEN_COMPLETE(CMD) \
-  assign tx_valid_bus[CMD] = complete[CMD]; \
-  assign tx_data_bus[CMD] = 8'd1;
-
-assign complete[CMD_STUB_NOOP_ACK] = 1'b1;
-`ACK_WHEN_COMPLETE(CMD_STUB_NOOP_ACK)
-
-lk_cmd_query_fw_info_t u_QUERY_FW_INFO(
-    clk,
-    enabled[CMD_QUERY_FW_INFO],
-    complete[CMD_QUERY_FW_INFO],
-    tx_valid_bus[CMD_QUERY_FW_INFO],
-    tx_data_bus[CMD_QUERY_FW_INFO]
-);
-
-vars_t SET_VARIABLE_vars_out;
-lk_cmd_set_variable_t u_SET_VARIABLE(
-    clk,
-    enabled[CMD_SET_VARIABLE],
-    complete[CMD_SET_VARIABLE],
-    rx_valid,
-    rx_data,
-    vars,
-    SET_VARIABLE_vars_out
-);
-`ACK_WHEN_COMPLETE(CMD_SET_VARIABLE)
-
-lk_cmd_get_variable_t u_GET_VARIABLE(
-    clk,
-    enabled[CMD_GET_VARIABLE],
-    complete[CMD_GET_VARIABLE],
-    rx_valid,
-    rx_data,
-    tx_valid_bus[CMD_GET_VARIABLE],
-    tx_data_bus[CMD_GET_VARIABLE],
-    vars
-);
-
-lk_cmd_dmg_cart_read_t u_DMG_CART_READ(
-    clk,
-    enabled[CMD_DMG_CART_READ],
-    complete[CMD_DMG_CART_READ],
-
-    tx_valid_bus[CMD_DMG_CART_READ],
-    tx_data_bus[CMD_DMG_CART_READ],
-
-    cart_req_ready,
-    cart_req_valid_bus[CMD_DMG_CART_READ],
-    cart_address_bus[CMD_DMG_CART_READ],
-    cart_complete,
-    cart_complete_data,
-
-    vars.address,
-    vars.transfer_size
-);
-
-lk_cmd_dmg_cart_write_t u_DMG_CART_WRITE(
-    clk,
-    enabled[CMD_DMG_CART_WRITE] || enabled[CMD_DMG_FLASH_WRITE_BYTE],
-    complete[CMD_DMG_CART_WRITE],
-
-    rx_valid,
-    rx_data,
-
-    cart_req_valid_bus[CMD_DMG_CART_WRITE],
-    cart_address_bus[CMD_DMG_CART_WRITE],
-    cart_data_bus[CMD_DMG_CART_WRITE],
-    cart_complete
-);
-`ACK_WHEN_COMPLETE(CMD_DMG_CART_WRITE)
-
-// DMG_FLASH_WRITE_BYTE is identical to DMG_CART_WRITE, except that the is_flash bit is set
-assign complete[CMD_DMG_FLASH_WRITE_BYTE] = complete[CMD_DMG_CART_WRITE];
-assign cart_req_valid_bus[CMD_DMG_FLASH_WRITE_BYTE] = cart_req_valid_bus[CMD_DMG_CART_WRITE];
-assign cart_address_bus[CMD_DMG_FLASH_WRITE_BYTE] = cart_address_bus[CMD_DMG_CART_WRITE];
-assign cart_data_bus[CMD_DMG_FLASH_WRITE_BYTE] = cart_data_bus[CMD_DMG_CART_WRITE];
-`ACK_WHEN_COMPLETE(CMD_DMG_FLASH_WRITE_BYTE)
-
-lk_cmd_cart_write_flash_cmd_t u_CART_WRITE_FLASH_CMD(
-    clk,
-    enabled[CMD_CART_WRITE_FLASH_CMD],
-    complete[CMD_CART_WRITE_FLASH_CMD],
-
-    rx_valid,
-    rx_data,
-
-    cart_req_valid_bus[CMD_CART_WRITE_FLASH_CMD],
-    cart_address_bus[CMD_CART_WRITE_FLASH_CMD],
-    cart_data_bus[CMD_CART_WRITE_FLASH_CMD],
-    cart_complete
-);
-`ACK_WHEN_COMPLETE(CMD_CART_WRITE_FLASH_CMD)
-
-reg hold_pin_audio;
-lk_cmd_set_pin_t u_SET_PIN(
-    clk,
-    reset_r,
-    enabled[CMD_SET_PIN],
-    complete[CMD_SET_PIN],
-    rx_valid,
-    rx_data,
-    hold_pin_audio);
-`ACK_WHEN_COMPLETE(CMD_SET_PIN)
-
-lk_cmd_dmg_mbc_reset_t u_DMG_MBC_RESET(
-    clk,
-    enabled[CMD_DMG_MBC_RESET],
-    complete[CMD_DMG_MBC_RESET],
-    cart_req_valid_bus[CMD_DMG_MBC_RESET],
-    cart_address_bus[CMD_DMG_MBC_RESET],
-    cart_data_bus[CMD_DMG_MBC_RESET],
-    cart_complete
-);
-`ACK_WHEN_COMPLETE(CMD_DMG_MBC_RESET)
-
-assign complete[CMD_SET_VOLTAGE_5V] = 1'b1;
-`ACK_WHEN_COMPLETE(CMD_SET_VOLTAGE_5V)
-assign complete[CMD_SET_ADDR_AS_INPUTS] = 1'b1;
-`ACK_WHEN_COMPLETE(CMD_SET_ADDR_AS_INPUTS)
-
-wire FLASH_PROGRAM_cart_wait_for_status;
-lk_cmd_flash_program_t u_FLASH_PROGRAM(
-    .clk(clk),
-
-    .rx_valid(rx_valid),
-    .rx_data(rx_data),
-
-    .SET_FLASH_CMD_enable(enabled[CMD_SET_FLASH_CMD]),
-    .SET_FLASH_CMD_complete(complete[CMD_SET_FLASH_CMD]),
-
-    .FLASH_PROGRAM_enable(enabled[CMD_FLASH_PROGRAM]),
-    .FLASH_PROGRAM_complete(complete[CMD_FLASH_PROGRAM]),
-
-    .cart_req_valid(cart_req_valid_bus[CMD_FLASH_PROGRAM]),
-    .cart_req_address(cart_address_bus[CMD_FLASH_PROGRAM]),
-    .cart_req_data(cart_data_bus[CMD_FLASH_PROGRAM]),
-    .cart_req_wait_for_status(FLASH_PROGRAM_cart_wait_for_status),
-
-    .cart_ready(cart_req_ready),
-    .cart_complete(cart_complete),
-
-    .var_address(vars.address),
-    .var_transfer_size(vars.transfer_size[11:0])  // we cap at 2KB to fit in one BRAM slot
-);
-`ACK_WHEN_COMPLETE(CMD_SET_FLASH_CMD)
-`ACK_WHEN_COMPLETE(CMD_FLASH_PROGRAM)
-
-reg is_cart_command;
-
-logic cart_enabled_next;
-always @(*) begin
-    cart_enabled_next = cart_enabled;
-    if (enabled[CMD_SET_ADDR_AS_INPUTS]) begin
-        cart_enabled_next = 1'b0;
-    end else if (is_cart_command) begin
-        cart_enabled_next = 1'b1;
-    end
-end
-//wire cart_enabled_next = ((command < CART_CMD_COUNT) | cart_enabled) && (command != CMD_SET_ADDR_AS_INPUTS);
-always @(posedge clk) begin
-    if (reset_r) begin
-        cart_enabled <= 1'b0;
-    end else begin
-        cart_enabled <= cart_enabled_next;
-    end
-end
-
-// These will be constant-folded
-always @(*) begin
-    for (int i = CART_WRITE_CMD_COUNT; i < CART_CMD_COUNT; i = i + 1) begin
-        cart_data_bus[i] = 8'd0;
-    end
-end
-
-
-reg cart_req_valid_next;
-cart_req_t cart_req_next;
-
-always @(*) begin
-    cart_req_valid_next = |(enabled[CART_CMD_COUNT - 1:0] & cart_req_valid_bus);
-    cart_req_next = '{
-        is_flash: command < CART_FLASH_WRITE_CMD_COUNT,
-        is_write: command < CART_WRITE_CMD_COUNT,
-        wait_for_status: FLASH_PROGRAM_cart_wait_for_status,
-        address: 16'd0,
-        data: 8'd0
-    };
-    for (int i = 0; i < CART_CMD_COUNT; i = i + 1) begin
-        cart_req_next.address |= cart_address_bus[i];
-        cart_req_next.data    |= cart_data_bus[i];
-    end
-end
-always @(posedge clk) begin
-    cart_req_valid <= cart_req_valid_next;
-    cart_req <= cart_req_next;
-end
-
-command_t cmd_rom [0:255];
-integer i;
-initial begin
-    for (i = 0; i < 256; i++) begin
-        cmd_rom[i] = CMD_INVALID;
-    end
-
-    // Must match `DEVICE_CMD` in `LK_Device.py`
-    cmd_rom[8'hA1] = CMD_QUERY_FW_INFO;
-    cmd_rom[8'hA3] = CMD_SET_MODE_DMG;
-    cmd_rom[8'hA4] = CMD_SET_VOLTAGE_3_3V;
-    cmd_rom[8'hA5] = CMD_SET_VOLTAGE_5V;
-    cmd_rom[8'hA6] = CMD_SET_VARIABLE;
-    cmd_rom[8'hA7] = CMD_SET_FLASH_CMD;
-    cmd_rom[8'hA8] = CMD_SET_ADDR_AS_INPUTS;
-    cmd_rom[8'hA9] = CMD_CLK_TOGGLE;
-    cmd_rom[8'hAC] = CMD_DISABLE_PULLUPS;
-    cmd_rom[8'hAD] = CMD_GET_VARIABLE;
-    cmd_rom[8'hAE] = CMD_GET_VAR_STATE;
-    cmd_rom[8'hAF] = CMD_SET_VAR_STATE;
-    cmd_rom[8'hB1] = CMD_DMG_CART_READ;
-    cmd_rom[8'hB2] = CMD_DMG_CART_WRITE;
-    cmd_rom[8'hB3] = CMD_DMG_CART_WRITE_SRAM;
-    cmd_rom[8'hB4] = CMD_DMG_MBC_RESET;
-    cmd_rom[8'hB8] = CMD_DMG_SET_BANK_CHANGE_CMD;
-    cmd_rom[8'hD1] = CMD_DMG_FLASH_WRITE_BYTE;
-    cmd_rom[8'hD3] = CMD_FLASH_PROGRAM;
-    cmd_rom[8'hD4] = CMD_CART_WRITE_FLASH_CMD;
-    cmd_rom[8'hD5] = CMD_CALC_CRC32;
-    cmd_rom[8'hF5] = CMD_SET_PIN;
-end
-
-enum {
+typedef enum {
     S_RESET,
-    S_INIT,
-    S_IDLE,
-    S_DECODE,
-    S_EXEC
-} state = S_INIT;
+    S_INIT_ACK,
+    S_EXEC,
+    S_IDLE
+} state_t;
+state_t state;
 
-command_t rx_command;
-always @(posedge clk) rx_command <= cmd_rom[rx_data];
-
-always @(posedge clk) begin
+state_t state_next;
+command_t command_next;
+always @(*) begin
+    state_next = state;
+    command_next = CMD_IDLE;
     unique case (state)
-        S_RESET, S_IDLE: is_cart_command <= 1'b0;
-        S_DECODE: is_cart_command <= (rx_command < CART_CMD_COUNT);
+        S_RESET: state_next = S_INIT_ACK;
+        S_INIT_ACK: state_next = S_IDLE;
+        S_IDLE: if (rx_valid_r) begin
+            state_next = S_EXEC;
+            unique case (rx_data_r[2:0])
+                3'h00: command_next = CMD_DISABLE_CART;
+                3'h01: command_next = CMD_SET_VARIABLES;
+                3'h02: command_next = CMD_ENQUEUE;
+                3'h03: command_next = CMD_POLL;
+                default: begin
+                    state_next = S_IDLE;
+                end
+            endcase
+        end
+        S_EXEC: begin
+            command_next = command;
+            if (|complete_bus) begin
+                command_next = CMD_IDLE;
+                state_next = S_IDLE;
+            end
+        end
         default: ;
     endcase
 end
 
 always @(posedge clk) begin
-    if (reset_r) begin
+    if (reset) begin
         state <= S_RESET;
-        command <= CMD_INVALID;
+        command <= CMD_IDLE;
     end else begin
-        unique case (state)
-            S_RESET: state <= S_INIT;
-            S_INIT: state <= S_IDLE;
-            S_IDLE: if (rx_valid) state <= S_DECODE;
-            S_DECODE: begin
-                command <= rx_command;
-                state <= S_EXEC;
+        state <= state_next;
+        command <= command_next;
+    end
+end
+
+always @(posedge clk) begin
+    complete_bus[CMD_DISABLE_CART] <= 1'b0;
+    if (reset) begin
+        cart_enabled <= 1'b0;
+    end else if (command == CMD_DISABLE_CART) begin
+        cart_enabled <= 1'b0;
+        complete_bus[CMD_DISABLE_CART] <= 1'b1;
+    end else if (command == CMD_ENQUEUE) begin
+        cart_enabled <= 1'b1;
+    end
+end
+
+always @(posedge clk) begin
+    complete_bus[CMD_SET_VARIABLES] <= 1'b0;
+    if (reset) begin
+        vars_o <= '{default: 0};
+    end else if ((command == CMD_SET_VARIABLES) && rx_valid_r) begin
+        complete_bus[CMD_SET_VARIABLES] <= 1'b1;
+        vars_o <= '{
+            flash_we_pin: rx_data_r[1:0],
+            hold_pin_audio: rx_data_r[2],
+            dmg_read_cs_pulse: rx_data_r[3],
+            dmg_write_cs_pulse: rx_data_r[4]
+        };
+    end
+end
+
+typedef enum {
+    ENQUEUE_RX_COUNT,
+    ENQUEUE_RX_BYTE_0,
+    ENQUEUE_RX_BYTE_1,
+    ENQUEUE_RX_BYTE_2,
+    ENQUEUE_RX_BYTE_3,
+    ENQUEUE_COMPLETE
+} ENQUEUE_state_t;
+ENQUEUE_state_t ENQUEUE_state;
+logic [7:0] ENQUEUE_remaining;
+
+ENQUEUE_state_t ENQUEUE_state_next;
+always @(*) begin
+    ENQUEUE_state_next = ENQUEUE_state;
+    unique case (ENQUEUE_state)
+        ENQUEUE_RX_COUNT: if (rx_valid_r) ENQUEUE_state_next = ENQUEUE_RX_BYTE_0;
+        ENQUEUE_RX_BYTE_0: if (rx_valid_r) ENQUEUE_state_next = ENQUEUE_RX_BYTE_1;
+        ENQUEUE_RX_BYTE_1: if (rx_valid_r) ENQUEUE_state_next = ENQUEUE_RX_BYTE_2;
+        ENQUEUE_RX_BYTE_2: if (rx_valid_r) ENQUEUE_state_next = ENQUEUE_RX_BYTE_3;
+        ENQUEUE_RX_BYTE_3: if (rx_valid_r) begin
+            if (ENQUEUE_remaining) ENQUEUE_state_next = ENQUEUE_RX_BYTE_0;
+            else ENQUEUE_state_next = ENQUEUE_COMPLETE;
+        end
+        default: ;
+    endcase
+end
+
+always @(posedge clk) begin
+    complete_bus[CMD_ENQUEUE] <= 1'b0;
+    if (command != CMD_ENQUEUE) begin
+        ENQUEUE_state <= ENQUEUE_RX_COUNT;
+    end else begin
+        complete_bus[CMD_ENQUEUE] <= (ENQUEUE_state_next == ENQUEUE_COMPLETE);
+        ENQUEUE_state <= ENQUEUE_state_next;
+    end
+end
+
+always @(posedge clk) begin
+    enqueue_o <= 1'b0;
+    if (command != CMD_ENQUEUE) begin
+        ENQUEUE_remaining <= 8'd0;
+    end else if (rx_valid_r) begin
+        unique case (ENQUEUE_state)
+            ENQUEUE_RX_COUNT: ENQUEUE_remaining <= rx_data_r;
+            ENQUEUE_RX_BYTE_0: begin
+                req_o.address[15:8] <= rx_data_r;
+                ENQUEUE_remaining <= ENQUEUE_remaining - 8'd1;
             end
-            S_EXEC: if (exec_complete) begin
-                state <= S_IDLE;
-                command <= CMD_INVALID;
+            ENQUEUE_RX_BYTE_1: req_o.address[7:0] <= rx_data_r;
+            ENQUEUE_RX_BYTE_2: req_o.data <= rx_data_r;
+            ENQUEUE_RX_BYTE_3: begin
+                enqueue_o <= 1'b1;
+                req_o.is_write <= rx_data_r[0];
+                req_o.is_flash <= rx_data_r[1];
+                req_o.wait_for_status <= rx_data_r[2];
             end
             default: ;
         endcase
     end
 end
 
-reg next_tx_valid;
-reg [7:0] next_tx_data;
-always @(*) begin
-    next_tx_valid = 1'b0;
-    next_tx_data = 8'd0;
-    unique case (state)
-        S_RESET, S_IDLE, S_DECODE: ;
-        S_INIT: begin
-            next_tx_valid = 1'b1;
-            next_tx_data = 8'hFF;
-        end
-        S_EXEC: begin
-            next_tx_valid = exec_tx_valid;
-            next_tx_data = exec_tx_data;
-        end
-        default: ;
-    endcase
-end
+logic POLL_tx_valid;
+logic [7:0] POLL_tx_data;
+
+typedef enum {
+    POLL_RX_COUNT,
+    POLL_EXEC,
+    POLL_COMPLETE
+} POLL_state_t;
+POLL_state_t POLL_state;
+always @(posedge clk) complete_bus[CMD_POLL] <= POLL_state == POLL_COMPLETE;
+
+logic [7:0] POLL_dequeue_remaining;
 
 always @(posedge clk) begin
-    tx_valid <= next_tx_valid;
-    tx_data <= next_tx_data;
- end
-
-vars_t vars_next;
-always @(*) begin
-    vars_next = vars;
-    unique case (1'b1)
-        enabled_and_complete[CMD_SET_VARIABLE]: vars_next = SET_VARIABLE_vars_out;
-        enabled_and_complete[CMD_FLASH_PROGRAM],
-        enabled_and_complete[CMD_DMG_CART_READ],
-        enabled_and_complete[CMD_DMG_CART_WRITE]:
-            vars_next.address = vars.address + vars.transfer_size;
-        default: ;
-    endcase
-end
-always @(posedge clk) begin
-    if (reset_r) begin
-        vars <= '{default: 0};
+    POLL_tx_valid <= 1'b0;
+    POLL_tx_data <= 8'd0;
+    dequeue_o <= 1'b0;
+    if (command != CMD_POLL) begin
+        POLL_dequeue_remaining <= 8'd0;
+        POLL_state <= POLL_RX_COUNT;
     end else begin
-        vars <= vars_next;
+        unique case (POLL_state)
+            POLL_RX_COUNT: if (rx_valid_r) begin
+                POLL_dequeue_remaining <= rx_data_r;
+                POLL_state <= POLL_EXEC;
+            end
+            POLL_EXEC: begin
+                if (POLL_dequeue_remaining == 0) begin
+                    // TODO: timeout?
+                    POLL_state <= POLL_COMPLETE;
+                end else if (cart_complete && !dequeue_o) begin
+                    dequeue_o <= 1'b1;
+                    POLL_tx_valid <= 1'b1;
+                    POLL_tx_data <= cart_complete_data;
+                    POLL_dequeue_remaining <= POLL_dequeue_remaining - 8'd1;
+                end
+            end
+            default: ;
+        endcase
     end
 end
 
 always @(posedge clk) begin
-    cart_vars <= '{
-        hold_pin_audio: hold_pin_audio,
-        flash_we_pin: vars.flash_we_pin,
-        dmg_read_cs_pulse: vars.dmg_read_cs_pulse,
-        dmg_write_cs_pulse: vars.dmg_write_cs_pulse
-    };
+    rx_valid_r <= rx_valid;
+    rx_data_r <= rx_data;
+end
+
+logic tx_valid_exec;
+logic [7:0] tx_data_exec;
+always @(*) begin
+    tx_valid_exec = 0;
+    tx_data_exec = 0;
+    if (command == CMD_POLL) begin
+        tx_valid_exec = POLL_tx_valid;
+        tx_data_exec = POLL_tx_data;
+    end else if (command_complete) begin
+        tx_valid_exec = 1'b1;
+        tx_data_exec = 8'h01;
+    end
+end
+
+always @(posedge clk) begin
+    tx_valid <= 1'b0;
+    tx_data <= 8'd0;
+
+    unique case (state)
+        S_INIT_ACK: begin
+            tx_valid <= 1'b1;
+            tx_data <= 8'hFF;
+        end
+        S_EXEC: begin
+            tx_valid <= tx_valid_exec;
+            tx_data <= tx_data_exec;
+        end
+        default: ;
+    endcase
 end
 
 endmodule // cart_reader

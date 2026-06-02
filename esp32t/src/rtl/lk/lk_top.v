@@ -39,6 +39,7 @@ always @(posedge cartClk or posedge reset) begin
 end
 wire cartReset = lk_cdc_cart_reset[1];
 
+logic cart_enabled_i;
 (* syn_preserve *) reg [1:0] lk_cdc_cart_enabled;
 always @(posedge cartClk) begin
     lk_cdc_cart_enabled[0] <= cart_enabled_i;
@@ -57,12 +58,12 @@ always @(posedge coreClk) begin
     tx_data <= tx_data_i;
 end
 
-logic        cart_req_almost_full_o;
 logic        cart_req_valid_i;
 cart_req_t   cart_req_i;
 cart_vars_t  cart_vars_i;
 logic        cart_complete_o;
 logic [7:0]  cart_complete_data_o;
+wire cart_complete_dequeue;
 
 (* syn_netlist_hierarchy = 1 *)
 lk_core u_core(
@@ -76,11 +77,11 @@ lk_core u_core(
 
     .cart_enabled(cart_enabled_i),
 
-    .cart_req_almost_full(cart_req_almost_full_o),
-    .cart_req_valid(cart_req_valid_i),
-    .cart_req(cart_req_i),
-    .cart_vars(cart_vars_i),
+    .enqueue_o(cart_req_valid_i),
+    .req_o(cart_req_i),
+    .vars_o(cart_vars_i),
 
+    .dequeue_o(cart_complete_dequeue),
     .cart_complete(cart_complete_o),
     .cart_complete_data(cart_complete_data_o)
 );
@@ -96,15 +97,9 @@ fifo_response_t cart_complete_q;
 logic cart_complete_enqueue;
 
 wire cart_complete_empty;
-reg cart_complete_dequeue;
 always @(posedge coreClk) begin
-    cart_complete_dequeue <= 1'b0;
-    cart_complete_o <= 1'b0;
+    cart_complete_o <= !cart_complete_empty;
     cart_complete_data_o <= cart_complete_q.cart_d_in;
-    if (!(coreReset || cart_complete_empty || cart_complete_dequeue)) begin
-        cart_complete_dequeue <= 1'b1;
-        cart_complete_o <= 1'b1;
-    end
 end
 
 logic cart_complete_enqueue_d;
@@ -160,14 +155,14 @@ lk_cart_fifo_t u_cart_req_fifo(
     .WrClk(coreClk),
     .WrEn(req_enqueue),
     .Data(req_data),
-    .Almost_Full(cart_req_almost_full_o),
 
     .RdClk(cartClk),
     .RdEn(req_dequeue),
     .Q(req_q),
     .Empty(reqs_empty),
 
-    .Full() // Depend on almost_full
+    .Almost_Full(),
+    .Full()
 );
 
 /// END FIFO

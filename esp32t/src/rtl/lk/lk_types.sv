@@ -1,4 +1,5 @@
 package lk_types;
+`ifdef DISABLED
 typedef enum {
     // Cartridge flash write commands first
     CMD_DMG_FLASH_WRITE_BYTE,
@@ -65,6 +66,7 @@ typedef struct {
     logic        dmg_read_cs_pulse;
     logic        dmg_write_cs_pulse;
 } vars_t;
+`endif // disabled
 localparam FLASH_WE_PIN_WR = 2'd1;
 localparam FLASH_WE_PIN_AUDIO  = 2'd2;
 localparam FLASH_WE_PIN_WR_AND_RESET = 2'd3;
