@@ -68,7 +68,7 @@ always @(*) begin
         end
         S_EXEC: begin
             command_next = command;
-            if (|complete_bus) begin
+            if (command_complete) begin
                 command_next = CMD_IDLE;
                 state_next = S_IDLE;
             end
