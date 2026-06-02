@@ -30,6 +30,7 @@ typedef enum {
     CMD_SET_VARIABLES,
     CMD_ENQUEUE,
     CMD_POLL,
+    CMD_PING,
     CMD_IDLE
 } command_t;
 localparam command_t CMD_COUNT = CMD_IDLE;
@@ -61,6 +62,7 @@ always @(*) begin
                 3'h01: command_next = CMD_SET_VARIABLES;
                 3'h02: command_next = CMD_ENQUEUE;
                 3'h03: command_next = CMD_POLL;
+                3'h04: command_next = CMD_PING;
                 default: begin
                     state_next = S_IDLE;
                 end
@@ -98,6 +100,8 @@ always @(posedge clk) begin
         cart_enabled <= 1'b1;
     end
 end
+
+always @(posedge clk) complete_bus[CMD_PING] <= (command == CMD_PING);
 
 always @(posedge clk) begin
     complete_bus[CMD_SET_VARIABLES] <= 1'b0;
