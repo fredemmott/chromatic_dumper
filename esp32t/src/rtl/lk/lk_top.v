@@ -97,10 +97,9 @@ fifo_response_t cart_complete_q;
 logic cart_complete_enqueue;
 
 wire cart_complete_empty;
-always @(posedge coreClk) begin
-    cart_complete_o <= !cart_complete_empty;
-    cart_complete_data_o <= cart_complete_q.cart_d_in;
-end
+assign cart_complete_o = !(coreReset | cart_complete_empty);
+assign cart_complete_data_o = cart_complete_q.cart_d_in;
+
 
 logic cart_complete_enqueue_d;
 fifo_response_t cart_complete_data_d;
