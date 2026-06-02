@@ -125,6 +125,7 @@ always @(*) begin
             cart_next_audio = hold_pin_audio ^ req_pulse_audio;
         end
         S_WAIT_FOR_STATUS: begin
+            cart_next_cs = ~var_dmg_read_cs_pulse;
             cart_next_rd = 1'b0;
         end
         default: ;
@@ -179,7 +180,11 @@ always @(*) begin
             end
         end
         S_SETUP_FOR_STATUS: if (wait_cnt == 0) next_state = S_WAIT_FOR_STATUS;
-        S_WAIT_FOR_STATUS: if (current_req_data[7] == cart_d_in[7]) next_state = S_DONE;
+        S_WAIT_FOR_STATUS: begin
+            if (wait_cnt == 0) begin
+                if (current_req_data[7] == cart_d_in[7]) next_state = S_DONE;
+            end
+        end
         S_DONE: next_state = S_IDLE;
         default: ;
     endcase
@@ -199,6 +204,7 @@ always @(posedge clk) begin
             S_WR_HOLD: wait_cnt <= CART_WR_HOLD;
             S_WR_HIGH: wait_cnt <= CART_WR_HOLD;
             S_SETUP_FOR_STATUS: wait_cnt <= CART_SETUP;
+            S_WAIT_FOR_STATUS: wait_cnt <= CART_RD_HOLD;
             default:   wait_cnt <= 5'd0;
         endcase
     end
