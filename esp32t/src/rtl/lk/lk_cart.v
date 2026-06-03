@@ -150,15 +150,15 @@ always @(posedge clk) begin
     end
 end
 
-// Number of clock cycles CS/RD is asserted before latching data.
-// At 60 MHz, 16 cycles ≈ 267 ns (GB min CS low = 200 ns).
-localparam CART_RD_HOLD = 16;
-// Write pulse width (WR low).  At 60 MHz, 10 cycles ≈ 167 ns.
-localparam CART_WR_HOLD = 10;
+// Number of clock cycles to hold on a 59.605ns clock (hClk)
 // Address-to-CS setup cycles.
-localparam CART_SETUP   = 4;
+// TODO current build is double timeouts
+localparam CART_HOLD_CS_LOW = 2;
+localparam CART_HOLD_RD_LOW = 4; // Aiming for 200ns
+localparam CART_HOLD_WR_LOW = 4; // Aiming for ~240ns
+localparam CART_HOLD_WR_HIGH = 2; // Aiming for ~ 120ns
 
-reg [4:0] wait_cnt;
+reg [2:0] wait_cnt;
 
 state_t next_state;
 always @(*) begin
@@ -194,18 +194,19 @@ end
 wire is_transition = (state != next_state);
 always @(posedge clk) begin
     if (reset) begin
-        wait_cnt <= 5'd0;
-    end else if (wait_cnt > 5'd0) begin
-        wait_cnt <= wait_cnt - 5'd1;
+        wait_cnt <= 3'd0;
+    end else if (wait_cnt > 3'd0) begin
+        wait_cnt <= wait_cnt - 3'd1;
     end else if (is_transition) begin
         unique case (next_state)
-            S_CSRD:    wait_cnt <= CART_SETUP;
-            S_WAIT:    wait_cnt <= CART_RD_HOLD;
-            S_WR_LOW:  wait_cnt <= CART_WR_HOLD;
-            S_WR_HOLD: wait_cnt <= CART_WR_HOLD;
-            S_WR_HIGH: wait_cnt <= CART_WR_HOLD;
-            S_SETUP_FOR_STATUS: wait_cnt <= CART_SETUP;
-            S_WAIT_FOR_STATUS: wait_cnt <= CART_RD_HOLD;
+            // - 1 as it's going to take us a cycle to get to the next state anyway
+            S_CSRD:    wait_cnt <= CART_HOLD_CS_LOW - 1;
+            S_WAIT:    wait_cnt <= CART_HOLD_RD_LOW - 1;
+            S_WR_LOW:  wait_cnt <= CART_HOLD_WR_LOW - 1;
+            S_WR_HOLD: wait_cnt <= CART_HOLD_WR_HIGH - 1;
+            S_WR_HIGH: wait_cnt <= CART_HOLD_WR_HIGH - 1;
+            S_SETUP_FOR_STATUS: wait_cnt <= CART_HOLD_CS_LOW - 1;
+            S_WAIT_FOR_STATUS: wait_cnt <= CART_HOLD_RD_LOW - 1;
             default:   wait_cnt <= 5'd0;
         endcase
     end
