@@ -344,7 +344,7 @@ module top #(parameter ISSIMU=0)
     aud_system_top u_aud_system_top(
         .gClk(gClk),
         .hClk(hClk),
-        .reset_n(lock_o),
+        .reset_n(~memrst),
         .left(left),
         .right(right),
 
@@ -587,9 +587,9 @@ module top #(parameter ISSIMU=0)
 
     reg UART_TXD;
     wire UART_RXD;
-    wire PHY_CLKOUT;
+    // wire PHY_CLKOUT; Unused: we now run the USB CDC endpoint on xClk
     wire usblocked;
-    always@(posedge PHY_CLKOUT or negedge usblocked)
+    always@(posedge xClk or negedge usblocked)
     begin
         if(~usblocked)
         begin
@@ -633,7 +633,7 @@ module top #(parameter ISSIMU=0)
         end
     end
 
-    always@(posedge PHY_CLKOUT or negedge usblocked)
+    always@(posedge xClk or negedge usblocked)
     begin
         if(~usblocked)
         begin
@@ -709,7 +709,7 @@ module top #(parameter ISSIMU=0)
     usbuvcuart_top u_usb_top(
         .CLK_24MHz(CLK_24MHz),
         .ERST(usbrst),
-        .pClk(PHY_CLKOUT),
+        .pClk(/*PHY_CLKOUT*/),
         .usblocked(usblocked),
         .hClk(gClk),
         .xClk(xClk),

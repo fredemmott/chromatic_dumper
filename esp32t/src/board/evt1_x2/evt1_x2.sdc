@@ -31,7 +31,6 @@ set_false_path -from [get_ports {USBC_FLIP}]
 ///// FlashGBX LK /////
 
 // Explicit CDC
-set_clock_groups -asynchronous -group [get_clocks {PHY_CLKOUT}] -group [get_clocks {xclk}]
 set_false_path -to [get_regs {*/lk_cdc_*0_s0}]
 // Copies within `top` to decouple from PHY
 set_false_path -from [get_regs {lk_enabled_d*}]
