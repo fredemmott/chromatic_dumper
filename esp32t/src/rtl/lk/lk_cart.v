@@ -33,7 +33,6 @@ typedef enum {
     S_CSRD,    // CS/RD asserted
     S_WAIT,    // hold for read
     S_WR_LOW,  // write: WR low
-    S_WR_HOLD,
     S_WR_HIGH, // write: WR high + drive data
     S_SETUP_FOR_STATUS,
     S_WAIT_FOR_STATUS, // wait for the cartridge to indicate that a write was successful
@@ -117,13 +116,6 @@ always @(*) begin
             cart_next_cs = ~var_dmg_write_cs_pulse;
             cart_next_audio = hold_pin_audio ^ req_pulse_audio;
         end
-        S_WR_HOLD: begin
-            // release clk
-            cart_next_wr = ~req_pulse_wr;
-            cart_next_rst = ~req_pulse_rst;
-            cart_next_cs = ~var_dmg_write_cs_pulse;
-            cart_next_audio = hold_pin_audio ^ req_pulse_audio;
-        end
         S_WAIT_FOR_STATUS: begin
             cart_next_cs = ~var_dmg_read_cs_pulse;
             cart_next_rd = 1'b0;
@@ -168,8 +160,7 @@ always @(*) begin
         S_SETUP: next_state = S_CSRD;
         S_CSRD: if (wait_cnt == 0) next_state = (current_req_is_write ? S_WR_LOW : S_WAIT);
         S_WAIT: if (wait_cnt == 0) next_state = S_DONE;
-        S_WR_LOW: if (wait_cnt == 0) next_state = S_WR_HOLD;
-        S_WR_HOLD: if (wait_cnt == 0) next_state = S_WR_HIGH;
+        S_WR_LOW: if (wait_cnt == 0) next_state = S_WR_HIGH;
         S_WR_HIGH: begin
             if (wait_cnt == 0) begin
                 if (current_req_wait_for_status) begin
@@ -203,7 +194,6 @@ always @(posedge clk) begin
             S_CSRD:    wait_cnt <= CART_HOLD_CS_LOW - 1;
             S_WAIT:    wait_cnt <= CART_HOLD_RD_LOW - 1;
             S_WR_LOW:  wait_cnt <= CART_HOLD_WR_LOW - 1;
-            S_WR_HOLD: wait_cnt <= CART_HOLD_WR_HIGH - 1;
             S_WR_HIGH: wait_cnt <= CART_HOLD_WR_HIGH - 1;
             S_SETUP_FOR_STATUS: wait_cnt <= CART_HOLD_CS_LOW - 1;
             S_WAIT_FOR_STATUS: wait_cnt <= CART_HOLD_RD_LOW - 1;
