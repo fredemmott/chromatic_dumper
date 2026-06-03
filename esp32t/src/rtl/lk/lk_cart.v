@@ -183,6 +183,7 @@ always @(*) begin
         S_WAIT_FOR_STATUS: begin
             if (wait_cnt == 0) begin
                 if (current_req_data[7] == cart_d_in[7]) next_state = S_DONE;
+                else next_state = S_SETUP_FOR_STATUS;
             end
         end
         S_DONE: next_state = S_IDLE;
