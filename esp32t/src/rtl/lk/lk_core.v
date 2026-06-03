@@ -182,6 +182,15 @@ end
 logic POLL_tx_valid;
 logic [7:0] POLL_tx_data;
 
+logic [15:0] POLL_timeout;
+always @(posedge clk) begin
+    if ((command != CMD_POLL) || POLL_tx_valid) begin
+        POLL_timeout <= 16'hFFFF; // ~ 1ms on a 14.901ns xClk
+    end else begin
+        POLL_timeout <= POLL_timeout - 1;
+    end
+end
+
 typedef enum {
     POLL_RX_COUNT,
     POLL_EXEC,
@@ -199,6 +208,8 @@ always @(posedge clk) begin
     if (command != CMD_POLL) begin
         POLL_dequeue_remaining <= 8'd0;
         POLL_state <= POLL_RX_COUNT;
+    end else if (!POLL_timeout) begin
+        POLL_state <= POLL_COMPLETE;
     end else begin
         unique case (POLL_state)
             POLL_RX_COUNT: if (rx_valid_r) begin
