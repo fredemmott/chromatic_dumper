@@ -31,6 +31,7 @@ typedef enum {
     CMD_ENQUEUE,
     CMD_POLL,
     CMD_PING,
+    CMD_DEBUG,
     CMD_IDLE
 } command_t;
 localparam command_t CMD_COUNT = CMD_IDLE;
@@ -63,6 +64,7 @@ always @(*) begin
                 3'h02: command_next = CMD_ENQUEUE;
                 3'h03: command_next = CMD_POLL;
                 3'h04: command_next = CMD_PING;
+                3'h05: command_next = CMD_DEBUG;
                 default: begin
                     state_next = S_IDLE;
                 end
@@ -218,7 +220,6 @@ always @(posedge clk) begin
             end
             POLL_EXEC: begin
                 if (POLL_dequeue_remaining == 0) begin
-                    // TODO: timeout?
                     POLL_state <= POLL_COMPLETE;
                 end else if (cart_complete && !dequeue_o) begin
                     dequeue_o <= 1'b1;
@@ -237,6 +238,9 @@ always @(posedge clk) begin
     rx_data_r <= rx_data;
 end
 
+logic DBG_tx_valid;
+logic [7:0] DBG_tx_data;
+
 logic tx_valid_exec;
 logic [7:0] tx_data_exec;
 always @(*) begin
@@ -245,6 +249,9 @@ always @(*) begin
     if (command == CMD_POLL) begin
         tx_valid_exec = POLL_tx_valid;
         tx_data_exec = POLL_tx_data;
+    end else if (command == CMD_DEBUG) begin
+        tx_valid_exec = DBG_tx_valid;
+        tx_data_exec = DBG_tx_data;
     end else if (command_complete) begin
         tx_valid_exec = 1'b1;
         tx_data_exec = 8'h01;
@@ -266,6 +273,48 @@ always @(posedge clk) begin
         end
         default: ;
     endcase
+end
+
+reg [15:0] enqueue_count;
+reg [15:0] dequeue_count;
+
+reg [2:0] DBG_idx;
+
+always @(posedge clk) begin
+    complete_bus[CMD_DEBUG] <= 1'b0;
+    DBG_tx_valid <= 1'b0;
+    if (reset) begin
+        enqueue_count <= '0;
+        dequeue_count <= '0;
+    end else begin
+        if (enqueue_o) enqueue_count <= enqueue_count + 16'b1;
+        if (dequeue_o) dequeue_count <= dequeue_count + 16'd1;
+        if (command != CMD_DEBUG) begin
+            DBG_idx <= 1'b0;
+        end else begin
+            DBG_idx <= DBG_idx + 3'd1;
+            unique case (DBG_idx)
+                0: begin
+                    DBG_tx_valid <= 1'b1;
+                    DBG_tx_data <= enqueue_count[15:8];
+                end
+                1: begin
+                    DBG_tx_valid <= 1'b1;
+                    DBG_tx_data <= enqueue_count[7:0];
+                end
+                2: begin
+                    DBG_tx_valid <= 1'b1;
+                    DBG_tx_data <= dequeue_count[15:8];
+                end
+                3: begin
+                    DBG_tx_valid <= 1'b1;
+                    DBG_tx_data <= dequeue_count[7:0];
+                    complete_bus[CMD_DEBUG] <= 1'b1;
+                end
+                default: ;
+            endcase
+        end
+    end
 end
 
 endmodule // cart_reader
