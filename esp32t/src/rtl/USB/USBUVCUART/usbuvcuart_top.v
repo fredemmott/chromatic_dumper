@@ -1100,8 +1100,10 @@ module usbuvcuart_top(
     reg lk_observer_enable = 0;
     always @(posedge `EP3_CLOCK) lk_observer_enable <= ep3_is_mcu;
     lk_serial_mux::peer_t lk_observer_peer_o;
+
     lk_mcu_observer_t lk_observer(
         `EP3_CLOCK,
+        RESET_IN,
         lk_observer_enable,
         ep3_rx_dval,
         ep3_rx_data,
