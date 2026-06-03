@@ -30,8 +30,16 @@ always @(posedge clk) begin
         rx_valid_d <= rx_valid;
     end
 end
-
 wire rx_new_byte = rx_valid && !rx_valid_d;
+
+reg [7:0] rx_data_d;
+always @(posedge clk) begin
+    if (reset) begin
+        rx_data_d <= 8'd0;
+    end else if (rx_new_byte) begin
+        rx_data_d <= rx_data;
+    end
+end
 
 typedef enum {
     S_DEFAULT,
@@ -47,9 +55,7 @@ typedef enum {
     // Used for V2 packets once the length has been counted
     S_MCU_RX_COUNTED,
 */
-    S_55_WAIT_AA,
     S_LK_SERIAL_ID,
-    S_L_WAIT_K,
     S_LK
 } state_t;
 
@@ -73,33 +79,8 @@ always @(*) begin
         unique case (state)
             S_DEFAULT: begin
                 if (rx_new_byte) begin
-                    if (rx_data == 8'h55) begin
-                        next_state = S_55_WAIT_AA;
-                    end else if (rx_data == "L") begin
-                        next_state = S_L_WAIT_K;
-                    end
-                end
-            end
-            S_55_WAIT_AA: begin
-                if (rx_new_byte) begin
-                    next_state = S_DEFAULT;
-                    if (rx_data == 8'hAA) begin
-                        next_state = S_LK_SERIAL_ID;
-                    end else if (rx_data == 8'h55) begin
-                        // Allow 0x55 0x55 .... 0xAA
-                        next_state = S_55_WAIT_AA;
-                    end
-                end
-            end
-            S_L_WAIT_K: begin
-                if (rx_new_byte) begin
-                    next_state = S_DEFAULT;
-                    if (rx_data == "K") begin
-                        next_state = S_LK;
-                    end else if (rx_data == "L") begin
-                        // Allow LLLLLL...K
-                        next_state = S_L_WAIT_K;
-                    end
+                    if ((rx_data_d == 8'h55) && (rx_data == 8'hAA)) next_state = S_LK_SERIAL_ID;
+                    else if ((rx_data_d == "L") && (rx_data == "K")) next_state = S_LK;
                 end
             end
             S_LK_SERIAL_ID, S_LK: /* terminal until reset */ ;
