@@ -44,8 +44,6 @@ set_multicycle_path -hold 1  -to   [get_regs {u_lk/u_core/*}] -from [get_regs {u
 // Correct (loosen) the timing requirements for resetting the DRAM.
 //
 // Not logically needed for FlashGBX LK, but the added complexity makes the routing harder
-set_multicycle_path -from [get_clocks {xclk}] -to [get_clocks {xclk2}] -setup 2
-set_multicycle_path -from [get_clocks {xclk}] -to [get_clocks {xclk2}] -hold 1
 
 report_timing -setup -max_paths 25
 report_timing -hold -max_paths 25
