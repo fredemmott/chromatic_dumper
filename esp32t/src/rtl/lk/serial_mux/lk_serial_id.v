@@ -6,7 +6,7 @@ module lk_serial_id_t(
     output reg [7:0] tx_data
 );
 
-localparam ROM_LEN = 15;
+localparam ROM_LEN = 12;
 localparam ROM_ADDR_WIDTH = $clog2(ROM_LEN);
 reg [7:0] rom[0:ROM_LEN - 1];
 
@@ -17,19 +17,21 @@ initial begin
     rom[3] = "r";
     rom[4] = "o";
 
-    rom[5]  = "2"; // YYYY
-    rom[6]  = "0";
-    rom[7]  = "2";
-    rom[8]  = "6";
+    // Our version timestamp - BCD YYYY-MM-DD
+    rom[5] = 8'h20; // YYYY
+    rom[6] = 8'h26;
+    rom[7] = 8'h06; // MM
+    rom[8] = 8'h03; // DD
 
-    rom[9]  = "0"; // MM
-    rom[10] = "6";
+    // If we do multiple builds on the same day...
+    rom[9] = 8'd01; // Revision
+    //         ^ NOT BCD!
 
-    rom[11] = "0"; // DD
-    rom[12] = "1";
-
-    rom[13] = "0"; // NN
-    rom[14] = "1";
+    // Upstream (ModRetro) version number
+    rom[10] = 8'd18;
+    //          ^ NOT BCD!
+    rom[11] = 8'd08;
+    //          ^ NOT BCD!
 end
 
 reg [ROM_ADDR_WIDTH-1:0] idx;
