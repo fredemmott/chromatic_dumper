@@ -103,7 +103,18 @@ always @(posedge clk) begin
     end
 end
 
-always @(posedge clk) complete_bus[CMD_PING] <= (command == CMD_PING);
+logic PING_tx_valid;
+logic [7:0] PING_tx_data;
+always @(posedge clk) begin
+    complete_bus[CMD_PING] <= 1'b0;
+    PING_tx_valid <= 1'b0;
+    PING_tx_data <= 8'd0;
+    if ((command == CMD_PING) && rx_valid_r) begin
+        complete_bus[CMD_PING] <= 1'b1;
+        PING_tx_valid <= 1'b1;
+        PING_tx_data <= ~rx_data_r;
+    end
+end
 
 always @(posedge clk) begin
     complete_bus[CMD_SET_VARIABLES] <= 1'b0;
@@ -246,16 +257,24 @@ logic [7:0] tx_data_exec;
 always @(*) begin
     tx_valid_exec = 0;
     tx_data_exec = 0;
-    if (command == CMD_POLL) begin
-        tx_valid_exec = POLL_tx_valid;
-        tx_data_exec = POLL_tx_data;
-    end else if (command == CMD_DEBUG) begin
-        tx_valid_exec = DBG_tx_valid;
-        tx_data_exec = DBG_tx_data;
-    end else if (command_complete) begin
-        tx_valid_exec = 1'b1;
-        tx_data_exec = 8'h01;
-    end
+    unique case (command)
+        CMD_POLL: begin
+            tx_valid_exec = POLL_tx_valid;
+            tx_data_exec = POLL_tx_data;
+        end
+        CMD_DEBUG: begin
+            tx_valid_exec = DBG_tx_valid;
+            tx_data_exec = DBG_tx_data;
+        end
+        CMD_PING: begin
+            tx_valid_exec = PING_tx_valid;
+            tx_data_exec = PING_tx_data;
+        end
+        default: if (command_complete) begin
+            tx_valid_exec = 1'b1;
+            tx_data_exec = 8'h01;
+        end
+    endcase
 end
 
 always @(posedge clk) begin
