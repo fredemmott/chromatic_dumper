@@ -9,8 +9,6 @@ module lk_cart_t(
     output reg req_started,
     output reg req_complete,
 
-    input wire hold_pin_audio,
-
     input wire [1:0] var_flash_we_pin,
     input wire var_dmg_read_cs_pulse,
     input wire var_dmg_write_cs_pulse,
@@ -24,7 +22,8 @@ module lk_cart_t(
     output reg        cart_data_dir_e,
     input  wire [7:0] cart_d_in,
     output reg  [7:0] cart_d_out,
-    output reg        cart_audio
+    input tristate_pin_t cart_audio_in,
+    output tristate_pin_t cart_audio_out,
 );
 
 typedef enum {

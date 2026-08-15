@@ -35,11 +35,6 @@ set_false_path -to [get_regs {*/lk_cdc_*0_s0}]
 // Copies within `top` to decouple from PHY
 set_false_path -from [get_regs {lk_enabled_d*}]
 
-set_multicycle_path -setup 2 -from [get_regs {u_lk/u_core/*}] -to   [get_regs {u_lk/rx_valid_o* u_lk/rx_data_o* u_lk/tx_valid* u_lk/tx_data*}]
-set_multicycle_path -hold 1  -from [get_regs {u_lk/u_core/*}] -to   [get_regs {u_lk/rx_valid_o* u_lk/rx_data_o* u_lk/tx_valid* u_lk/tx_data*}]
-set_multicycle_path -setup 2 -to   [get_regs {u_lk/u_core/*}] -from [get_regs {u_lk/rx_valid_o* u_lk/rx_data_o* u_lk/tx_valid* u_lk/tx_data*}]
-set_multicycle_path -hold 1  -to   [get_regs {u_lk/u_core/*}] -from [get_regs {u_lk/rx_valid_o* u_lk/rx_data_o* u_lk/tx_valid* u_lk/tx_data*}]
-
 // Correct (loosen) the timing requirements for resetting the DRAM.
 //
 // Not logically needed for FlashGBX LK, but the added complexity makes the routing harder

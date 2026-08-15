@@ -35,6 +35,7 @@ typedef enum {
     CMD_IDLE
 } command_t;
 localparam command_t CMD_COUNT = CMD_IDLE;
+
 command_t command;
 
 logic [CMD_COUNT - 1:0] complete_bus;
@@ -124,9 +125,8 @@ always @(posedge clk) begin
         complete_bus[CMD_SET_VARIABLES] <= 1'b1;
         vars_o <= '{
             flash_we_pin: rx_data_r[1:0],
-            hold_pin_audio: rx_data_r[2],
-            dmg_read_cs_pulse: rx_data_r[3],
-            dmg_write_cs_pulse: rx_data_r[4]
+            dmg_read_cs_pulse: rx_data_r[2],
+            dmg_write_cs_pulse: rx_data_r[3]
         };
     end
 end
