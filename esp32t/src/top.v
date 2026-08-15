@@ -446,10 +446,10 @@ module top #(parameter ISSIMU=0)
     wire [7:0] lk_cart_d_in;
     wire [7:0] lk_cart_d_out;
     wire lk_cart_rd;
-    wire lk_cart_rst_out;
     wire lk_cart_wr;
     wire lk_cart_data_dir_e;
-    wire lk_cart_audio;
+    lk_types::tristate_pin_t lk_cart_rst;
+    lk_types::tristate_pin_t lk_cart_audio;
 
     wire [15:0] emu_cart_a;
     wire emu_cart_clk;
@@ -480,14 +480,14 @@ module top #(parameter ISSIMU=0)
     assign CART_DATA_DIR_E = lk_enabled ? lk_cart_data_dir_e : emu_cart_data_dir_e;
 
     // LK only writes, emu only reads
-    assign CART_RST = (lk_enabled && !lk_cart_data_dir_e) ? lk_cart_rst_out : 1'bZ;
+    assign CART_RST = (lk_enabled && lk_cart_rst.oe) ? lk_cart_rst.value : 1'bZ;
     assign emu_cart_rst_in = lk_enabled ? 1'b0 : CART_RST;
 
     // LK/EMU MUX: inout -----------------------------------------
     wire [7:0] cart_d_in = CART_D;
     wire [7:0] cart_d_out = lk_enabled ? lk_cart_d_out : emu_cart_d_out;
     // Not actually used by the Chromatic firmware anywehere
-    assign CART_AUDIN = lk_enabled ? 1'bZ : lk_cart_audio;
+    assign CART_AUDIN = (lk_enabled && lk_cart_audio.oe) ? lk_cart_audio.value : 1'bZ;
 
 
     assign emu_cart_d_in = (emu_cart_data_dir_e && !lk_enabled) ? cart_d_in : 8'h00;
@@ -846,7 +846,7 @@ module top #(parameter ISSIMU=0)
 
     // FlashGBX "LK" protocol
     lk_top u_lk(
-        .coreClk        (xClk),
+        .usbClk         (xClk),
         .cartClk        (hClk),
         .reset          (!lk_enabled),
         .rx_valid       (LK_RX_DVAL),
@@ -859,7 +859,7 @@ module top #(parameter ISSIMU=0)
         .cart_cs        (lk_cart_cs),
         .cart_rd        (lk_cart_rd),
         .cart_wr        (lk_cart_wr),
-        .cart_rst       (lk_cart_rst_out),
+        .cart_rst       (lk_cart_rst),
         .cart_data_dir_e(lk_cart_data_dir_e),
         .cart_d_in      (lk_cart_d_in),
         .cart_d_out     (lk_cart_d_out),

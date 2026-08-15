@@ -74,9 +74,7 @@
         <File path="src/rtl/USB/USBUVCUART/usb_video/usb_descriptor_video.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/USB/USBUVCUART/usb_video/uvc_defs.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/USB/USBUVCUART/usbuvcuart_top.v" type="file.verilog" enable="1"/>
-        <File path="src/rtl/lk/lk_cart.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/lk/lk_cart_fifo/fifo_top/fifo_top.v" type="file.verilog" enable="1"/>
-        <File path="src/rtl/lk/lk_core.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/lk/lk_top.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/lk/lk_types.sv" type="file.verilog" enable="1"/>
         <File path="src/rtl/lk/serial_mux/lk_mcu_observer.v" type="file.verilog" enable="1"/>
