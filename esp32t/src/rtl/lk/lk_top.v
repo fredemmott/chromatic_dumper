@@ -70,7 +70,7 @@ logic response_dequeue;
 logic responses_empty;
 fifo_response_t response_q;
 
-lk_cart_fifo_t u_responseuest_fifo(
+lk_cart_fifo_t u_response_fifo(
     .WrClk(cartClk),
     .WrEn(response_enqueue),
     .Data(response_enqueue_data),
@@ -107,22 +107,36 @@ always @(posedge usbClk) begin
     end
 end
 
-
-logic tx_count;
-assign response_dequeue = (!responses_empty) && (tx_count == 1);
+typedef enum {
+    TXS_IDLE,
+    TXS_PARTIAL,
+    TXS_COMPLETE
+} tx_state_t;
+tx_state_t tx_state;
+assign response_dequeue = (tx_state == TXS_PARTIAL);
 
 always @(posedge usbClk) begin
     tx_valid <= 1'b0;
     if (usbReset) begin
-        tx_count <= 1'd0;
-    end else if (!responses_empty) begin
-        tx_valid <= 1'b1;
-        if (tx_count == 1'd0) begin
-            tx_data <= response_q[31:24];
-        end else begin
-            tx_data <= response_q[23:16];
-        end
-        tx_count <= ~tx_count;
+        tx_state <= TXS_IDLE;
+    end else begin
+        unique case (tx_state)
+            TXS_IDLE: begin
+                if (!responses_empty) begin
+                    tx_valid <= 1'b1;
+                    tx_data <= response_q[31:24];
+                    tx_state <= TXS_PARTIAL;
+                end
+            end
+            TXS_PARTIAL: begin
+                tx_valid <= 1'b1;
+                tx_data <= response_q[23:16];
+                tx_state <= TXS_COMPLETE;
+            end
+            TXS_COMPLETE: begin
+                tx_state <= TXS_IDLE;
+            end
+        endcase
     end
 end
 
@@ -157,7 +171,7 @@ always @(*) begin
         S_IDLE: if (!reqs_empty) begin
             req_dequeue = 1'b1;
             state_next = S_EXEC;
-            // Only look at 3 bits because CMD_IDLE and CMD_INIT_ACK can not be explicitly selected
+            /* Only look at 3 bits because CMD_IDLE and CMD_INIT_ACK can not be explicitly selected */
             command_next = command_t'(req_q[26:24]);
         end
         S_EXEC: begin
