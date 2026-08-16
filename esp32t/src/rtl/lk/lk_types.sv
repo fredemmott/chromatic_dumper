@@ -3,15 +3,14 @@ package lk_types;
 typedef enum logic [3:0] {
   CMD_PING = 4'd0,
   CMD_DELAY_MICROS = 4'd1,
-  CMD_DELAY_NANOS = 4'd2,
+  CMD_DELAY_TICKS = 4'd2,
   CMD_SET_PINS = 4'd3,
   CMD_SET_OUTPUT_ENABLE = 4'd4,
   CMD_SET_ADDRESS = 4'd5,
   CMD_SET_DATA = 4'd6,
   CMD_GET_DATA = 4'd7,
 
-  CMD_INIT_ACK = 4'd8, // not a real command
-  CMD_IDLE = 4'd9 // not a real command
+  CMD_IDLE = 4'd8 // not a real command
 } command_t;
 
 

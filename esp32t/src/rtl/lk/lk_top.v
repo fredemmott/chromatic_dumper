@@ -109,8 +109,7 @@ end
 
 typedef enum {
     TXS_IDLE,
-    TXS_PARTIAL,
-    TXS_COMPLETE
+    TXS_PARTIAL
 } tx_state_t;
 tx_state_t tx_state;
 assign response_dequeue = (tx_state == TXS_PARTIAL);
@@ -131,9 +130,6 @@ always @(posedge usbClk) begin
             TXS_PARTIAL: begin
                 tx_valid <= 1'b1;
                 tx_data <= response_q[23:16];
-                tx_state <= TXS_COMPLETE;
-            end
-            TXS_COMPLETE: begin
                 tx_state <= TXS_IDLE;
             end
         endcase
@@ -144,40 +140,69 @@ end
 
 typedef enum {
   S_RESET,
-  S_IDLE,
-  S_EXEC
+  S_IDLE_OR_EXEC,
+  S_DELAY
 } state_t;
 
 state_t state;
 state_t state_next;
 
+logic have_command;
 command_t command;
-command_t command_next;
+assign have_command = (state != S_RESET) && (!reqs_empty);
+/* Only look at 3 bits because CMD_IDLE can not be explicitly selected */
+assign command = have_command ? command_t'(req_q[26:24]) : CMD_IDLE;
 
-logic delay_complete;
-logic command_is_delay;
-assign command_complete = (state == S_EXEC) && ((!command_is_delay) || delay_complete);
+logic command_complete;
+assign command_complete = (state_next == S_IDLE_OR_EXEC) && have_command;
+assign req_dequeue = command_complete;
+
+logic [15:0] arg16;
+logic [7:0] arg8a;
+logic [7:0] arg8b;
+assign arg16 = req_q[23:8];
+assign arg8a = arg16[15:8];
+assign arg8b = arg16[7:0];
+
+logic [21:0] delay_ticks;
+logic [21:0] delay_ticks_next;
 
 always @(*) begin
     state_next = state;
-    command_next = command;
-    req_dequeue = 1'b0;
+    delay_ticks_next = '{default:0};
 
     unique case (state)
         S_RESET: begin
-            state_next = S_EXEC;
-            command_next = CMD_INIT_ACK;
+            state_next = S_IDLE_OR_EXEC;
         end
-        S_IDLE: if (!reqs_empty) begin
-            req_dequeue = 1'b1;
-            state_next = S_EXEC;
-            /* Only look at 3 bits because CMD_IDLE and CMD_INIT_ACK can not be explicitly selected */
-            command_next = command_t'(req_q[26:24]);
+        S_IDLE_OR_EXEC: if (have_command) begin
+            unique case (command)
+                CMD_DELAY_TICKS: begin
+                    // If no ticks, it's a NOP and the tick to interpret the instruction is the delay
+                    if (arg8a > 0) begin
+                        delay_ticks_next = arg8a;
+                        state_next = S_DELAY;
+                    end
+                end
+                CMD_DELAY_MICROS: begin
+                    // Approximate microseconds to 59.605ns clock ticks
+                    // We want a multiplicand of (1000 / 59.605), which is ~= 16.777
+                    // Instead, we go for 17 - (1/4) + (1/32), done with shifts, which is 16.78125, and easy
+                    // to do with shifts
+                    //
+                    // There should be a '+1', but given we have the delay_wait/delay_complete states,
+                    // we're a small constant number of ticks too high anyway :)
+                    delay_ticks_next = (arg16 << 4) + arg16 - (arg16 >> 2) + (arg16 >> 5);
+                    state_next = S_DELAY;
+                end
+                default: ;
+            endcase
         end
-        S_EXEC: begin
-            if (command_complete) begin
-                state_next = S_IDLE;
-                command_next = CMD_IDLE;
+        S_DELAY: begin
+            if (delay_ticks <= 1) begin
+                state_next = S_IDLE_OR_EXEC;
+            end else begin
+                delay_ticks_next = delay_ticks - 1'd1;
             end
         end
         default: ;
@@ -187,82 +212,26 @@ end
 always @(posedge cartClk) begin
     if (cartReset) begin
         state <= S_RESET;
-        command <= CMD_IDLE;
+        delay_ticks <= '{default: 0};
     end else begin
         state <= state_next;
-        command <= command_next;
-    end
-end
-
-logic [15:0] arg16;
-logic [7:0] arg8a;
-logic [7:0] arg8b;
-assign arg8a = arg16[15:8];
-assign arg8b = arg16[7:0];
-always @(posedge cartClk) begin
-    if (req_dequeue) begin
-        arg16 <= req_q[23:8];
-    end
-end
-
-typedef enum {
-    DELAY_IDLE,
-    DELAY_WAIT,
-    DELAY_COMPLETE
-} delay_state_t;
-delay_state_t delay_state;
-logic [21:0] delay_ticks;
-assign delay_complete = (delay_state == DELAY_COMPLETE);
-assign command_is_delay = (command == CMD_DELAY_MICROS) || (command == CMD_DELAY_NANOS);
-
-always @(posedge cartClk) begin
-    delay_ticks <= delay_ticks;
-    if (cartReset) begin
-        delay_state <= DELAY_IDLE;
-    end else if (command_is_delay) begin
-        delay_state <= delay_state;
-        unique case (delay_state)
-            DELAY_IDLE: begin
-                delay_state <= DELAY_WAIT;
-                if (command == CMD_DELAY_MICROS) begin
-                    // Approximate microseconds to 59.605ns clock ticks
-                    // We want a multiplicand of (1000 / 59.605), which is ~= 16.777
-                    // Instead, we go for 17 - (1/4) + (1/32), done with shifts, which is 16.78125, and easy
-                    // to do with shifts
-                    //
-                    // There should be a '+1', but given we have the delay_wait/delay_complete states,
-                    // we're a small constant number of ticks too high anyway :)
-                    delay_ticks <= (arg16 << 4) + arg16 - (arg16 >> 2) + (arg16 >> 5);
-                end else if (command == CMD_DELAY_NANOS) begin
-                    delay_ticks <= (arg16 >> 6) + (arg16 >> 10) + (arg16 >> 13) + (arg16 >> 14);
-                end
-            end
-            DELAY_WAIT: begin
-                if (delay_ticks > 0) begin
-                    delay_ticks <= delay_ticks - 1'd1;
-                end else begin
-                    delay_state <= DELAY_COMPLETE;
-                end
-            end
-            default: ;
-        endcase
-    end else begin
-        delay_state <= DELAY_IDLE;
+        delay_ticks <= delay_ticks_next;
     end
 end
 
 always @(posedge cartClk) begin
     response_enqueue <= 1'b0;
     response_enqueue_data <= '{default: 0};
-    if ((state == S_EXEC) && command_complete) begin
+    if ((state == S_RESET) && (~cartReset)) begin
+        // finish the handshake
+        response_enqueue <= 1'b1;
+        response_enqueue_data[31:16] <= ~"LK";
+    end else if (command_complete) begin
         response_enqueue <= 1'b1;
         response_enqueue_data[27:24] <= 4'(command);
         unique case (command)
             CMD_PING: begin
                 response_enqueue_data[23:16] <= ~arg8a;
-            end
-            CMD_INIT_ACK: begin
-                response_enqueue_data[31:16] <= ~"LK";
             end
             CMD_GET_DATA: begin
                 response_enqueue_data[23:16] <= cart_d_in;
