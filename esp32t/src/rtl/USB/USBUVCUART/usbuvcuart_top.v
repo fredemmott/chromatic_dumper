@@ -117,6 +117,8 @@ module usbuvcuart_top(
     wire [15:0] DESC_STRPRODUCT_LEN ;
     wire [15:0] DESC_STRSERIAL_ADDR ;
     wire [15:0] DESC_STRSERIAL_LEN  ;
+    wire [15:0] DESC_STRFLASHGBX_ADDR;
+    wire [15:0] DESC_STRFLASHGBX_LEN ;
     wire        DESCROM_HAVE_STRINGS;
     wire        RESET_IN;
 
@@ -173,6 +175,10 @@ module usbuvcuart_top(
     wire [ 7:0] cuart_txdat;
     wire [11:0] cuart_txdat_len;
 
+    wire         cflashgbx_txval;
+    wire [ 7:0 ] cflashgbx_txdat;
+    wire [11:0 ] cflashgbx_txdat_len;
+
     wire        cuvc_txval;
     wire [ 7:0] cuvc_txdat;
     wire [11:0] cuvc_txdat_len;
@@ -182,10 +188,12 @@ module usbuvcuart_top(
     wire [11:0] cuac_txdat_len;
 
     assign endpt0_dat = cuart_txval ? cuart_txdat :
+                        cflashgbx_txval ? cflashgbx_txdat :
                         cuvc_txval ? cuvc_txdat :
                         cuac_txval ? cuac_txdat :
                         8'd0;
     assign endpt0_txlen = cuart_txval ? cuart_txdat_len :
+                        cflashgbx_txval ? cflashgbx_txdat_len :
                         cuvc_txval ? cuvc_txdat_len :
                         cuac_txval ? cuac_txdat_len :
                         12'd0;
@@ -197,7 +205,7 @@ module usbuvcuart_top(
                        (endpt_sel == EP_UAC) ? audio_txdat :
                        uart_txdat;
     /* only valid for ep0 */
-    assign endpt0_send = cuart_txval | cuvc_txval | cuac_txval;
+    assign endpt0_send = cuart_txval | cflashgbx_txval | cuvc_txval | cuac_txval;
     assign usb_txval = (endpt_sel == EP_CTRL) ? endpt0_send : 1'b0;
 
     assign usb_txdat_len = (endpt_sel == EP_CTRL) ? endpt0_txlen :
@@ -230,6 +238,12 @@ module usbuvcuart_top(
     wire uart_rxact = (endpt_sel == EP_UART) ? usb_rxact : 0;
 
     wire uart_rxval = (endpt_sel == EP_UART) ? usb_rxval : 0;
+
+    wire [7:0] desc_index;
+    wire [7:0] desc_type;
+
+    logic [15:0] desc_strmux_addr;
+    logic [15:0] desc_strmux_len;
 
     usbuac_ep audio_ep(
         .rst(RESET_IN),
@@ -413,16 +427,18 @@ module usbuvcuart_top(
             ,.desc_strvendor_len_i  (DESC_STRVENDOR_LEN  )
             ,.desc_strproduct_addr_i(DESC_STRPRODUCT_ADDR)
             ,.desc_strproduct_len_i (DESC_STRPRODUCT_LEN )
-            ,.desc_strserial_addr_i (DESC_STRSERIAL_ADDR )
-            ,.desc_strserial_len_i  (DESC_STRSERIAL_LEN  )
+            // The controller doesn't support custom strings, and will instead just report
+            // the serial... so lets mux them :)
+            ,.desc_strserial_addr_i (desc_strmux_addr)
+            ,.desc_strserial_len_i  (desc_strmux_len)
             ,.desc_have_strings_i   (DESCROM_HAVE_STRINGS)
 
             ,.desc_bos_addr_i(16'd0)
             ,.desc_bos_len_i(16'd0)
             ,.desc_hidrpt_addr_i(16'd0)
             ,.desc_hidrpt_len_i(16'd0)
-            ,.desc_index_o()
-            ,.desc_type_o()
+            ,.desc_index_o(desc_index)
+            ,.desc_type_o(desc_type)
 
             ,.utmi_dataout_o        (PHY_DATAOUT       )
             ,.utmi_txvalid_o        (PHY_TXVALID       )
@@ -437,6 +453,19 @@ module usbuvcuart_top(
             ,.utmi_termselect_o     (PHY_TERMSELECT    )
             ,.utmi_reset_o          (PHY_RESET         )
          );
+
+    always @(*) begin
+       unique case ({desc_type, desc_index})
+           16'h0305: begin
+               desc_strmux_addr = DESC_STRFLASHGBX_ADDR;
+               desc_strmux_len = DESC_STRFLASHGBX_LEN;
+           end
+           default: begin
+               desc_strmux_addr = DESC_STRSERIAL_ADDR;
+               desc_strmux_len = DESC_STRSERIAL_LEN;
+           end
+       endcase
+    end
 
     wire [63:0] serial;
     //==============================================================
@@ -473,6 +502,8 @@ module usbuvcuart_top(
         ,.o_desc_strproduct_len  (DESC_STRPRODUCT_LEN )
         ,.o_desc_strserial_addr  (DESC_STRSERIAL_ADDR )
         ,.o_desc_strserial_len   (DESC_STRSERIAL_LEN  )
+        ,.o_desc_strflashgbx_addr(DESC_STRFLASHGBX_ADDR )
+        ,.o_desc_strflashgbx_len (DESC_STRFLASHGBX_LEN  )
         ,.o_descrom_have_strings (DESCROM_HAVE_STRINGS)
     );
 

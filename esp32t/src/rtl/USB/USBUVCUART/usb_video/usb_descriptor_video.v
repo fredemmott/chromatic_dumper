@@ -27,7 +27,8 @@ SOFTWARE.
 `include "uac_defs.v"
 `include "uart_defs.v"
 
-`define VENDOR_IF_IFACE  (`UART_DATA_IFACE + 1)
+`define FLASHGBX_IFACE (`UART_DATA_IFACE + 1)
+`define FLASHGBX_STR_IDX 5
 
 module usb_desc #(
         // Vendor ID to report in device descriptor.
@@ -45,6 +46,8 @@ module usb_desc #(
         // Optional product serial number (max 126 characters).
         parameter SERIALSTR = "012345678",
         parameter SERIALSTR_LEN = 9,
+        parameter FLASHGBXSTR = "fredemmott/FlashGBX",
+        parameter FLASHGBXSTR_LEN = 19,
         // Support high speed mode.
         parameter HSSUPPORT = 0,
         // Set to true if the device never draws power from the USB bus.
@@ -74,6 +77,8 @@ module usb_desc #(
         output [15:0] o_desc_strproduct_len,
         output [15:0] o_desc_strserial_addr,
         output [15:0] o_desc_strserial_len,
+        output [15:0] o_desc_strflashgbx_addr,
+        output [15:0] o_desc_strflashgbx_len,
         output       o_descrom_have_strings
 );
     // Truncate descriptor data to keep only the necessary pieces;
@@ -132,11 +137,11 @@ module usb_desc #(
 
     localparam  DESC_CDCIF_LEN        = CDC_IAD_LEN + CDC_CTRL_IF_LEN + CDC_HEADER_LEN + CDC_UNION_LEN + CDC_CALL_MGMT_LEN + CDC_ACM_LEN + CDC_NOTIFY_EP_LEN + CDC_CLASS_DATA_LEN + CDC_DATA_IN_EP_LEN + CDC_DATA_OUT_EP_LEN;
 
-    localparam  DESC_VENDOR_IF_ADDR   = DESC_CDCIF_ADDR + DESC_CDCIF_LEN;
-    localparam  DESC_VENDOR_IF_LEN    = 23;
+    localparam  DESC_FLASHGBX_ADDR   = DESC_CDCIF_ADDR + DESC_CDCIF_LEN;
+    localparam  DESC_FLASHGBX_LEN    = 23;
 
     localparam DESC_MSOS_LEN = 0;
-    localparam  DESC_FSCFG_LEN        = DESC_UAC_LEN + 180 + DESC_CDCIF_LEN + DESC_VENDOR_IF_LEN + DESC_MSOS_LEN;
+    localparam  DESC_FSCFG_LEN        = DESC_UAC_LEN + 180 + DESC_CDCIF_LEN + DESC_FLASHGBX_LEN + DESC_MSOS_LEN;
     localparam  DESC_HSCFG_ADDR       = DESC_FSCFG_ADDR;
     localparam  DESC_HSCFG_LEN        = DESC_FSCFG_LEN;
     localparam  DESC_OSCFG_ADDR       = DESC_HSCFG_ADDR + DESC_HSCFG_LEN;
@@ -148,7 +153,9 @@ module usb_desc #(
     localparam  DESC_STRPRODUCT_LEN   = 2 + 2*PRODUCTSTR_LEN;
     localparam  DESC_STRSERIAL_ADDR   = DESC_STRPRODUCT_ADDR + DESC_STRPRODUCT_LEN;
     localparam  DESC_STRSERIAL_LEN    = 2 + 2*SERIALSTR_LEN;
-    localparam  DESC_END_ADDR         = DESC_STRSERIAL_ADDR + DESC_STRSERIAL_LEN;
+    localparam  DESC_STRFLASHGBX_ADDR = DESC_STRSERIAL_ADDR + DESC_STRSERIAL_LEN;
+    localparam  DESC_STRFLASHGBX_LEN  = 2 + 2*FLASHGBXSTR_LEN;
+    localparam  DESC_END_ADDR         = DESC_STRFLASHGBX_ADDR + DESC_STRFLASHGBX_LEN;
 
 
     assign  o_desc_dev_addr        = DESC_DEV_ADDR        ;
@@ -167,6 +174,8 @@ module usb_desc #(
     assign  o_desc_strproduct_len  = DESC_STRPRODUCT_LEN  ;
     assign  o_desc_strserial_addr  = DESC_STRSERIAL_ADDR  ;
     assign  o_desc_strserial_len   = DESC_STRSERIAL_LEN   ;
+    assign  o_desc_strflashgbx_addr= DESC_STRFLASHGBX_ADDR;
+    assign  o_desc_strflashgbx_len = DESC_STRFLASHGBX_LEN ;
 
 
     // Truncate descriptor data to keep only the necessary pieces;
@@ -653,33 +662,33 @@ module usb_desc #(
 
         //---------------- 4th Interface: Vendor-Specific Stream Class ----------------
         // Interface Descriptor
-        descrom[DESC_VENDOR_IF_ADDR + 0] <= 8'h09; // bLength
-        descrom[DESC_VENDOR_IF_ADDR + 1] <= 8'h04; // bDescriptorType = Interface
-        descrom[DESC_VENDOR_IF_ADDR + 2] <= 8'h06; // bInterfaceNumber
-        descrom[DESC_VENDOR_IF_ADDR + 3] <= 8'h00; // bAlternateSetting = 0
-        descrom[DESC_VENDOR_IF_ADDR + 4] <= 8'h02; // bNumEndpoints = 2 (Bulk IN/OUT)
-        descrom[DESC_VENDOR_IF_ADDR + 5] <= 8'hFF; // bInterfaceClass = Vendor-Specific
-        descrom[DESC_VENDOR_IF_ADDR + 6] <= 8'hFF; // bInterfaceSubClass = Vendor-Specific
-        descrom[DESC_VENDOR_IF_ADDR + 7] <= 8'hFF; // bInterfaceProtocol = Vendor-Specific
-        descrom[DESC_VENDOR_IF_ADDR + 8] <= 8'h00; // iFunction (string index) = 0
+        descrom[DESC_FLASHGBX_ADDR + 0] <= 8'h09; // bLength
+        descrom[DESC_FLASHGBX_ADDR + 1] <= 8'h04; // bDescriptorType = Interface
+        descrom[DESC_FLASHGBX_ADDR + 2] <= 8'h06; // bInterfaceNumber
+        descrom[DESC_FLASHGBX_ADDR + 3] <= 8'h00; // bAlternateSetting = 0
+        descrom[DESC_FLASHGBX_ADDR + 4] <= 8'h02; // bNumEndpoints = 2 (Bulk IN/OUT)
+        descrom[DESC_FLASHGBX_ADDR + 5] <= 8'hFF; // bInterfaceClass = Vendor-Specific
+        descrom[DESC_FLASHGBX_ADDR + 6] <= 8'hFF; // bInterfaceSubClass = Vendor-Specific
+        descrom[DESC_FLASHGBX_ADDR + 7] <= 8'hFF; // bInterfaceProtocol = Vendor-Specific
+        descrom[DESC_FLASHGBX_ADDR + 8] <= `VENDOR_IF_STR_IDX;
 
         // Bulk IN Endpoint Descriptor (Endpoint 5 IN)
-        descrom[DESC_VENDOR_IF_ADDR + 9 + 0] <= 8'h07; // bLength
-        descrom[DESC_VENDOR_IF_ADDR + 9 + 1] <= 8'h05; // bDescriptorType = Endpoint
-        descrom[DESC_VENDOR_IF_ADDR + 9 + 2] <= 8'h85; // bEndpointAddress = IN EP 5
-        descrom[DESC_VENDOR_IF_ADDR + 9 + 3] <= 8'h02; // bmAttributes = Bulk
-        descrom[DESC_VENDOR_IF_ADDR + 9 + 4] <= 8'h00; // wMaxPacketSize = 512 LSB
-        descrom[DESC_VENDOR_IF_ADDR + 9 + 5] <= 8'h02; // wMaxPacketSize = 512 MSB
-        descrom[DESC_VENDOR_IF_ADDR + 9 + 6] <= 8'h00; // bInterval = 0 ms
+        descrom[DESC_FLASHGBX_ADDR + 9 + 0] <= 8'h07; // bLength
+        descrom[DESC_FLASHGBX_ADDR + 9 + 1] <= 8'h05; // bDescriptorType = Endpoint
+        descrom[DESC_FLASHGBX_ADDR + 9 + 2] <= 8'h85; // bEndpointAddress = IN EP 5
+        descrom[DESC_FLASHGBX_ADDR + 9 + 3] <= 8'h02; // bmAttributes = Bulk
+        descrom[DESC_FLASHGBX_ADDR + 9 + 4] <= 8'h00; // wMaxPacketSize = 512 LSB
+        descrom[DESC_FLASHGBX_ADDR + 9 + 5] <= 8'h02; // wMaxPacketSize = 512 MSB
+        descrom[DESC_FLASHGBX_ADDR + 9 + 6] <= 8'h00; // bInterval = 0 ms
 
         // Bulk OUT Endpoint Descriptor (Endpoint 5 OUT)
-        descrom[DESC_VENDOR_IF_ADDR + 16 + 0] <= 8'h07; // bLength
-        descrom[DESC_VENDOR_IF_ADDR + 16 + 1] <= 8'h05; // bDescriptorType = Endpoint
-        descrom[DESC_VENDOR_IF_ADDR + 16 + 2] <= 8'h05; // bEndpointAddress = OUT EP 5
-        descrom[DESC_VENDOR_IF_ADDR + 16 + 3] <= 8'h02; // bmAttributes = Bulk
-        descrom[DESC_VENDOR_IF_ADDR + 16 + 4] <= 8'h00; // wMaxPacketSize = 512 LSB
-        descrom[DESC_VENDOR_IF_ADDR + 16 + 5] <= 8'h02; // wMaxPacketSize = 512 MSB
-        descrom[DESC_VENDOR_IF_ADDR + 16 + 6] <= 8'h00; // bInterval = 0 ms
+        descrom[DESC_FLASHGBX_ADDR + 16 + 0] <= 8'h07; // bLength
+        descrom[DESC_FLASHGBX_ADDR + 16 + 1] <= 8'h05; // bDescriptorType = Endpoint
+        descrom[DESC_FLASHGBX_ADDR + 16 + 2] <= 8'h05; // bEndpointAddress = OUT EP 5
+        descrom[DESC_FLASHGBX_ADDR + 16 + 3] <= 8'h02; // bmAttributes = Bulk
+        descrom[DESC_FLASHGBX_ADDR + 16 + 4] <= 8'h00; // wMaxPacketSize = 512 LSB
+        descrom[DESC_FLASHGBX_ADDR + 16 + 5] <= 8'h02; // wMaxPacketSize = 512 MSB
+        descrom[DESC_FLASHGBX_ADDR + 16 + 6] <= 8'h00; // bInterval = 0 ms
 
         //Other Speed Addr
         descrom[DESC_OSCFG_ADDR + 0]  <= 8'h07;//
@@ -726,6 +735,14 @@ module usb_desc #(
                     descrom[DESC_STRSERIAL_ADDR + 2*i + 2][z] <= SERIALSTR[(SERIALSTR_LEN - 1 - i)*8+z];
                 end
                 descrom[DESC_STRSERIAL_ADDR + 2*i + 3] <= 8'h00;
+            end
+            descrom[DESC_STRFLASHGBX_ADDR + 0] <= 2 + 2*FLASHGBXSTR_LEN;
+            descrom[DESC_STRFLASHGBX_ADDR + 1] <= 8'h03;
+            for(i = 0; i < FLASHGBXSTR_LEN; i = i + 1) begin
+                for(z = 0; z < 8; z = z + 1) begin
+                    descrom[DESC_STRFLASHGBX_ADDR + 2*i + 2][z] <= FLASHGBXSTR[(FLASHGBXSTR_LEN - 1 - i)*8+z];
+                end
+                descrom[DESC_STRFLASHGBX_ADDR + 2*i + 3] <= 8'h00;
             end
         end
       end
