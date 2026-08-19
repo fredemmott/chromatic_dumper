@@ -13,6 +13,8 @@
 //===========================================
 `define    EP3_IN_EN
 `define    EP3_OUT_EN
+`define    EP6_IN_EN
+`define    EP6_OUT_EN
 `define     EP1_IN_BUF_ASIZE     4'd12
 `define     EP2_IN_BUF_ASIZE     4'd12
 `define     EP3_IN_BUF_ASIZE     4'd12

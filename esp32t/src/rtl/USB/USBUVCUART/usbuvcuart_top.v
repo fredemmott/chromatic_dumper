@@ -119,6 +119,12 @@ module usbuvcuart_top(
     wire [15:0] DESC_STRSERIAL_LEN  ;
     wire [15:0] DESC_STRFLASHGBX_ADDR;
     wire [15:0] DESC_STRFLASHGBX_LEN ;
+    wire [15:0] DESC_BLOBBOS_ADDR;
+    wire [15:0] DESC_BLOBBOS_LEN ;
+    wire [15:0] DESC_BLOBMSOS10COMPATID_ADDR;
+    wire [15:0] DESC_BLOBMSOS10COMPATID_LEN;
+    wire [15:0] DESC_BLOBMSOS10COMPATGUID_ADDR;
+    wire [15:0] DESC_BLOBMSOS10COMPATGUID_LEN;
     wire        DESCROM_HAVE_STRINGS;
     wire        RESET_IN;
 
@@ -171,13 +177,15 @@ module usbuvcuart_top(
     localparam EP_UART = 4'd3;
     localparam EP_UAC = {`AUDIO_DATA_EP_NUM}[3:0];
 
+    wire        cmsos10_rom_en;
+    wire [15:0] cmsos10_rom_raddr;
+    wire        cmsos10_txval;
+    wire [ 7:0] cmsos10_txdat;
+    wire [11:0] cmsos10_txdat_len;
+
     wire        cuart_txval;
     wire [ 7:0] cuart_txdat;
     wire [11:0] cuart_txdat_len;
-
-    wire         cflashgbx_txval;
-    wire [ 7:0 ] cflashgbx_txdat;
-    wire [11:0 ] cflashgbx_txdat_len;
 
     wire        cuvc_txval;
     wire [ 7:0] cuvc_txdat;
@@ -188,12 +196,12 @@ module usbuvcuart_top(
     wire [11:0] cuac_txdat_len;
 
     assign endpt0_dat = cuart_txval ? cuart_txdat :
-                        cflashgbx_txval ? cflashgbx_txdat :
+                        cmsos10_txval ? cmsos10_txdat :
                         cuvc_txval ? cuvc_txdat :
                         cuac_txval ? cuac_txdat :
                         8'd0;
     assign endpt0_txlen = cuart_txval ? cuart_txdat_len :
-                        cflashgbx_txval ? cflashgbx_txdat_len :
+                        cmsos10_txval ? cmsos10_txdat_len :
                         cuvc_txval ? cuvc_txdat_len :
                         cuac_txval ? cuac_txdat_len :
                         12'd0;
@@ -205,7 +213,7 @@ module usbuvcuart_top(
                        (endpt_sel == EP_UAC) ? audio_txdat :
                        uart_txdat;
     /* only valid for ep0 */
-    assign endpt0_send = cuart_txval | cflashgbx_txval | cuvc_txval | cuac_txval;
+    assign endpt0_send = cuart_txval | cmsos10_txval | cuvc_txval | cuac_txval;
     assign usb_txval = (endpt_sel == EP_CTRL) ? endpt0_send : 1'b0;
 
     assign usb_txdat_len = (endpt_sel == EP_CTRL) ? endpt0_txlen :
@@ -227,6 +235,7 @@ module usbuvcuart_top(
        we need only 1 packet/microframe on each EP */
 
     /* signals from Device Controller to EPs*/
+    wire ctrl_txact = (endpt_sel == EP_CTRL) ? usb_txact : 0;
     wire video_txact = (endpt_sel == EP_VS) ? usb_txact : 0;
     wire audio_txact = (endpt_sel == EP_UAC) ? usb_txact : 0;
     wire uart_txact = (endpt_sel == EP_UART) ? usb_txact : 0;
@@ -433,8 +442,8 @@ module usbuvcuart_top(
             ,.desc_strserial_len_i  (desc_strmux_len)
             ,.desc_have_strings_i   (DESCROM_HAVE_STRINGS)
 
-            ,.desc_bos_addr_i(16'd0)
-            ,.desc_bos_len_i(16'd0)
+            ,.desc_bos_addr_i(16'd0 /* DESC_BLOBBOS_ADDR */)
+            ,.desc_bos_len_i(16'd0 /* DESC_BLOBBOS_LEN */)
             ,.desc_hidrpt_addr_i(16'd0)
             ,.desc_hidrpt_len_i(16'd0)
             ,.desc_index_o(desc_index)
@@ -455,16 +464,16 @@ module usbuvcuart_top(
          );
 
     always @(*) begin
-       unique case ({desc_type, desc_index})
-           16'h0305: begin
-               desc_strmux_addr = DESC_STRFLASHGBX_ADDR;
-               desc_strmux_len = DESC_STRFLASHGBX_LEN;
-           end
-           default: begin
-               desc_strmux_addr = DESC_STRSERIAL_ADDR;
-               desc_strmux_len = DESC_STRSERIAL_LEN;
-           end
-       endcase
+        if ({desc_type, desc_index} == 16'h0305) begin
+           desc_strmux_addr = DESC_STRFLASHGBX_ADDR;
+           desc_strmux_len = DESC_STRFLASHGBX_LEN;
+        end else if ({desc_type, desc_index} == 16'h03ee) begin
+            desc_strmux_addr = DESC_BLOBBOS_ADDR;
+            desc_strmux_len = DESC_BLOBBOS_LEN;
+        end else begin
+           desc_strmux_addr = DESC_STRSERIAL_ADDR;
+           desc_strmux_len = DESC_STRSERIAL_LEN;
+        end
     end
 
     wire [63:0] serial;
@@ -484,7 +493,7 @@ module usbuvcuart_top(
         ,.RESET                  (RESET_IN            )
         ,.playerNum              (playerNum)
         ,.serial                 (serial)
-        ,.i_descrom_raddr        (DESCROM_RADDR       )
+        ,.i_descrom_raddr        (cmsos10_rom_en ? cmsos10_rom_raddr : DESCROM_RADDR)
         ,.o_descrom_rdat         (DESCROM_RDAT        )
         ,.o_desc_dev_addr        (DESC_DEV_ADDR       )
         ,.o_desc_dev_len         (DESC_DEV_LEN        )
@@ -504,6 +513,12 @@ module usbuvcuart_top(
         ,.o_desc_strserial_len   (DESC_STRSERIAL_LEN  )
         ,.o_desc_strflashgbx_addr(DESC_STRFLASHGBX_ADDR )
         ,.o_desc_strflashgbx_len (DESC_STRFLASHGBX_LEN  )
+        ,.o_desc_blobbos_addr    (DESC_BLOBBOS_ADDR   )
+        ,.o_desc_blobbos_len     (DESC_BLOBBOS_LEN    )
+        ,.o_desc_blobmsos10_compat_id_addr (DESC_BLOBMSOS10COMPATID_ADDR)
+        ,.o_desc_blobmsos10_compat_id_len  (DESC_BLOBMSOS10COMPATID_LEN )
+        ,.o_desc_blobmsos10_compat_guid_addr (DESC_BLOBMSOS10COMPATGUID_ADDR)
+        ,.o_desc_blobmsos10_compat_guid_len  (DESC_BLOBMSOS10COMPATGUID_LEN )
         ,.o_descrom_have_strings (DESCROM_HAVE_STRINGS)
     );
 
@@ -602,13 +617,42 @@ module usbuvcuart_top(
                         cdata_phase_active <= 1'b1;
                     end else if (cdata_phase_active) begin
                         cdata_phase_active <= 1'b0;
-                        cdata_rxtx <= 1'b0;
-                        hdr_len <= 3'd0;
+                        if (bmRequestType[7] ? ~endpt0_send : (cdata_ofs >= wLength)) begin
+                            cdata_rxtx <= 1'b0;
+                            hdr_len <= 3'd0;
+                        end
                     end
                 end else
                     hdr_len <= 3'd0;
             end
         end // if (~RESET_IN)
+
+    ctrl_msos10 msos10_ctrl(
+            .RESET_IN(RESET_IN),
+            .pClk(pClk),
+            .header_ready(header_ready),
+            .bmRequestType(bmRequestType),
+            .bRequest(bRequest),
+            .wValue(wValue),
+            .wIndex(wIndex),
+            .wLength(wLength),
+            .cdata_ofs(cdata_ofs),
+
+            .usb_txact(ctrl_txact),
+            .usb_txpop(usb_txpop),
+            .usb_txval(cmsos10_txval),
+            .usb_txdat_len(cmsos10_txdat_len),
+            .usb_txdat(cmsos10_txdat),
+
+            .id_addr(DESC_BLOBMSOS10COMPATID_ADDR),
+            .id_len(DESC_BLOBMSOS10COMPATID_LEN),
+            .guid_addr(DESC_BLOBMSOS10COMPATGUID_ADDR),
+            .guid_len(DESC_BLOBMSOS10COMPATGUID_LEN),
+
+            .rom_en(cmsos10_rom_en),
+            .rom_raddr(cmsos10_rom_raddr),
+            .rom_rdata(DESCROM_RDAT)
+        );
 
     ctrl_uart uart_if_ctrl(
         .RESET_IN(RESET_IN),
@@ -1002,14 +1046,18 @@ module usbuvcuart_top(
 
     wire uart_cts = 1'b0;
 
-    `define EP3_CLOCK xClk
-    `define EP3_CLOCK_FREQ 30'd67_108_864
+    //`define EP6_CLOCK xClk
+    //`define EP6_CLOCK_FREQ 30'd67_108_864
+    `define EP3_CLOCK pClk
+    `define EP3_CLOCK_FREQ 30'd60_000_000
+    `define EP6_CLOCK pClk
+    `define EP6_CLOCK_FREQ 30'd60_000_000
 
     UART  #(
-        .CLK_FREQ     (`EP3_CLOCK_FREQ)  // set system clock frequency in Hz
+        .CLK_FREQ     (30'd60000000)  // set system clock frequency in Hz
     )u_UART
     (
-         .CLK        (`EP3_CLOCK          )// clock
+         .CLK        (pClk                )// clock
         ,.RST        (usb_busreset | RESET_IN)// reset
         ,.UART_TXD   (UART_TXD            )//output
         ,.UART_RXD   (UART_RXD            )//input
@@ -1053,15 +1101,24 @@ module usbuvcuart_top(
         ,.o_usb_txcork  (uart_txcork)
         ,.o_usb_txlen   (uart_txdat_len )
         ,.o_usb_txdat   (uart_txdat )
-        //Endpoint 3
-        ,.i_ep3_tx_clk  (`EP3_CLOCK       )
+        // Endpoint 3 (USB serial)
+        ,.i_ep3_tx_clk  (pClk             )
         ,.i_ep3_tx_max  (12'd64           )
         ,.i_ep3_tx_dval (ep3_tx_dval      )
         ,.i_ep3_tx_data (ep3_tx_data      )
-        ,.i_ep3_rx_clk  (`EP3_CLOCK       )
+        ,.i_ep3_rx_clk  (pClk             )
         ,.i_ep3_rx_rdy  (ep3_rx_rdy       )
         ,.o_ep3_rx_dval (ep3_rx_dval      )
         ,.o_ep3_rx_data (ep3_rx_data      )
+        // Endpoint 6 (FlashGBX/LK)
+        ,.i_ep6_tx_clk  (`EP6_CLOCK       )
+        ,.i_ep6_tx_max  (12'd512          )
+        ,.i_ep6_tx_dval (ep6_tx_dval      )
+        ,.i_ep6_tx_data (ep6_tx_data      )
+        ,.i_ep6_rx_clk  (`EP6_CLOCK       )
+        ,.i_ep6_rx_rdy  (1                )
+        ,.o_ep6_rx_dval (lk_rx_dval       )
+        ,.o_ep6_rx_data (lk_rx_data       )
     );
 
     assign E_UART_DTR = s_ctl_sig[0];
@@ -1088,20 +1145,6 @@ module usbuvcuart_top(
 
     assign uart_tx_data_val = ep3_is_mcu ? ep3_rx_dval : 1'b0;
     assign uart_tx_data = ep3_is_mcu ? {8'd0, ep3_rx_data } : 16'd0;
-    reg lk_rx_dval_comb;
-    reg [7:0] lk_rx_data_comb;
-    always @(*) begin
-        lk_rx_dval_comb = 1'b0;
-        lk_rx_data_comb = 8'd0;
-        if (ep3_is_lk) begin
-            lk_rx_dval_comb = ep3_rx_dval;
-            lk_rx_data_comb = ep3_rx_data;
-        end
-    end
-    always @(posedge `EP3_CLOCK) begin
-        lk_rx_dval <= lk_rx_dval_comb;
-        lk_rx_data <= lk_rx_data_comb;
-    end
 
     always @(*) begin
         ep3_rx_rdy = 1'b0;
@@ -1119,11 +1162,7 @@ module usbuvcuart_top(
                 ep3_tx_dval = lk_serial_id_tx_dval;
                 ep3_tx_data = lk_serial_id_tx_data;
             end
-            lk_serial_mux::P_LK: begin
-                ep3_rx_rdy = 1'b1;
-                ep3_tx_dval = lk_tx_dval;
-                ep3_tx_data = lk_tx_data;
-            end
+            lk_serial_mux::P_LK: ;
             default: ;
         endcase
     end
@@ -1133,7 +1172,7 @@ module usbuvcuart_top(
     lk_serial_mux::peer_t lk_observer_peer_o;
 
     lk_mcu_observer_t lk_observer(
-        `EP3_CLOCK,
+        pClk,
         RESET_IN,
         lk_observer_enable,
         ep3_rx_dval,
@@ -1143,7 +1182,7 @@ module usbuvcuart_top(
 
     wire lk_serial_id_complete;
     lk_serial_id_t lk_serial_id(
-        `EP3_CLOCK,
+        pClk,
         ep3_is_lk_serial_id,
         lk_serial_id_complete,
         lk_serial_id_tx_dval,
@@ -1166,7 +1205,7 @@ module usbuvcuart_top(
         end
     end
 
-    always @(posedge `EP3_CLOCK) begin
+    always @(posedge pClk) begin
         ep3_peer <= ep3_next_peer;
     end
 endmodule
@@ -1242,6 +1281,100 @@ module rgb_to_ycbcr_pipeline(
         .O_dout2(Cr), //output [7:0] O_dout2
         .O_doutvalid(yEnable) //output O_doutvalid
         );
+
+endmodule
+
+module ctrl_msos10 #(
+    parameter [7:0] MSOS10VENDOR_CODE = 8'h42  // Must match bMS_VendorCode in BOS Platform Capability
+)(
+    input             RESET_IN,
+    input             pClk,
+    input             header_ready,
+    input      [7:0]  bmRequestType,
+    input      [7:0]  bRequest,
+    input      [15:0] wValue,
+    input      [15:0] wIndex,
+    input      [15:0] wLength,
+    input      [15:0] cdata_ofs,
+
+    input             usb_txact,
+    input             usb_txpop,
+    output reg        usb_txval,
+    output logic [11:0] usb_txdat_len,
+    output reg [7:0]  usb_txdat,
+
+    input [15:0] id_addr,
+    input [15:0] id_len,
+    input [15:0] guid_addr,
+    input [15:0] guid_len,
+
+    output            rom_en,
+    output     [15:0] rom_raddr,
+    input      [7:0]  rom_rdata
+);
+
+    wire is_msos10_compat_id_req = header_ready &&
+                         ((bmRequestType == 8'hC0) || (bmRequestType == 8'hC1)) &&
+                         (bRequest == MSOS10VENDOR_CODE) &&
+                         (wIndex == 16'h0004);
+    // Actually an 'extended property' request, but we only have the one extended property :)
+    wire is_msos10_compat_guid_req = header_ready &&
+                         ((bmRequestType == 8'hC0) || (bmRequestType == 8'hC1)) &&
+                         (bRequest == MSOS10VENDOR_CODE) &&
+                         (wValue == 16'h0600) && // `FLASHGBX_IFACE
+                         (wIndex == 16'h0005);
+    wire is_msos10_req = is_msos10_compat_id_req | is_msos10_compat_guid_req;
+    assign rom_en = is_msos10_req;
+
+    wire [15:0] base_addr;
+    wire [15:0] len;
+
+    assign base_addr = is_msos10_compat_id_req ? id_addr : guid_addr;
+    assign len = is_msos10_compat_id_req ? id_len : guid_len;
+
+    // Calculate actual ROM address to read
+
+    wire [15:0] next_offset = cdata_ofs + usb_txpop;
+    assign rom_raddr = base_addr + next_offset;
+
+    wire [5:0] packet_index = cdata_ofs[11:6];
+    wire [11:0] packet_offset = {packet_index, 6'd0};
+
+    wire [15:0] total_length = (wLength < len) ? wLength : len;
+    wire [11:0] packet_length = (total_length > packet_offset + 12'd64) ? 12'd64 : (total_length - packet_offset);
+
+    always @(posedge pClk) begin
+        if (RESET_IN) begin
+            usb_txdat_len <= 12'd0;
+        end else if (~usb_txact) begin
+            usb_txdat_len <= is_msos10_req ? packet_length : 12'd0;
+        end
+    end
+
+    always @(posedge pClk) begin
+        if (RESET_IN) begin
+            usb_txval     <= 1'b0;
+            usb_txdat     <= 8'd0;
+        end else if (is_msos10_req && usb_txact) begin
+            usb_txdat <= rom_rdata;
+            if (usb_txpop) begin
+                if ((cdata_ofs + 16'd1) >= (packet_offset + packet_length)) begin
+                    /* One-cycle dip terminates the current packet:
+                     * either the whole transfer is done, or we just popped
+                     * the 64th byte of a max-size packet. */
+                    usb_txval <= ~(((cdata_ofs + 16'd1) >= total_length)
+                                 || (cdata_ofs[5:0] == 6'd63));
+                end else begin
+                    usb_txval <= (cdata_ofs < total_length);
+                end
+            end else if (cdata_ofs[5:0] == 16'd0) begin
+                // Start of a packet, might be first packet
+                usb_txval <= 1'b1;
+            end
+        end else begin
+            usb_txval <= 1'b0;
+        end
+    end
 
 endmodule
 

@@ -29,6 +29,7 @@ SOFTWARE.
 
 `define FLASHGBX_IFACE (`UART_DATA_IFACE + 1)
 `define FLASHGBX_STR_IDX 5
+`define FLASHGBX_ENDPOINT 6
 
 module usb_desc #(
         // Vendor ID to report in device descriptor.
@@ -46,8 +47,6 @@ module usb_desc #(
         // Optional product serial number (max 126 characters).
         parameter SERIALSTR = "012345678",
         parameter SERIALSTR_LEN = 9,
-        parameter FLASHGBXSTR = "fredemmott/FlashGBX",
-        parameter FLASHGBXSTR_LEN = 19,
         // Support high speed mode.
         parameter HSSUPPORT = 0,
         // Set to true if the device never draws power from the USB bus.
@@ -79,8 +78,132 @@ module usb_desc #(
         output [15:0] o_desc_strserial_len,
         output [15:0] o_desc_strflashgbx_addr,
         output [15:0] o_desc_strflashgbx_len,
+        output [15:0] o_desc_blobbos_addr,
+        output [15:0] o_desc_blobbos_len,
+        output [15:0] o_desc_blobmsos10_compat_id_addr,
+        output [15:0] o_desc_blobmsos10_compat_id_len,
+        output [15:0] o_desc_blobmsos10_compat_guid_addr,
+        output [15:0] o_desc_blobmsos10_compat_guid_len,
         output       o_descrom_have_strings
 );
+    localparam FLASHGBXSTR = "Cartridge IO (fredemmott)";
+    localparam FLASHGBXSTR_LEN = $bits(FLASHGBXSTR) / 8;
+
+    localparam MSOS10COMPATIDBLOB = {
+        // Header section (40 bytes)
+        8'h28, 8'h00, 8'h00, 8'h00, // dwLength
+        8'h00, 8'h01, // bcdVersion
+        8'h04, 8'h00, // wIndex
+        8'h01, // bCount
+        8'h00, 8'h00, 8'h00, 8'h00, // RESERVED
+        8'h00, 8'h00, 8'h00,
+
+        // Function section (24 bytes)
+        8'h06, // bFirstInterfaceNumber
+        8'h01, // RESERVED
+        "WINUSB", 8'h00, 8'h00, // compatibleID
+        8'h00, 8'h00, 8'h00, 8'h00, // subCompatibleID
+        8'h00, 8'h00, 8'h00, 8'h00,
+        8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00 // RESERVED
+    };
+    localparam MSOS10COMPATIDBLOB_LEN = $bits(MSOS10COMPATIDBLOB) / 8;
+
+    localparam MSOS10COMPATGUIDBLOB = {
+        // Header (10 bytes)
+        8'h98, 8'h00, 8'h00, 8'h00, // dwLength (142 bytes)
+        8'h00, 8'h01, // bcdVersion
+        8'h05, 8'h00, // wIndex
+        8'h00, 8'h00, // wCount
+
+        // Custom Property (132 bytes)
+        8'h00, 8'h00, 8'h00, 8'h00, // dwLength
+        8'h00, 8'h00, 8'h00, 8'h00, // dwPropertyDataType
+        8'h28, 8'h00, // dwPropertyNameLength (40)
+        "D", 8'h00, // bPropertyName,
+        "e", 8'h00,
+        "v", 8'h00,
+        "i", 8'h00,
+        "c", 8'h00,
+        "e", 8'h00,
+        "I", 8'h00,
+        "n", 8'h00,
+        "t", 8'h00,
+        "e", 8'h00,
+        "r", 8'h00,
+        "f", 8'h00,
+        "a", 8'h00,
+        "c", 8'h00,
+        "e", 8'h00,
+        "G", 8'h00,
+        "U", 8'h00,
+        "I", 8'h00,
+        "D", 8'h00,
+        8'h00, 8'h00,
+        // bPropertyName
+        8'h4e, 8'h00, 8'h00, 8'h00, // dwPropertyDataLength (78)
+        // Freshly randomly generated GUID; we don't actually use this, but on Windows,
+        // libusb can't select a winusb interface on a composite device unless it has *any* GUID
+        // "{4aefd4e2-a2be-40fb-9392-1edbd7359e20}\0" (UTF-16LE)
+        "{", 8'h00,
+        "4", 8'h00,
+        "a", 8'h00,
+        "e", 8'h00,
+        "f", 8'h00,
+        "d", 8'h00,
+        "4", 8'h00,
+        "e", 8'h00,
+        "2", 8'h00,
+        "-", 8'h00,
+        "a", 8'h00,
+        "2", 8'h00,
+        "b", 8'h00,
+        "e", 8'h00,
+        "-", 8'h00,
+        "4", 8'h00,
+        "0", 8'h00,
+        "f", 8'h00,
+        "b", 8'h00,
+        "-", 8'h00,
+        "9", 8'h00,
+        "3", 8'h00,
+        "9", 8'h00,
+        "2", 8'h00,
+        "-", 8'h00,
+        "1", 8'h00,
+        "e", 8'h00,
+        "d", 8'h00,
+        "b", 8'h00,
+        "d", 8'h00,
+        "7", 8'h00,
+        "3", 8'h00,
+        "5", 8'h00,
+        "9", 8'h00,
+        "e", 8'h00,
+        "2", 8'h00,
+        "0", 8'h00,
+        "}", 8'h00,
+        8'h00, 8'h00
+    };
+
+
+    localparam MSOS10COMPATGUIDBLOB_LEN = $bits(MSOS10COMPATGUIDBLOB) / 8;
+
+    localparam BOSBLOB = {
+        8'h12, // bLength
+        8'h03, // bDescriptorType
+        "M", 8'h00, // qwSignature
+        "S", 8'h00,
+        "F", 8'h00,
+        "T", 8'h00,
+        "1", 8'h00,
+        "0", 8'h00,
+        "0", 8'h00, // qwSignature
+        8'h42, // bMS_VendorCode,
+        8'h00 //bPad
+    };
+    localparam BOSBLOB_LEN = $bits(BOSBLOB) / 8;
+
+
     // Truncate descriptor data to keep only the necessary pieces;
     // either just the full-speed stuff, || full-speed plus high-speed,
     // || full-speed plus high-speed plus string descriptors.
@@ -155,8 +278,13 @@ module usb_desc #(
     localparam  DESC_STRSERIAL_LEN    = 2 + 2*SERIALSTR_LEN;
     localparam  DESC_STRFLASHGBX_ADDR = DESC_STRSERIAL_ADDR + DESC_STRSERIAL_LEN;
     localparam  DESC_STRFLASHGBX_LEN  = 2 + 2*FLASHGBXSTR_LEN;
-    localparam  DESC_END_ADDR         = DESC_STRFLASHGBX_ADDR + DESC_STRFLASHGBX_LEN;
-
+    localparam  DESC_BLOBBOS_ADDR     = DESC_STRFLASHGBX_ADDR + DESC_STRFLASHGBX_LEN;
+    localparam  DESC_BLOBBOS_LEN      = BOSBLOB_LEN;
+    localparam  DESC_BLOBMSOS10COMPATID_ADDR = DESC_BLOBBOS_ADDR + DESC_BLOBBOS_LEN;
+    localparam  DESC_BLOBMSOS10COMPATID_LEN  = MSOS10COMPATIDBLOB_LEN;
+    localparam  DESC_BLOBMSOS10COMPATGUID_ADDR = DESC_BLOBMSOS10COMPATID_ADDR + DESC_BLOBMSOS10COMPATID_LEN;
+    localparam  DESC_BLOBMSOS10COMPATGUID_LEN = MSOS10COMPATGUIDBLOB_LEN;
+    localparam  DESC_END_ADDR         = DESC_BLOBMSOS10COMPATGUID_ADDR + DESC_BLOBMSOS10COMPATGUID_LEN;
 
     assign  o_desc_dev_addr        = DESC_DEV_ADDR        ;
     assign  o_desc_dev_len         = DESC_DEV_LEN         ;
@@ -176,6 +304,12 @@ module usb_desc #(
     assign  o_desc_strserial_len   = DESC_STRSERIAL_LEN   ;
     assign  o_desc_strflashgbx_addr= DESC_STRFLASHGBX_ADDR;
     assign  o_desc_strflashgbx_len = DESC_STRFLASHGBX_LEN ;
+    assign  o_desc_blobbos_addr    = DESC_BLOBBOS_ADDR;
+    assign  o_desc_blobbos_len     = DESC_BLOBBOS_LEN ;
+    assign  o_desc_blobmsos10_compat_id_addr  = DESC_BLOBMSOS10COMPATID_ADDR;
+    assign  o_desc_blobmsos10_compat_id_len   = DESC_BLOBMSOS10COMPATID_LEN ;
+    assign  o_desc_blobmsos10_compat_guid_addr  = DESC_BLOBMSOS10COMPATGUID_ADDR;
+    assign  o_desc_blobmsos10_compat_guid_len   = DESC_BLOBMSOS10COMPATGUID_LEN ;
 
 
     // Truncate descriptor data to keep only the necessary pieces;
@@ -196,7 +330,7 @@ module usb_desc #(
         // 18 bytes device descriptor
         descrom[0]  <= 8'h12;// bLength = 18 bytes
         descrom[1]  <= `USB_DESCTYPE_DEVICE;// bDescriptorType = device descriptor
-        descrom[2]  <= (HSSUPPORT)? 8'h00 :8'h10;// bcdUSB = 1.10 || 2.00
+        descrom[2]  <= (HSSUPPORT)? 8'h00 :8'h10;// bcdUSB = 1.10 || 2.10
         descrom[3]  <= (HSSUPPORT)? 8'h02 :8'h01;
         descrom[4]  <= 8'hEF;// bDeviceClass = USB Miscellaneous Class
         descrom[5]  <= 8'h02;// bDeviceSubClass = Common Class
@@ -670,21 +804,21 @@ module usb_desc #(
         descrom[DESC_FLASHGBX_ADDR + 5] <= 8'hFF; // bInterfaceClass = Vendor-Specific
         descrom[DESC_FLASHGBX_ADDR + 6] <= 8'hFF; // bInterfaceSubClass = Vendor-Specific
         descrom[DESC_FLASHGBX_ADDR + 7] <= 8'hFF; // bInterfaceProtocol = Vendor-Specific
-        descrom[DESC_FLASHGBX_ADDR + 8] <= `VENDOR_IF_STR_IDX;
+        descrom[DESC_FLASHGBX_ADDR + 8] <= `FLASHGBX_STR_IDX;
 
-        // Bulk IN Endpoint Descriptor (Endpoint 5 IN)
+        // Bulk IN Endpoint Descriptor (Endpoint 6 IN)
         descrom[DESC_FLASHGBX_ADDR + 9 + 0] <= 8'h07; // bLength
         descrom[DESC_FLASHGBX_ADDR + 9 + 1] <= 8'h05; // bDescriptorType = Endpoint
-        descrom[DESC_FLASHGBX_ADDR + 9 + 2] <= 8'h85; // bEndpointAddress = IN EP 5
+        descrom[DESC_FLASHGBX_ADDR + 9 + 2] <= 8'(8'h80 | `FLASHGBX_ENDPOINT);
         descrom[DESC_FLASHGBX_ADDR + 9 + 3] <= 8'h02; // bmAttributes = Bulk
         descrom[DESC_FLASHGBX_ADDR + 9 + 4] <= 8'h00; // wMaxPacketSize = 512 LSB
         descrom[DESC_FLASHGBX_ADDR + 9 + 5] <= 8'h02; // wMaxPacketSize = 512 MSB
         descrom[DESC_FLASHGBX_ADDR + 9 + 6] <= 8'h00; // bInterval = 0 ms
 
-        // Bulk OUT Endpoint Descriptor (Endpoint 5 OUT)
+        // Bulk OUT Endpoint Descriptor (Endpoint 6 OUT)
         descrom[DESC_FLASHGBX_ADDR + 16 + 0] <= 8'h07; // bLength
         descrom[DESC_FLASHGBX_ADDR + 16 + 1] <= 8'h05; // bDescriptorType = Endpoint
-        descrom[DESC_FLASHGBX_ADDR + 16 + 2] <= 8'h05; // bEndpointAddress = OUT EP 5
+        descrom[DESC_FLASHGBX_ADDR + 16 + 2] <= 8'(`FLASHGBX_ENDPOINT);
         descrom[DESC_FLASHGBX_ADDR + 16 + 3] <= 8'h02; // bmAttributes = Bulk
         descrom[DESC_FLASHGBX_ADDR + 16 + 4] <= 8'h00; // wMaxPacketSize = 512 LSB
         descrom[DESC_FLASHGBX_ADDR + 16 + 5] <= 8'h02; // wMaxPacketSize = 512 MSB
@@ -743,6 +877,15 @@ module usb_desc #(
                     descrom[DESC_STRFLASHGBX_ADDR + 2*i + 2][z] <= FLASHGBXSTR[(FLASHGBXSTR_LEN - 1 - i)*8+z];
                 end
                 descrom[DESC_STRFLASHGBX_ADDR + 2*i + 3] <= 8'h00;
+            end
+            for(i = 0; i < BOSBLOB_LEN; i = i + 1) begin
+                descrom[DESC_BLOBBOS_ADDR + i] <= BOSBLOB[(BOSBLOB_LEN - 1 - i)*8 +: 8];
+            end
+            for(i = 0; i < MSOS10COMPATIDBLOB_LEN; i = i + 1) begin
+                descrom[DESC_BLOBMSOS10COMPATID_ADDR + i] <= MSOS10COMPATIDBLOB[(MSOS10COMPATIDBLOB_LEN - 1 - i)*8 +: 8];
+            end
+            for(i = 0; i < MSOS10COMPATGUIDBLOB_LEN; i = i + 1) begin
+                descrom[DESC_BLOBMSOS10COMPATGUID_ADDR + i] <= MSOS10COMPATGUIDBLOB[(MSOS10COMPATGUIDBLOB_LEN - 1 - i)*8 +: 8];
             end
         end
       end
