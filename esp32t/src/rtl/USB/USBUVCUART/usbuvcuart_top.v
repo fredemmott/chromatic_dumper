@@ -171,14 +171,17 @@ module usbuvcuart_top(
     reg [11:0]  audio_txdat_len;
     reg         audio_txcork;
 
+    logic [7:0] lk_txdat;
+    logic [11:0] lk_txdat_len;
+    logic       lk_txcork;
+
     localparam EP_CTRL = 4'd0;
     localparam EP_VC = 4'd1;
     localparam EP_VS = 4'd2;
     localparam EP_UART = 4'd3;
+    localparam EP_FLASHGBX = 4'd6;
     localparam EP_UAC = {`AUDIO_DATA_EP_NUM}[3:0];
 
-    wire        cmsos10_rom_en;
-    wire [15:0] cmsos10_rom_raddr;
     wire        cmsos10_txval;
     wire [ 7:0] cmsos10_txdat;
     wire [11:0] cmsos10_txdat_len;
@@ -211,6 +214,7 @@ module usbuvcuart_top(
     assign usb_txdat = (endpt_sel == EP_CTRL) ? endpt0_dat[7:0] :
                        (endpt_sel == EP_VS) ? video_txdat  :
                        (endpt_sel == EP_UAC) ? audio_txdat :
+                       (endpt_sel == EP_FLASHGBX) ? lk_txdat :
                        uart_txdat;
     /* only valid for ep0 */
     assign endpt0_send = cuart_txval | cmsos10_txval | cuvc_txval | cuac_txval;
@@ -219,16 +223,19 @@ module usbuvcuart_top(
     assign usb_txdat_len = (endpt_sel == EP_CTRL) ? endpt0_txlen :
                            (endpt_sel == EP_VS) ? video_txdat_len :
                            (endpt_sel == EP_UART) ? uart_txdat_len :
+                           (endpt_sel == EP_FLASHGBX) ? lk_txdat_len :
                            (endpt_sel == EP_UAC) ? audio_txdat_len :
                            12'hFAE;
 
     assign usb_txcork = (endpt_sel == EP_CTRL) ? 1'b0 :
                         (endpt_sel == EP_VS) ? video_txcork :
                         (endpt_sel == EP_UART) ? uart_txcork :
+                        (endpt_sel == EP_FLASHGBX) ? 1'b0 :
                         (endpt_sel == EP_UAC) ? audio_txcork :
                         1'b1;
 
     assign usb_rxrdy = (endpt_sel == EP_UART) ? uart_rxrdy :
+                       (endpt_sel == EP_FLASHGBX) ? 1'b1 :
                        (endpt_sel == EP_CTRL) ? 1'b1 : 1'b0;
 
     /* TODO: txiso_pid_i(iso_pid_data) shall be per endpoint, but so far
@@ -239,10 +246,12 @@ module usbuvcuart_top(
     wire video_txact = (endpt_sel == EP_VS) ? usb_txact : 0;
     wire audio_txact = (endpt_sel == EP_UAC) ? usb_txact : 0;
     wire uart_txact = (endpt_sel == EP_UART) ? usb_txact : 0;
+    wire lk_txact = (endpt_sel == EP_FLASHGBX) ? usb_txact : 0;
 
     wire video_txpop = (endpt_sel == EP_VS) ? usb_txpop : 0;
     wire audio_txpop = (endpt_sel == EP_UAC) ? usb_txpop : 0;
     wire uart_txpop = (endpt_sel == EP_UART) ? usb_txpop : 0;
+    wire lk_txpop = (endpt_sel == EP_FLASHGBX) ? usb_txpop : 0;
 
     wire uart_rxact = (endpt_sel == EP_UART) ? usb_rxact : 0;
 
@@ -493,7 +502,7 @@ module usbuvcuart_top(
         ,.RESET                  (RESET_IN            )
         ,.playerNum              (playerNum)
         ,.serial                 (serial)
-        ,.i_descrom_raddr        (cmsos10_rom_en ? cmsos10_rom_raddr : DESCROM_RADDR)
+        ,.i_descrom_raddr        (DESCROM_RADDR)
         ,.o_descrom_rdat         (DESCROM_RDAT        )
         ,.o_desc_dev_addr        (DESC_DEV_ADDR       )
         ,.o_desc_dev_len         (DESC_DEV_LEN        )
@@ -515,10 +524,6 @@ module usbuvcuart_top(
         ,.o_desc_strflashgbx_len (DESC_STRFLASHGBX_LEN  )
         ,.o_desc_blobbos_addr    (DESC_BLOBBOS_ADDR   )
         ,.o_desc_blobbos_len     (DESC_BLOBBOS_LEN    )
-        ,.o_desc_blobmsos10_compat_id_addr (DESC_BLOBMSOS10COMPATID_ADDR)
-        ,.o_desc_blobmsos10_compat_id_len  (DESC_BLOBMSOS10COMPATID_LEN )
-        ,.o_desc_blobmsos10_compat_guid_addr (DESC_BLOBMSOS10COMPATGUID_ADDR)
-        ,.o_desc_blobmsos10_compat_guid_len  (DESC_BLOBMSOS10COMPATGUID_LEN )
         ,.o_descrom_have_strings (DESCROM_HAVE_STRINGS)
     );
 
@@ -642,16 +647,7 @@ module usbuvcuart_top(
             .usb_txpop(usb_txpop),
             .usb_txval(cmsos10_txval),
             .usb_txdat_len(cmsos10_txdat_len),
-            .usb_txdat(cmsos10_txdat),
-
-            .id_addr(DESC_BLOBMSOS10COMPATID_ADDR),
-            .id_len(DESC_BLOBMSOS10COMPATID_LEN),
-            .guid_addr(DESC_BLOBMSOS10COMPATGUID_ADDR),
-            .guid_len(DESC_BLOBMSOS10COMPATGUID_LEN),
-
-            .rom_en(cmsos10_rom_en),
-            .rom_raddr(cmsos10_rom_raddr),
-            .rom_rdata(DESCROM_RDAT)
+            .usb_txdat(cmsos10_txdat)
         );
 
     ctrl_uart uart_if_ctrl(
@@ -1085,6 +1081,43 @@ module usbuvcuart_top(
     reg        ep3_tx_dval;
     reg  [7:0] ep3_tx_data;
 
+    always @(posedge `EP6_CLOCK) begin
+        lk_rx_dval <= 1'b0;
+        lk_rx_data <= 8'd0;
+        if ((endpt_sel == EP_FLASHGBX) && usb_rxval && !RESET_IN) begin
+            lk_rx_dval <= 1'b1;
+            lk_rx_data <= usb_rxdat;
+        end
+    end
+
+    logic [7:0] lk_tx_buf [1023:0];
+    logic [9:0] lk_tx_read_p;
+    logic [9:0] lk_tx_write_p;
+
+    logic [9:0] lk_tx_remaining;
+    assign lk_tx_remaining = lk_tx_write_p - lk_tx_read_p;
+
+    always @(posedge pClk) begin
+        lk_txdat <= lk_tx_buf[lk_tx_read_p + (lk_txpop ? 10'd1 : 10'd0)];
+
+        if (usb_busreset | RESET_IN) begin
+            lk_tx_read_p <= 12'd0;
+            lk_tx_write_p <= 12'd0;
+            lk_txdat_len <= 12'd0;
+        end else begin
+            if (~lk_txact) begin
+                lk_txdat_len <= (lk_tx_remaining > 10'd512) ? 10'd512 : lk_tx_remaining;
+            end else if (lk_txpop) begin
+                lk_tx_read_p <= lk_tx_read_p + 10'd1;
+            end
+
+            if (lk_tx_dval) begin
+                lk_tx_buf[lk_tx_write_p] <= lk_tx_data;
+                lk_tx_write_p <= lk_tx_write_p + 10'd1;
+            end
+        end
+    end
+
     usb_fifo usb_fifo
     (
          .i_clk         (pClk   )//clock
@@ -1110,15 +1143,6 @@ module usbuvcuart_top(
         ,.i_ep3_rx_rdy  (ep3_rx_rdy       )
         ,.o_ep3_rx_dval (ep3_rx_dval      )
         ,.o_ep3_rx_data (ep3_rx_data      )
-        // Endpoint 6 (FlashGBX/LK)
-        ,.i_ep6_tx_clk  (`EP6_CLOCK       )
-        ,.i_ep6_tx_max  (12'd512          )
-        ,.i_ep6_tx_dval (ep6_tx_dval      )
-        ,.i_ep6_tx_data (ep6_tx_data      )
-        ,.i_ep6_rx_clk  (`EP6_CLOCK       )
-        ,.i_ep6_rx_rdy  (1                )
-        ,.o_ep6_rx_dval (lk_rx_dval       )
-        ,.o_ep6_rx_data (lk_rx_data       )
     );
 
     assign E_UART_DTR = s_ctl_sig[0];
@@ -1301,17 +1325,158 @@ module ctrl_msos10 #(
     input             usb_txpop,
     output reg        usb_txval,
     output logic [11:0] usb_txdat_len,
-    output reg [7:0]  usb_txdat,
-
-    input [15:0] id_addr,
-    input [15:0] id_len,
-    input [15:0] guid_addr,
-    input [15:0] guid_len,
-
-    output            rom_en,
-    output     [15:0] rom_raddr,
-    input      [7:0]  rom_rdata
+    output reg [7:0]  usb_txdat
 );
+    localparam COMPAT_ID_BLOB = {
+        // Header section (40 bytes)
+        8'h28, 8'h00, 8'h00, 8'h00, // dwLength
+        8'h00, 8'h01, // bcdVersion
+        8'h04, 8'h00, // wIndex
+        8'h01, // bCount
+        8'h00, 8'h00, 8'h00, 8'h00, // RESERVED
+        8'h00, 8'h00, 8'h00,
+
+        // Function section (24 bytes)
+        8'h06, // bFirstInterfaceNumber
+        8'h01, // RESERVED
+        "WINUSB", 8'h00, 8'h00, // compatibleID
+        8'h00, 8'h00, 8'h00, 8'h00, // subCompatibleID
+        8'h00, 8'h00, 8'h00, 8'h00,
+        8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00 // RESERVED
+    };
+
+    localparam EXTENDED_PROPERTIES_BLOB = {
+        // Header (10 bytes)
+        8'he0, 8'h00, 8'h00, 8'h00, // dwLength (224 bytes)
+        8'h00, 8'h01, // bcdVersion
+        8'h05, 8'h00, // wIndex
+        8'h01, 8'h00, // wCount
+
+        // Custom Property (136 bytes)
+        8'hd6, 8'h00, 8'h00, 8'h00, // dwSize
+        8'h07, 8'h00, 8'h00, 8'h00, // dwPropertyDataType
+        8'h2a, 8'h00, // dwPropertyNameLength (40)
+        "D", 8'h00, // bPropertyName,
+        "e", 8'h00,
+        "v", 8'h00,
+        "i", 8'h00,
+        "c", 8'h00,
+        "e", 8'h00,
+        "I", 8'h00,
+        "n", 8'h00,
+        "t", 8'h00,
+        "e", 8'h00,
+        "r", 8'h00,
+        "f", 8'h00,
+        "a", 8'h00,
+        "c", 8'h00,
+        "e", 8'h00,
+        "G", 8'h00,
+        "U", 8'h00,
+        "I", 8'h00,
+        "D", 8'h00,
+        "s", 8'h00,
+        8'h00, 8'h00,
+        // bPropertyName
+        8'h9e, 8'h00, 8'h00, 8'h00, // dwPropertyDataLength (158)
+        // Freshly randomly generated GUID; we don't actually use this, but on Windows,
+        // libusb can't select a winusb interface on a composite device unless it has *any* GUID
+        // "{4aefd4e2-a2be-40fb-9392-1edbd7359e20}\0" (UTF-16LE)
+        // "{4aefd4e2-a2be-40fb-9392-1edbd7359e21}\0" (UTF-16LE) ... because we need at least two GUIDs for Windows to recognize the property
+        "{", 8'h00,
+        "4", 8'h00,
+        "a", 8'h00,
+        "e", 8'h00,
+        "f", 8'h00,
+        "d", 8'h00,
+        "4", 8'h00,
+        "e", 8'h00,
+        "2", 8'h00,
+        "-", 8'h00,
+        "a", 8'h00,
+        "2", 8'h00,
+        "b", 8'h00,
+        "e", 8'h00,
+        "-", 8'h00,
+        "4", 8'h00,
+        "0", 8'h00,
+        "f", 8'h00,
+        "b", 8'h00,
+        "-", 8'h00,
+        "9", 8'h00,
+        "3", 8'h00,
+        "9", 8'h00,
+        "2", 8'h00,
+        "-", 8'h00,
+        "1", 8'h00,
+        "e", 8'h00,
+        "d", 8'h00,
+        "b", 8'h00,
+        "d", 8'h00,
+        "7", 8'h00,
+        "3", 8'h00,
+        "5", 8'h00,
+        "9", 8'h00,
+        "e", 8'h00,
+        "2", 8'h00,
+        "0", 8'h00,
+        "}", 8'h00,
+        8'h00, 8'h00, // MULTI_SZ entry terminator
+        "{", 8'h00,
+        "4", 8'h00,
+        "a", 8'h00,
+        "e", 8'h00,
+        "f", 8'h00,
+        "d", 8'h00,
+        "4", 8'h00,
+        "e", 8'h00,
+        "2", 8'h00,
+        "-", 8'h00,
+        "a", 8'h00,
+        "2", 8'h00,
+        "b", 8'h00,
+        "e", 8'h00,
+        "-", 8'h00,
+        "4", 8'h00,
+        "0", 8'h00,
+        "f", 8'h00,
+        "b", 8'h00,
+        "-", 8'h00,
+        "9", 8'h00,
+        "3", 8'h00,
+        "9", 8'h00,
+        "2", 8'h00,
+        "-", 8'h00,
+        "1", 8'h00,
+        "e", 8'h00,
+        "d", 8'h00,
+        "b", 8'h00,
+        "d", 8'h00,
+        "7", 8'h00,
+        "3", 8'h00,
+        "5", 8'h00,
+        "9", 8'h00,
+        "e", 8'h00,
+        "2", 8'h00,
+        "1", 8'h00,
+        "}", 8'h00,
+        8'h00, 8'h00, // MULTI_SZ entry terminator
+        8'h00, 8'h00 // MULTI_SZ list terminator
+    };
+    localparam COMPAT_ID_BLOB_ADDR = 0;
+    localparam COMPAT_ID_BLOB_LEN = $bits(COMPAT_ID_BLOB) / 8;
+    localparam EXTENDED_PROPERTIES_BLOB_ADDR = COMPAT_ID_BLOB_ADDR + COMPAT_ID_BLOB_LEN;
+    localparam EXTENDED_PROPERTIES_BLOB_LEN = $bits(EXTENDED_PROPERTIES_BLOB) / 8;
+    localparam BLOB = { COMPAT_ID_BLOB, EXTENDED_PROPERTIES_BLOB };
+    localparam BLOB_LEN = $bits(BLOB) / 8;
+    logic [7:0] rom [BLOB_LEN - 1: 0];
+
+    integer i;
+    initial begin
+        for (i = 0;  i < BLOB_LEN; i = i + 1) begin
+            rom[i] = BLOB[((BLOB_LEN - 1 - i)*8) +: 8];
+        end
+    end
 
     wire is_msos10_compat_id_req = header_ready &&
                          ((bmRequestType == 8'hC0) || (bmRequestType == 8'hC1)) &&
@@ -1321,21 +1486,32 @@ module ctrl_msos10 #(
     wire is_msos10_compat_guid_req = header_ready &&
                          ((bmRequestType == 8'hC0) || (bmRequestType == 8'hC1)) &&
                          (bRequest == MSOS10VENDOR_CODE) &&
-                         (wValue == 16'h0600) && // `FLASHGBX_IFACE
+                         // MS OS 1.0 documentation says the interface will be in the high byte, but
+                         // the WinUSB driver has a behavior that always sets wValue to the interface number
+                         // for device-to-interface requests... and this one is sent on interface 0 as it's a control
+                         // request.
+                         //
+                         // An MS employee has described this as a security feature of the WinUSB driver - which just
+                         // happens to be incompatible with the specs for how WinUSB devices are enumerated.
+                         //
+                         // Commenting this out is *required* for the WinUSB driver to work correctly, however it
+                         // also means that we're going to be returning these GUIDs for all interfaces, not just
+                         // the one we care about. So... clients need to be careful about which interface they use
+                         // and can't just use the GUID as a... unique... identifier.
+                         //
+                         // (wValue[15:8] == 8'(`FLASHGBX_IFACE)) &&
+                         // (wValue[7:0] == 8'd0) &&
                          (wIndex == 16'h0005);
     wire is_msos10_req = is_msos10_compat_id_req | is_msos10_compat_guid_req;
-    assign rom_en = is_msos10_req;
 
-    wire [15:0] base_addr;
-    wire [15:0] len;
-
-    assign base_addr = is_msos10_compat_id_req ? id_addr : guid_addr;
-    assign len = is_msos10_compat_id_req ? id_len : guid_len;
+    wire [15:0] base_addr = is_msos10_compat_id_req ? COMPAT_ID_BLOB_ADDR : EXTENDED_PROPERTIES_BLOB_ADDR;
+    wire [15:0] len = is_msos10_compat_id_req ? COMPAT_ID_BLOB_LEN : EXTENDED_PROPERTIES_BLOB_LEN;
 
     // Calculate actual ROM address to read
 
     wire [15:0] next_offset = cdata_ofs + usb_txpop;
-    assign rom_raddr = base_addr + next_offset;
+    wire [15:0] rom_raddr = base_addr + next_offset;
+    wire [7:0] rom_rdat = rom[rom_raddr];
 
     wire [5:0] packet_index = cdata_ofs[11:6];
     wire [11:0] packet_offset = {packet_index, 6'd0};
@@ -1356,7 +1532,7 @@ module ctrl_msos10 #(
             usb_txval     <= 1'b0;
             usb_txdat     <= 8'd0;
         end else if (is_msos10_req && usb_txact) begin
-            usb_txdat <= rom_rdata;
+            usb_txdat <= rom_rdat;
             if (usb_txpop) begin
                 if ((cdata_ofs + 16'd1) >= (packet_offset + packet_length)) begin
                     /* One-cycle dip terminates the current packet:

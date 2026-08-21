@@ -587,7 +587,7 @@ module top #(parameter ISSIMU=0)
 
     reg UART_TXD;
     wire UART_RXD;
-    // wire PHY_CLKOUT; Unused: we now run the USB CDC endpoint on xClk
+    wire PHY_CLKOUT;
     wire usblocked;
     always@(posedge xClk or negedge usblocked)
     begin
@@ -709,7 +709,7 @@ module top #(parameter ISSIMU=0)
     usbuvcuart_top u_usb_top(
         .CLK_24MHz(CLK_24MHz),
         .ERST(usbrst),
-        .pClk(/*PHY_CLKOUT*/),
+        .pClk(PHY_CLKOUT),
         .usblocked(usblocked),
         .hClk(gClk),
         .xClk(xClk),
@@ -846,9 +846,9 @@ module top #(parameter ISSIMU=0)
 
     // FlashGBX "LK" protocol
     lk_top u_lk(
-        .usbClk         (xClk),
-        .cartClk        (hClk),
-        .reset          (!lk_enabled),
+        .usbClk         (PHY_CLKOUT),
+        .cartClk        (PHY_CLKOUT),
+        .reset          (!LK_ENABLED),
         .rx_valid       (LK_RX_DVAL),
         .rx_data        (LK_RX_DATA),
         .tx_valid       (LK_TX_DVAL),

@@ -40,206 +40,81 @@ always @(posedge cartClk or posedge reset) begin
 end
 wire cartReset = lk_cdc_cart_reset[1];
 
-////// FIFO /////
-typedef logic[31:0] fifo_req_t;
 
-logic req_enqueue;
-fifo_req_t req_enqueue_data;
-logic req_dequeue;
-logic reqs_empty;
-fifo_req_t req_q;
+reg [15:0] rx_buf;
 
-lk_cart_fifo_t u_request_fifo(
-    .WrClk(usbClk),
-    .WrEn(req_enqueue),
-    .Data(req_enqueue_data),
-
-    .RdClk(cartClk),
-    .RdEn(req_dequeue),
-    .Q(req_q),
-    .Empty(reqs_empty),
-
-    .Almost_Full(),
-    .Full()
-);
-
-typedef logic[31:0] fifo_response_t;
-logic response_enqueue;
-fifo_response_t response_enqueue_data;
-logic response_dequeue;
-logic responses_empty;
-fifo_response_t response_q;
-
-lk_cart_fifo_t u_response_fifo(
-    .WrClk(cartClk),
-    .WrEn(response_enqueue),
-    .Data(response_enqueue_data),
-
-    .RdClk(usbClk),
-    .RdEn(response_dequeue),
-    .Q(response_q),
-    .Empty(responses_empty),
-
-    .Almost_Full(),
-    .Full()
-);
-
-///// END FIFO /////
-
-///// BEGIN USB <-> FIFOS /////
-logic [1:0] rx_count;
 always @(posedge usbClk) begin
-    req_enqueue <= 1'b0;
-    if (usbReset) begin
-        rx_count <= 0;
-        req_enqueue_data <= '{default: 0};
-    end else if (rx_valid) begin
-        rx_count <= rx_count + 1'd1;
-        unique case (rx_count)
-            0: req_enqueue_data[31:24] <= rx_data;
-            1: req_enqueue_data[23:16] <= rx_data;
-            2: begin
-                req_enqueue_data[15:8] <= rx_data;
-                req_enqueue <= 1'b1;
-                rx_count <= 2'd0;
-            end
-        endcase
+    if (rx_valid) begin
+        rx_buf <= { rx_buf[7:0], rx_data };
     end
 end
 
 typedef enum {
-    TXS_IDLE,
-    TXS_PARTIAL
-} tx_state_t;
-tx_state_t tx_state;
-assign response_dequeue = (tx_state == TXS_PARTIAL);
-
-always @(posedge usbClk) begin
-    tx_valid <= 1'b0;
-    if (usbReset) begin
-        tx_state <= TXS_IDLE;
-    end else begin
-        unique case (tx_state)
-            TXS_IDLE: begin
-                if (!responses_empty) begin
-                    tx_valid <= 1'b1;
-                    tx_data <= response_q[31:24];
-                    tx_state <= TXS_PARTIAL;
-                end
-            end
-            TXS_PARTIAL: begin
-                tx_valid <= 1'b1;
-                tx_data <= response_q[23:16];
-                tx_state <= TXS_IDLE;
-            end
-        endcase
-    end
-end
-
-///// END USB <-> FIFOS /////
-
-typedef enum {
-  S_RESET,
-  S_IDLE_OR_EXEC,
-  S_DELAY
+  S_IDLE,
+  S_WAIT_ARG8A,
+  S_WAIT_ARG8B
 } state_t;
 
 state_t state;
-state_t state_next;
 
 logic have_command;
 command_t command;
-assign have_command = (state != S_RESET) && (!reqs_empty);
-/* Only look at 3 bits because CMD_IDLE can not be explicitly selected */
-assign command = have_command ? command_t'(req_q[26:24]) : CMD_IDLE;
-
-logic command_complete;
-assign command_complete = (state_next == S_IDLE_OR_EXEC) && have_command;
-assign req_dequeue = command_complete;
-
 logic [15:0] arg16;
 logic [7:0] arg8a;
 logic [7:0] arg8b;
-assign arg16 = req_q[23:8];
-assign arg8a = arg16[15:8];
-assign arg8b = arg16[7:0];
 
-logic [21:0] delay_ticks;
-logic [21:0] delay_ticks_next;
+assign have_command = (state == S_WAIT_ARG8B) && rx_valid;
+assign command = have_command ? command_t'(rx_buf[15:8]) : CMD_IDLE;
+assign arg8a = rx_buf[7:0];
+assign arg8b = rx_data;
+assign arg16 = {arg8a, arg8b};
 
-always @(*) begin
-    state_next = state;
-    delay_ticks_next = '{default:0};
+always @(posedge usbClk) begin
+    state <= state;
 
-    unique case (state)
-        S_RESET: begin
-            state_next = S_IDLE_OR_EXEC;
-        end
-        S_IDLE_OR_EXEC: if (have_command) begin
-            unique case (command)
-                CMD_DELAY_TICKS: begin
-                    // If no ticks, it's a NOP and the tick to interpret the instruction is the delay
-                    if (arg8a > 0) begin
-                        delay_ticks_next = arg8a;
-                        state_next = S_DELAY;
-                    end
-                end
-                CMD_DELAY_MICROS: begin
-                    // Approximate microseconds to 59.605ns clock ticks
-                    // We want a multiplicand of (1000 / 59.605), which is ~= 16.777
-                    // Instead, we go for 17 - (1/4) + (1/32), done with shifts, which is 16.78125, and easy
-                    // to do with shifts
-                    //
-                    // There should be a '+1', but given we have the delay_wait/delay_complete states,
-                    // we're a small constant number of ticks too high anyway :)
-                    delay_ticks_next = (arg16 << 4) + arg16 - (arg16 >> 2) + (arg16 >> 5);
-                    state_next = S_DELAY;
-                end
-                default: ;
-            endcase
-        end
-        S_DELAY: begin
-            if (delay_ticks <= 1) begin
-                state_next = S_IDLE_OR_EXEC;
-            end else begin
-                delay_ticks_next = delay_ticks - 1'd1;
-            end
-        end
-        default: ;
-    endcase
-end
-
-always @(posedge cartClk) begin
-    if (cartReset) begin
-        state <= S_RESET;
-        delay_ticks <= '{default: 0};
-    end else begin
-        state <= state_next;
-        delay_ticks <= delay_ticks_next;
+    if (usbReset) begin
+        state <= S_IDLE;
+    end else if (rx_valid) begin
+        unique case (state)
+            S_IDLE: state <= S_WAIT_ARG8A;
+            S_WAIT_ARG8A: state <= S_WAIT_ARG8B;
+            S_WAIT_ARG8B: state <= S_IDLE;
+            default: state <= S_IDLE;
+        endcase
     end
 end
 
+logic tx_valid_next;
+logic [7:0] tx_data_next;
+
 always @(posedge cartClk) begin
-    response_enqueue <= 1'b0;
-    response_enqueue_data <= '{default: 0};
-    if ((state == S_RESET) && (~cartReset)) begin
-        // finish the handshake
-        response_enqueue <= 1'b1;
-        response_enqueue_data[31:16] <= ~"LK";
-    end else if (command_complete) begin
-        response_enqueue <= 1'b1;
-        response_enqueue_data[27:24] <= 4'(command);
-        unique case (command)
-            CMD_PING: begin
-                response_enqueue_data[23:16] <= ~arg8a;
-            end
-            CMD_GET_DATA: begin
-                response_enqueue_data[23:16] <= cart_d_in;
-            end
-            default: begin
-                response_enqueue_data[16] <= 1'b1;
-            end
-        endcase
+    tx_valid <= 1'b0;
+    tx_data <= 8'd0;
+
+    tx_valid_next <= 1'b0;
+    tx_data_next <= 8'd0;
+
+    if (!usbReset) begin
+        if (have_command) begin
+            tx_valid <= 1'b1;
+            tx_data <= 8'(command);
+
+            tx_valid_next <= 1'b1;
+            unique case (command)
+                CMD_PING: begin
+                    tx_data_next <= ~arg8a;
+                end
+                CMD_GET_DATA: begin
+                    tx_data_next <= cart_d_in;
+                end
+                default: begin
+                    tx_data_next <= 8'h01;
+                end
+            endcase
+        end else if (tx_valid_next ) begin
+            tx_valid <= 1'b1;
+            tx_data <= tx_data_next;
+        end
     end
 end
 

@@ -6,32 +6,30 @@ module lk_serial_id_t(
     output reg [7:0] tx_data
 );
 
-localparam ROM_LEN = 12;
+localparam ROM_BLOB = {
+    "fredemmott/FlashGBX", 8'h00,
+
+    // Our version timestamp - BCD
+    /* YYYY */ 8'h20, 8'h26, /* MM */ 8'h08, /*  DD */ 8'h18,
+
+    // If we do multiple builds on the same day... __NOT__ BCD!
+    8'd00, // Revision
+
+    // Upstream (ModRetro) version number - __NOT__ BCD
+    8'd18, 8'd08,
+
+    // USB interface number for cartridge IO
+    8'h06
+};
+localparam ROM_LEN = $bits(ROM_BLOB) / 8;
 localparam ROM_ADDR_WIDTH = $clog2(ROM_LEN);
 reg [7:0] rom[0:ROM_LEN - 1];
 
+integer i;
 initial begin
-    rom[0] = "M"; // Microcode-based, not the LK protocol
-    rom[1] = "i";
-    rom[2] = "c";
-    rom[3] = "r";
-    rom[4] = "o";
-
-    // Our version timestamp - BCD YYYY-MM-DD
-    rom[5] = 8'h20; // YYYY
-    rom[6] = 8'h26;
-    rom[7] = 8'h06; // MM
-    rom[8] = 8'h03; // DD
-
-    // If we do multiple builds on the same day...
-    rom[9] = 8'd01; // Revision
-    //         ^ NOT BCD!
-
-    // Upstream (ModRetro) version number
-    rom[10] = 8'd18;
-    //          ^ NOT BCD!
-    rom[11] = 8'd08;
-    //          ^ NOT BCD!
+    for (i = 0; i < ROM_LEN; i = i + 1) begin
+        rom[i] = ROM_BLOB[(ROM_LEN - 1 - i)*8 +: 8];
+    end
 end
 
 reg [ROM_ADDR_WIDTH-1:0] idx;
