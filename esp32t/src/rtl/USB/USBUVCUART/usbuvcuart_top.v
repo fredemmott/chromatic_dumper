@@ -171,9 +171,10 @@ module usbuvcuart_top(
     reg [11:0]  audio_txdat_len;
     reg         audio_txcork;
 
-    logic [7:0] lk_txdat;
+    logic        lk_rxrdy;
+    logic [7:0]  lk_txdat;
     logic [11:0] lk_txdat_len;
-    logic       lk_txcork;
+    logic        lk_txcork;
 
     localparam EP_CTRL = 4'd0;
     localparam EP_VC = 4'd1;
@@ -230,12 +231,12 @@ module usbuvcuart_top(
     assign usb_txcork = (endpt_sel == EP_CTRL) ? 1'b0 :
                         (endpt_sel == EP_VS) ? video_txcork :
                         (endpt_sel == EP_UART) ? uart_txcork :
-                        (endpt_sel == EP_FLASHGBX) ? 1'b0 :
+                        (endpt_sel == EP_FLASHGBX) ? lk_txcork :
                         (endpt_sel == EP_UAC) ? audio_txcork :
                         1'b1;
 
     assign usb_rxrdy = (endpt_sel == EP_UART) ? uart_rxrdy :
-                       (endpt_sel == EP_FLASHGBX) ? 1'b1 :
+                       (endpt_sel == EP_FLASHGBX) ? lk_rxrdy :
                        (endpt_sel == EP_CTRL) ? 1'b1 : 1'b0;
 
     /* TODO: txiso_pid_i(iso_pid_data) shall be per endpoint, but so far
@@ -1090,22 +1091,46 @@ module usbuvcuart_top(
         end
     end
 
-    logic [7:0] lk_tx_buf [1023:0];
-    logic [9:0] lk_tx_read_p;
-    logic [9:0] lk_tx_write_p;
+    logic [7:0] lk_tx_buf [4095:0];
+    logic [11:0] lk_tx_read_p;
+    logic [11:0] lk_tx_write_p;
 
-    logic [9:0] lk_tx_remaining;
+    logic [11:0] lk_tx_remaining;
     assign lk_tx_remaining = lk_tx_write_p - lk_tx_read_p;
 
+    // If `lk` is actively producing bytes, wait until we have a full packet, or it stops for 4 cycles
+    logic [1:0] lk_tx_uncork_delay;
     always @(posedge pClk) begin
-        lk_txdat <= lk_tx_buf[lk_tx_read_p + (lk_txpop ? 10'd1 : 10'd0)];
+        lk_txcork <=
+            (~lk_txact) &&
+            (lk_tx_remaining < 12'd512) &&
+            (
+                (lk_tx_uncork_delay != 0)
+                || (lk_tx_remaining == 12'd0)
+            );
+    end
+    // Don't accept any more requests if our response queue is close to full
+    assign lk_rxrdy = lk_tx_remaining < 12'd3072;
+
+    always @(posedge pClk) begin
+        if (usb_busreset | RESET_IN) begin
+            lk_tx_uncork_delay <= 2'd0;
+        end else if (lk_tx_dval) begin
+            lk_tx_uncork_delay <= 2'd3;
+        end else if (lk_tx_uncork_delay != 2'd0) begin
+            lk_tx_uncork_delay <= lk_tx_uncork_delay - 2'd1;
+        end
+    end
+
+    always @(posedge pClk) begin
+        lk_txdat <= lk_tx_buf[lk_tx_read_p + (lk_txpop ? 12'd1 : 12'd0)];
 
         if (usb_busreset | RESET_IN) begin
             lk_tx_read_p <= 12'd0;
             lk_tx_write_p <= 12'd0;
             lk_txdat_len <= 12'd0;
         end else begin
-            if (~lk_txact) begin
+            if (lk_txcork || ~lk_txact) begin
                 lk_txdat_len <= (lk_tx_remaining > 10'd512) ? 10'd512 : lk_tx_remaining;
             end else if (lk_txpop) begin
                 lk_tx_read_p <= lk_tx_read_p + 10'd1;
