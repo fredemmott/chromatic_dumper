@@ -255,8 +255,10 @@ module usbuvcuart_top(
     wire lk_txpop = (endpt_sel == EP_FLASHGBX) ? usb_txpop : 0;
 
     wire uart_rxact = (endpt_sel == EP_UART) ? usb_rxact : 0;
+    wire lk_rxact = (endpt_sel == EP_FLASHGBX) ? usb_rxact : 0;
 
     wire uart_rxval = (endpt_sel == EP_UART) ? usb_rxval : 0;
+    wire lk_rxval = (endpt_sel == EP_FLASHGBX) ? usb_rxval : 0;
 
     wire [7:0] desc_index;
     wire [7:0] desc_type;
@@ -1082,12 +1084,38 @@ module usbuvcuart_top(
     reg        ep3_tx_dval;
     reg  [7:0] ep3_tx_data;
 
+    logic [31:0] lk_ticks_since_rx;
+    logic [11:0] lk_rx_packet_size;
+    // New packet:    lk_rxact   & ~lk_rxact_d
+    // End of packet: lk_rxact_d & ~lk_rxact
+    logic lk_rxact_d;
+
+    always @(posedge `EP6_CLOCK) begin
+        lk_rxact_d <= lk_rxact;
+        if (usb_busreset | RESET_IN | ~lk_enabled) begin
+            lk_rx_packet_size <= 12'd0;
+            lk_rxact_d <= 1'b0;
+            lk_rx_more_packets <= 1'b0;
+        end else if (lk_rxact) begin
+            lk_rx_packet_size <= (lk_rxact_d ? lk_rx_packet_size : 12'd0) + lk_rxval;
+        end else if (lk_rxact_d && !lk_rxact) begin
+            // 0-byte packet marks the end if we RX an exact multiple of 512
+            lk_rx_more_packets <= (lk_rx_packet_size >= 12'd512) && (lk_rx_packet_size != 12'd0);
+            lk_rx_packet_size <= 16'd0;
+        end
+    end
+
     always @(posedge `EP6_CLOCK) begin
         lk_rx_dval <= 1'b0;
         lk_rx_data <= 8'd0;
-        if ((endpt_sel == EP_FLASHGBX) && usb_rxval && !RESET_IN) begin
+        if (usb_busreset | RESET_IN | ~lk_enabled) begin
+            lk_ticks_since_rx <= ~32'd0;
+        end else if (lk_rxval) begin
+            lk_ticks_since_rx <= 32'd0;
             lk_rx_dval <= 1'b1;
             lk_rx_data <= usb_rxdat;
+        end else if (lk_ticks_since_rx < ~32'd0) begin
+            lk_ticks_since_rx <= lk_ticks_since_rx + 32'd1;
         end
     end
 
@@ -1095,37 +1123,31 @@ module usbuvcuart_top(
     logic [11:0] lk_tx_read_p;
     logic [11:0] lk_tx_write_p;
 
-    logic [11:0] lk_tx_remaining;
-    assign lk_tx_remaining = lk_tx_write_p - lk_tx_read_p;
+    logic lk_rx_more_packets;
 
-    // If `lk` is actively producing bytes, wait until we have a full packet, or it stops for 4 cycles
-    logic [1:0] lk_tx_uncork_delay;
     always @(posedge pClk) begin
-        lk_txcork <=
-            (~lk_txact) &&
-            (lk_tx_remaining < 12'd512) &&
-            (
-                (lk_tx_uncork_delay != 0)
-                || (lk_tx_remaining == 12'd0)
-            );
+        lk_txcork <= (lk_txdat_len < 12'd512) & (
+            (lk_txdat_len == 12'd0)
+            | lk_tx_dval
+            | (
+                lk_rx_more_packets
+                & (lk_ticks_since_rx < 32'd60_000)
+            ));
     end
+
+    logic [11:0] lk_tx_remaining;
+    assign lk_tx_remaining =
+        (lk_tx_write_p >= lk_tx_read_p)
+        ? (lk_tx_write_p - lk_tx_read_p)
+        : (12'hFFF - lk_tx_read_p + lk_tx_write_p + 12'd1);
+
     // Don't accept any more requests if our response queue is close to full
     assign lk_rxrdy = lk_tx_remaining < 12'd3072;
 
     always @(posedge pClk) begin
-        if (usb_busreset | RESET_IN) begin
-            lk_tx_uncork_delay <= 2'd0;
-        end else if (lk_tx_dval) begin
-            lk_tx_uncork_delay <= 2'd3;
-        end else if (lk_tx_uncork_delay != 2'd0) begin
-            lk_tx_uncork_delay <= lk_tx_uncork_delay - 2'd1;
-        end
-    end
-
-    always @(posedge pClk) begin
         lk_txdat <= lk_tx_buf[lk_tx_read_p + (lk_txpop ? 12'd1 : 12'd0)];
 
-        if (usb_busreset | RESET_IN) begin
+        if (usb_busreset | RESET_IN | ~lk_enabled) begin
             lk_tx_read_p <= 12'd0;
             lk_tx_write_p <= 12'd0;
             lk_txdat_len <= 12'd0;
@@ -1133,12 +1155,12 @@ module usbuvcuart_top(
             if (lk_txcork || ~lk_txact) begin
                 lk_txdat_len <= (lk_tx_remaining > 10'd512) ? 10'd512 : lk_tx_remaining;
             end else if (lk_txpop) begin
-                lk_tx_read_p <= lk_tx_read_p + 10'd1;
+                lk_tx_read_p <= lk_tx_read_p + 12'd1;
             end
 
             if (lk_tx_dval) begin
                 lk_tx_buf[lk_tx_write_p] <= lk_tx_data;
-                lk_tx_write_p <= lk_tx_write_p + 10'd1;
+                lk_tx_write_p <= lk_tx_write_p + 12'd1;
             end
         end
     end
