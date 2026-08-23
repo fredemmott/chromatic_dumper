@@ -1045,8 +1045,6 @@ module usbuvcuart_top(
 
     wire uart_cts = 1'b0;
 
-    //`define EP6_CLOCK xClk
-    //`define EP6_CLOCK_FREQ 30'd67_108_864
     `define EP3_CLOCK pClk
     `define EP3_CLOCK_FREQ 30'd60_000_000
     `define EP6_CLOCK pClk
@@ -1084,23 +1082,46 @@ module usbuvcuart_top(
     reg        ep3_tx_dval;
     reg  [7:0] ep3_tx_data;
 
-    logic [11:0] lk_rx_packet_size;
+    logic lk_rx_transfer_in_progress;
+
     // New packet:    lk_rxact   & ~lk_rxact_d
     // End of packet: lk_rxact_d & ~lk_rxact
-    logic lk_rxact_d;
-    logic lk_rx_more_packets;
+    logic [1:0] lk_rxact_d;
+    always @(posedge pClk) begin
+        if (usb_busreset | RESET_IN | ~lk_enabled) begin
+            lk_rxact_d <= 'd0;
+        end else begin
+            lk_rxact_d <= {lk_rxact_d[0], lk_rxact};
+        end
+    end
+    wire lk_rx_begin = (lk_rxact_d == 2'b01);
+    wire lk_rx_end = (lk_rxact_d == 2'b10);
 
+    logic [11:0] lk_rx_packet_size;
     always @(posedge `EP6_CLOCK) begin
-        lk_rxact_d <= lk_rxact;
         if (usb_busreset | RESET_IN | ~lk_enabled) begin
             lk_rx_packet_size <= 12'd0;
-            lk_rxact_d <= 1'b0;
-            lk_rx_more_packets <= 1'b0;
-        end else if (lk_rxact_d && !lk_rxact) begin
-            lk_rx_more_packets <= (lk_rx_packet_size == 12'd512);
-            lk_rx_packet_size <= 12'd0;
-        end else if (lk_rxval) begin
-            lk_rx_packet_size <= lk_rx_packet_size + 12'd1;
+            lk_rx_transfer_in_progress <= 1'b0;
+        end else begin
+            lk_rx_packet_size <= lk_rx_packet_size;
+            lk_rx_transfer_in_progress <= lk_rx_transfer_in_progress;
+
+            unique case ({lk_rx_begin, lk_rx_end, lk_rxval})
+                3'b000: ;
+                3'b001: lk_rx_packet_size <= lk_rx_packet_size + 12'd1;
+                3'b010: lk_rx_transfer_in_progress <= (lk_rx_packet_size == 12'd512);
+                3'b011: lk_rx_transfer_in_progress <= (lk_rx_packet_size == 12'd511);
+                3'b100: begin
+                    lk_rx_transfer_in_progress <= 1'b1;
+                    lk_rx_packet_size <= 12'd0;
+                end
+                3'b101: begin
+                    lk_rx_transfer_in_progress <= 1'b1;
+                    lk_rx_packet_size <= 12'd1;
+                end
+                // zero-byte and single-byte packets are both short packets
+                3'b110, 3'b111: lk_rx_transfer_in_progress <= 1'b0;
+            endcase
         end
     end
 
@@ -1117,22 +1138,50 @@ module usbuvcuart_top(
     logic [11:0] lk_tx_read_p;
     logic [11:0] lk_tx_write_p;
 
+    logic [5:0] lk_uncork_timeout;
     always @(posedge pClk) begin
-        lk_txcork <= (lk_txdat_len < 12'd512) & (
-            (lk_txdat_len == 12'd0)
-            | lk_tx_dval
-            | lk_rx_more_packets
-        );
+        if (lk_rxval) begin
+            lk_uncork_timeout <= 6'd60; // 1 usec
+        end else if (lk_uncork_timeout > 6'd0) begin
+            lk_uncork_timeout <= lk_uncork_timeout - 6'd1;
+        end
     end
 
-    logic [11:0] lk_tx_remaining;
+    logic [12:0] lk_tx_remaining;
+
+    always @(posedge pClk) begin
+        lk_txcork <=
+            (lk_tx_remaining == 12'd0) || (
+                (lk_tx_remaining < 12'd512) && (
+                    // Actively rx'ing, or additional packets are expected
+                    lk_rx_transfer_in_progress
+                    // even if we're not expecting more packets, wait a little while to process them
+                    | (lk_uncork_timeout != 6'd0)
+                )
+            );
+    end
+
     assign lk_tx_remaining =
         (lk_tx_write_p >= lk_tx_read_p)
         ? (lk_tx_write_p - lk_tx_read_p)
-        : (12'hFFF - lk_tx_read_p + lk_tx_write_p + 12'd1);
+        : (13'd4096 - lk_tx_read_p + lk_tx_write_p);
+
+    always @(posedge pClk) begin
+        if (usb_busreset | RESET_IN | ~lk_enabled) begin
+            lk_txdat_len <= 12'd0;
+        end else if (!lk_txact) begin
+            lk_txdat_len <= (lk_tx_remaining > 13'd512) ? 12'd512 : lk_tx_remaining[11:0];
+        end
+    end
 
     // Don't accept any more requests if our response queue is close to full
-    assign lk_rxrdy = lk_tx_remaining < 12'd3072;
+    // an rx will be at most 512 bytes, which is 170-and-a-bit commands
+    // this will produce up (170 * 2) == 340 tx bytes
+    //
+    //    almost_full = capacity - max_produced
+    //                = 4096 - 340
+    //    ... to be safe, let's give space for two packets
+    assign lk_rxrdy = lk_tx_remaining <= 13'd3416;
 
     always @(posedge pClk) begin
         lk_txdat <= lk_tx_buf[lk_tx_read_p + (lk_txpop ? 12'd1 : 12'd0)];
@@ -1140,17 +1189,17 @@ module usbuvcuart_top(
         if (usb_busreset | RESET_IN | ~lk_enabled) begin
             lk_tx_read_p <= 12'd0;
             lk_tx_write_p <= 12'd0;
-            lk_txdat_len <= 12'd0;
         end else begin
-            if (lk_txcork || ~lk_txact) begin
-                lk_txdat_len <= (lk_tx_remaining > 10'd512) ? 10'd512 : lk_tx_remaining;
-            end else if (lk_txpop) begin
+            if (lk_txpop) begin
                 lk_tx_read_p <= lk_tx_read_p + 12'd1;
             end
 
             if (lk_tx_dval) begin
                 lk_tx_buf[lk_tx_write_p] <= lk_tx_data;
                 lk_tx_write_p <= lk_tx_write_p + 12'd1;
+                if (lk_tx_write_p == lk_tx_read_p) begin
+                    lk_txdat <= lk_tx_data;
+                end
             end
         end
     end
