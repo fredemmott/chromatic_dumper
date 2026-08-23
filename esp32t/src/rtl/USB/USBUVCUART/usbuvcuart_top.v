@@ -1084,11 +1084,11 @@ module usbuvcuart_top(
     reg        ep3_tx_dval;
     reg  [7:0] ep3_tx_data;
 
-    logic [31:0] lk_ticks_since_rx;
     logic [11:0] lk_rx_packet_size;
     // New packet:    lk_rxact   & ~lk_rxact_d
     // End of packet: lk_rxact_d & ~lk_rxact
     logic lk_rxact_d;
+    logic lk_rx_more_packets;
 
     always @(posedge `EP6_CLOCK) begin
         lk_rxact_d <= lk_rxact;
@@ -1096,26 +1096,20 @@ module usbuvcuart_top(
             lk_rx_packet_size <= 12'd0;
             lk_rxact_d <= 1'b0;
             lk_rx_more_packets <= 1'b0;
-        end else if (lk_rxact) begin
-            lk_rx_packet_size <= (lk_rxact_d ? lk_rx_packet_size : 12'd0) + lk_rxval;
         end else if (lk_rxact_d && !lk_rxact) begin
-            // 0-byte packet marks the end if we RX an exact multiple of 512
-            lk_rx_more_packets <= (lk_rx_packet_size >= 12'd512) && (lk_rx_packet_size != 12'd0);
-            lk_rx_packet_size <= 16'd0;
+            lk_rx_more_packets <= (lk_rx_packet_size == 12'd512);
+            lk_rx_packet_size <= 12'd0;
+        end else if (lk_rxval) begin
+            lk_rx_packet_size <= lk_rx_packet_size + 12'd1;
         end
     end
 
     always @(posedge `EP6_CLOCK) begin
         lk_rx_dval <= 1'b0;
         lk_rx_data <= 8'd0;
-        if (usb_busreset | RESET_IN | ~lk_enabled) begin
-            lk_ticks_since_rx <= ~32'd0;
-        end else if (lk_rxval) begin
-            lk_ticks_since_rx <= 32'd0;
+        if (lk_rxval) begin
             lk_rx_dval <= 1'b1;
             lk_rx_data <= usb_rxdat;
-        end else if (lk_ticks_since_rx < ~32'd0) begin
-            lk_ticks_since_rx <= lk_ticks_since_rx + 32'd1;
         end
     end
 
@@ -1123,16 +1117,12 @@ module usbuvcuart_top(
     logic [11:0] lk_tx_read_p;
     logic [11:0] lk_tx_write_p;
 
-    logic lk_rx_more_packets;
-
     always @(posedge pClk) begin
         lk_txcork <= (lk_txdat_len < 12'd512) & (
             (lk_txdat_len == 12'd0)
             | lk_tx_dval
-            | (
-                lk_rx_more_packets
-                & (lk_ticks_since_rx < 32'd60_000)
-            ));
+            | lk_rx_more_packets
+        );
     end
 
     logic [11:0] lk_tx_remaining;
