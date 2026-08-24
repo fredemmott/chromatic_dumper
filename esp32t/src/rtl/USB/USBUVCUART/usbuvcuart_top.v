@@ -1134,10 +1134,6 @@ module usbuvcuart_top(
         end
     end
 
-    logic [7:0] lk_tx_buf [4095:0];
-    logic [11:0] lk_tx_read_p;
-    logic [11:0] lk_tx_write_p;
-
     logic [5:0] lk_uncork_timeout;
     always @(posedge pClk) begin
         if (lk_rxval) begin
@@ -1161,27 +1157,10 @@ module usbuvcuart_top(
             );
     end
 
-    assign lk_tx_remaining =
-        (lk_tx_write_p >= lk_tx_read_p)
-        ? (lk_tx_write_p - lk_tx_read_p)
-        : (13'd4096 - lk_tx_read_p + lk_tx_write_p);
-
-    always @(posedge pClk) begin
-        if (usb_busreset | RESET_IN | ~lk_enabled) begin
-            lk_txdat_len <= 12'd0;
-        end else if (!lk_txact) begin
-            lk_txdat_len <= (lk_tx_remaining > 13'd512) ? 12'd512 : lk_tx_remaining[11:0];
-        end
-    end
-
-    // Don't accept any more requests if our response queue is close to full
-    // an rx will be at most 512 bytes, which is 170-and-a-bit commands
-    // this will produce up (170 * 2) == 340 tx bytes
-    //
-    //    almost_full = capacity - max_produced
-    //                = 4096 - 340
-    //    ... to be safe, let's give space for two packets
-    assign lk_rxrdy = lk_tx_remaining <= 13'd3416;
+    logic [7:0] lk_tx_buf [4095:0];
+    logic [11:0] lk_tx_read_p;
+    logic [11:0] lk_tx_write_p;
+    assign lk_rxrdy = lk_tx_remaining < 13'd4096;
 
     always @(posedge pClk) begin
         lk_txdat <= lk_tx_buf[lk_tx_read_p + (lk_txpop ? 12'd1 : 12'd0)];
@@ -1189,18 +1168,31 @@ module usbuvcuart_top(
         if (usb_busreset | RESET_IN | ~lk_enabled) begin
             lk_tx_read_p <= 12'd0;
             lk_tx_write_p <= 12'd0;
+            lk_tx_remaining <= 13'd0;
         end else begin
             if (lk_txpop) begin
+                lk_tx_remaining <= lk_tx_remaining - 13'd1;
+
                 lk_tx_read_p <= lk_tx_read_p + 12'd1;
             end
 
             if (lk_tx_dval) begin
+                lk_tx_remaining <= lk_tx_remaining + 13'd1;
+
                 lk_tx_buf[lk_tx_write_p] <= lk_tx_data;
                 lk_tx_write_p <= lk_tx_write_p + 12'd1;
                 if (lk_tx_write_p == lk_tx_read_p) begin
                     lk_txdat <= lk_tx_data;
                 end
             end
+        end
+    end
+
+    always @(posedge pClk) begin
+        if (usb_busreset | RESET_IN | ~lk_enabled) begin
+            lk_txdat_len <= 12'd0;
+        end else if (!lk_txact) begin
+            lk_txdat_len <= (lk_tx_remaining > 13'd512) ? 12'd512 : lk_tx_remaining[11:0];
         end
     end
 
