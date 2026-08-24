@@ -1170,15 +1170,17 @@ module usbuvcuart_top(
             lk_tx_write_p <= 12'd0;
             lk_tx_remaining <= 13'd0;
         end else begin
-            if (lk_txpop) begin
-                lk_tx_remaining <= lk_tx_remaining - 13'd1;
+            unique case ({lk_txpop, lk_tx_dval})
+                2'b00, 2'b11: /* no change */ ;
+                2'b01: lk_tx_remaining <= lk_tx_remaining + 13'd1;
+                2'b10: lk_tx_remaining <= lk_tx_remaining - 13'd1;
+            endcase
 
+            if (lk_txpop) begin
                 lk_tx_read_p <= lk_tx_read_p + 12'd1;
             end
 
             if (lk_tx_dval) begin
-                lk_tx_remaining <= lk_tx_remaining + 13'd1;
-
                 lk_tx_buf[lk_tx_write_p] <= lk_tx_data;
                 lk_tx_write_p <= lk_tx_write_p + 12'd1;
                 if (lk_tx_write_p == lk_tx_read_p) begin
