@@ -1,14 +1,14 @@
 package lk_types;
 
-typedef enum logic [3:0] {
-  CMD_PING = 4'd0, // Use as NOP/delay
-  CMD_SET_PINS = 4'd1,
-  CMD_SET_OUTPUT_ENABLE = 4'd2,
-  CMD_SET_ADDRESS = 4'd3,
-  CMD_SET_DATA = 4'd4,
-  CMD_GET_DATA = 4'd5,
+typedef enum logic [7:0] {
+  CMD_NOP = 8'd0,
+  CMD_PING = 8'd1,
 
-  CMD_IDLE = 4'd6 // not a real command
+  CMD_SET_PINS = 8'd2,
+  CMD_SET_OUTPUT_ENABLE = 8'd3,
+  CMD_SET_ADDRESS = 8'd4,
+  CMD_SET_DATA = 8'd5,
+  CMD_GET_DATA = 8'd6
 } command_t;
 
 

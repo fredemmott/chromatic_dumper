@@ -64,7 +64,7 @@ logic [7:0] arg8a;
 logic [7:0] arg8b;
 
 assign have_command = (state == S_WAIT_ARG8B) && rx_valid;
-assign command = have_command ? command_t'(rx_buf[15:8]) : CMD_IDLE;
+assign command = have_command ? command_t'(rx_buf[15:8]) : CMD_NOP;
 assign arg8a = rx_buf[7:0];
 assign arg8b = rx_data;
 assign arg16 = {arg8a, arg8b};
@@ -84,37 +84,22 @@ always @(posedge usbClk) begin
     end
 end
 
-logic tx_valid_next;
-logic [7:0] tx_data_next;
-
 always @(posedge cartClk) begin
     tx_valid <= 1'b0;
     tx_data <= 8'd0;
 
-    tx_valid_next <= 1'b0;
-    tx_data_next <= 8'd0;
-
     if (!usbReset) begin
-        if (have_command) begin
-            tx_valid <= 1'b1;
-            tx_data <= 8'(command);
-
-            tx_valid_next <= 1'b1;
-            unique case (command)
-                CMD_PING: begin
-                    tx_data_next <= ~arg8a;
-                end
-                CMD_GET_DATA: begin
-                    tx_data_next <= cart_d_in;
-                end
-                default: begin
-                    tx_data_next <= 8'h01;
-                end
-            endcase
-        end else if (tx_valid_next ) begin
-            tx_valid <= 1'b1;
-            tx_data <= tx_data_next;
-        end
+        unique case (command)
+            CMD_PING: begin
+                tx_valid <= 1'b1;
+                tx_data <= ~arg8a;
+            end
+            CMD_GET_DATA: begin
+                tx_valid <= 1'b1;
+                tx_data <= cart_d_in;
+            end
+            default: /* nop */ ;
+        endcase
     end
 end
 
