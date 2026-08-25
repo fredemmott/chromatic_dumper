@@ -1160,7 +1160,15 @@ module usbuvcuart_top(
     logic [7:0] lk_tx_buf [4095:0];
     logic [11:0] lk_tx_read_p;
     logic [11:0] lk_tx_write_p;
-    assign lk_rxrdy = lk_tx_remaining < 13'd4096;
+
+    // Previously, did:
+    //
+    //     assign lk_rxrdy = lk_tx_remaining < 13'd4096;
+    // This no longer works as we don't ack every command; we need to still accept commands when there's no more
+    // response accepted, or capacity for response.
+    //
+    // This depends on the host to take the TX buffer size into account.
+    assign lk_rxrdy = 1'b1;
 
     always @(posedge pClk) begin
         lk_txdat <= lk_tx_buf[lk_tx_read_p + (lk_txpop ? 12'd1 : 12'd0)];
