@@ -41,33 +41,28 @@ end
 wire cartReset = lk_cdc_cart_reset[1];
 
 
-reg [15:0] rx_buf;
+reg [7:0] rx_data_d;
 
 always @(posedge usbClk) begin
     if (rx_valid) begin
-        rx_buf <= { rx_buf[7:0], rx_data };
+        rx_data_d <= rx_data;
     end
 end
 
 typedef enum {
   S_IDLE,
-  S_WAIT_ARG8A,
-  S_WAIT_ARG8B
+  S_WAIT_ARG
 } state_t;
 
 state_t state;
 
 logic have_command;
 command_t command;
-logic [15:0] arg16;
-logic [7:0] arg8a;
-logic [7:0] arg8b;
+logic [7:0] arg;
 
-assign have_command = (state == S_WAIT_ARG8B) && rx_valid;
-assign command = have_command ? command_t'(rx_buf[15:8]) : CMD_NOP;
-assign arg8a = rx_buf[7:0];
-assign arg8b = rx_data;
-assign arg16 = {arg8a, arg8b};
+assign have_command = (state == S_WAIT_ARG) && rx_valid;
+assign command = have_command ? command_t'(rx_data_d) : CMD_NOP;
+assign arg = rx_data;
 
 always @(posedge usbClk) begin
     state <= state;
@@ -76,9 +71,8 @@ always @(posedge usbClk) begin
         state <= S_IDLE;
     end else if (rx_valid) begin
         unique case (state)
-            S_IDLE: state <= S_WAIT_ARG8A;
-            S_WAIT_ARG8A: state <= S_WAIT_ARG8B;
-            S_WAIT_ARG8B: state <= S_IDLE;
+            S_IDLE: state <= S_WAIT_ARG;
+            S_WAIT_ARG: state <= S_IDLE;
             default: state <= S_IDLE;
         endcase
     end
@@ -92,7 +86,7 @@ always @(posedge cartClk) begin
         unique case (command)
             CMD_PING: begin
                 tx_valid <= 1'b1;
-                tx_data <= ~arg8a;
+                tx_data <= ~arg;
             end
             CMD_GET_DATA: begin
                 tx_valid <= 1'b1;
@@ -104,14 +98,13 @@ always @(posedge cartClk) begin
 end
 
 `define SET_PIN(TARGET, IDX) \
-        if (arg8a[IDX]) TARGET <= arg8b[IDX];
+        if (arg[IDX + 4]) TARGET <= arg[IDX];
 `define SET_TRISTATE_PIN(TARGET, IDX) \
-        if (arg8a[IDX]) begin \
+        if (arg[IDX + 4]) begin \
             TARGET.oe <= 1'b1; \
-            TARGET.value <= arg8b[IDX]; \
+            TARGET.value <= arg[IDX]; \
         end
 
-        // A15 is handled in SET_ADDRESS
 always @(posedge cartClk) begin
     if (cartReset) begin
         cart_clk <= 1'b1;
@@ -120,43 +113,42 @@ always @(posedge cartClk) begin
         cart_cs <= 1'b1;
         cart_rst <= '{default: 0};
         cart_audio <= '{default: 0};
-    end else if (command == CMD_SET_PINS) begin
-        `SET_PIN(cart_clk, SET_PIN_CLK);
-        `SET_PIN(cart_wr, SET_PIN_WR);
-        `SET_PIN(cart_rd, SET_PIN_RD)
-        `SET_PIN(cart_cs, SET_PIN_CS)
-        `SET_TRISTATE_PIN(cart_rst, SET_PIN_RST);
-        `SET_TRISTATE_PIN(cart_audio, SET_PIN_AUDIO);
-    end else if (command == CMD_SET_OUTPUT_ENABLE) begin
-        if (arg8a[OE_AUDIO]) begin
-            cart_audio.oe <= arg8b[OE_AUDIO];
-        end
-    end
-end
 
-always @(posedge cartClk) begin
-    if (cartReset) begin
+        cart_a <= 16'd0;
+        cart_d_out <= 8'd0;
         cart_data_dir_e <= 1'b1; // read
-    end else if ((command == CMD_SET_OUTPUT_ENABLE) && arg8a[OE_DATA]) begin
-        cart_data_dir_e <= ~arg8b[OE_DATA];
-    end
-end
-
-always @(posedge cartClk) begin
-    if (cartReset) begin
-        cart_a <= '{default: 0};
-    end else if (command == CMD_SET_ADDRESS) begin
-        cart_a <= arg16;
-    end else if ((command == CMD_SET_PINS) && arg8b[SET_PIN_A15]) begin
-        cart_a[15] <= arg8b[SET_PIN_A15];
-    end
-end
-
-always @(posedge cartClk) begin
-    if (cartReset) begin
-        cart_d_out <= '{default: 0};
-    end else if (command == CMD_SET_DATA) begin
-        cart_d_out <= arg8a;
+    end else begin
+        unique case (command)
+            CMD_SET_OUTPUT_ENABLE: begin
+                if (arg[OE_AUDIO + 4]) begin
+                    cart_audio.oe <= arg[OE_AUDIO];
+                end
+                if (arg[OE_DATA + 4]) begin
+                    cart_data_dir_e <= ~arg[OE_DATA];
+                end
+            end
+            CMD_SET_PINS_A: begin
+                `SET_PIN(cart_clk, SET_PINS_A_CLK);
+                `SET_PIN(cart_wr, SET_PINS_A_WR);
+                `SET_PIN(cart_rd, SET_PINS_A_RD)
+                `SET_PIN(cart_cs, SET_PINS_A_CS)
+            end
+            CMD_SET_PINS_B: begin
+                `SET_PIN(cart_a[15], SET_PINS_B_A15);
+                `SET_TRISTATE_PIN(cart_rst, SET_PINS_B_RST);
+                `SET_TRISTATE_PIN(cart_audio, SET_PINS_B_AUDIO);
+            end
+            CMD_SET_ADDRESS_MSB: begin
+                cart_a[15:8] <= arg;
+            end
+            CMD_SET_ADDRESS_LSB: begin
+                cart_a[7:0] <= arg;
+            end
+            CMD_SET_DATA: begin
+                cart_d_out[7:0] <= arg;
+            end
+            default: ;
+        endcase
     end
 end
 
