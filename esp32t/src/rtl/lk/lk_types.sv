@@ -1,17 +1,28 @@
 package lk_types;
 
+// All commands are two bytes: {command, arg}
+//
+// If a command doesn't take an argument, 'arg' is ignored
+//
+// - this allows creating a bunch of NOPs for delays with `memset()`
+// - this gives us consistent timing - except for the VERIFY commands - which
+//   is useful.
+// - it makes state machines simpler
 typedef enum logic [7:0] {
     CMD_NOP = 8'd0,
     CMD_PING = 8'd1, // ( cookie ) -> ~cookie
 
     CMD_SET_ADDRESS_MSB = 8'd2,
     CMD_SET_ADDRESS_LSB = 8'd3,
-    CMD_SET_OUTPUT_ENABLE = 8'd4, // (4 bits for OE pin select, 4 bits for values)
+    CMD_SET_OUTPUT_ENABLE = 8'd4, // ({4 bits for OE pin select, 4 bits for values})
     CMD_SET_DATA = 8'd5,
-    CMD_GET_DATA = 8'd6, // no arg, provided by CMD_SET_ADDRESS_LSB)
-    CMD_SET_PINS_A = 8'd7, // (4 bits for pin select, 4 bits for values)
-    CMD_SET_PINS_B = 8'd8, // ditto
-    CMD_VERIFY_DATA = 8'd9 // (expected byte)
+    CMD_GET_DATA = 8'd6,
+    CMD_SET_PINS_A = 8'd7, // ({4 bits for pin select, 4 bits for values})
+    CMD_SET_PINS_B = 8'd8, // ({4 bits for pin select, 4 bits for values})
+    CMD_VERIFY_DATA = 8'd9, // (expected byte)
+    CMD_VERIFY_STATUS_REGISTER = 8'd10, // arg ignored
+    CMD_SET_STATUS_REGISTER_MASK = 8'd11,
+    CMD_SET_STATUS_REGISTER_VALUE = 8'd12
 } command_t;
 
 function command_produces_tx (command_t cmd);
@@ -20,6 +31,7 @@ function command_produces_tx (command_t cmd);
             CMD_GET_DATA,
             CMD_PING,
             CMD_VERIFY_DATA: return 1'b1;
+            CMD_VERIFY_STATUS_REGISTER: return 1'b1;
             default: return 1'b0;
         endcase
     end

@@ -41,7 +41,7 @@ wire [7:0] next_byte = fifo_q;
 typedef enum {
   S_IDLE,
   S_WAIT_ARG,
-  S_EXEC_VERIFY_DATA
+  S_EXEC_VERIFY // post-write CMD_VERIFY_DATA or CMD_VERIFY_STATUS_REGISTER
 } state_t;
 state_t state;
 state_t state_d;
@@ -82,12 +82,12 @@ always @(posedge clk) begin
 end
 
 typedef enum {
-    VDS_PIN_RD_L,
-    VDS_DELAY,
-    VDS_PIN_RD_H, // also read and TX here
-    VDS_COMPLETE
-} verify_data_state_t;
-verify_data_state_t verify_data_state;
+    VS_PIN_RD_L,
+    VS_DELAY,
+    VS_PIN_RD_H, // also read and TX here
+    VS_COMPLETE
+} verify_state_t;
+verify_state_t verify_state;
 
 command_t command;
 command_t command_latched;
@@ -123,8 +123,8 @@ always @(posedge clk) begin
         state <= S_IDLE;
         command_latched <= CMD_NOP;
         arg_latched <= 8'd0;
-    end else if (state == S_EXEC_VERIFY_DATA) begin
-        if (verify_data_state == VDS_COMPLETE) begin
+    end else if (state == S_EXEC_VERIFY) begin
+        if (verify_state == VS_COMPLETE) begin
             state <= S_IDLE;
         end
     end else if (next_byte_valid) begin
@@ -137,68 +137,70 @@ always @(posedge clk) begin
             S_WAIT_ARG: begin
                 arg_latched <= next_byte;
 
-                if (command == CMD_VERIFY_DATA) begin
-                    state <= S_EXEC_VERIFY_DATA;
-                end else begin
-                    state <= S_IDLE;
-                end
+                unique case (command)
+                    CMD_VERIFY_DATA: state <= S_EXEC_VERIFY;
+                    CMD_VERIFY_STATUS_REGISTER: state <= S_EXEC_VERIFY;
+                    default: state <= S_IDLE;
+                endcase
             end
-            S_EXEC_VERIFY_DATA: /* nothing */ ;
+            S_EXEC_VERIFY: /* nothing */ ;
             default: state <= S_IDLE;
         endcase
     end
 end
 
-always @(posedge clk) begin
-    tx_valid <= 1'b0;
-    tx_data <= 8'd0;
+logic [7:0] status_register_mask;
+logic [7:0] status_register_value;
 
-    if (!reset) begin
+always @(posedge clk) begin
+    if (reset) begin
+        status_register_mask <= 8'd0;
+        status_register_value <= 8'd0;
+    end else if (next_byte_valid) begin
         unique case (command)
-            CMD_PING: begin
-                tx_valid <= 1'b1;
-                tx_data <= ~arg;
-            end
-            CMD_GET_DATA: begin
-                tx_valid <= 1'b1;
-                tx_data <= cart_d_in;
-            end
-            CMD_VERIFY_DATA: begin
-                tx_valid <= (verify_data_state == VDS_COMPLETE);
-                tx_data <= cart_d_in;
-            end
-            default: /* nop */ ;
+            CMD_SET_STATUS_REGISTER_MASK: status_register_mask <= next_byte;
+            CMD_SET_STATUS_REGISTER_VALUE: status_register_value <= next_byte;
+            default: /* nothing */;
         endcase
     end
 end
 
-logic [4:0] verify_data_delay;
-logic [31:0] verify_data_timeout;
+logic [4:0] verify_delay;
+logic [31:0] verify_timeout;
+
+logic verify_pass;
+always @(*) begin
+    unique case (command)
+        CMD_VERIFY_DATA: verify_pass = (cart_d_in == arg);
+        CMD_VERIFY_STATUS_REGISTER: verify_pass = (cart_d_in & status_register_mask) == status_register_value;
+        default: verify_pass = 1'b0;
+    endcase
+end
 
 always @(posedge clk) begin
-    if (state != S_EXEC_VERIFY_DATA) begin
-        verify_data_delay <= 5'd24; // 400ns in 16.667ns ticks
-        verify_data_timeout <= 32'd18_000; // 300usec in 16.667 ticks
-        verify_data_state <= VDS_PIN_RD_L;
+    if (state != S_EXEC_VERIFY) begin
+        verify_delay <= 5'd24; // 400ns in 16.667ns ticks
+        verify_timeout <= 32'd18_000; // 300usec in 16.667 ticks
+        verify_state <= VS_PIN_RD_L;
     end else begin
-        if (verify_data_timeout > 32'd0) begin
-            verify_data_timeout <= verify_data_timeout - 32'd1;
+        if (verify_timeout > 32'd0) begin
+            verify_timeout <= verify_timeout - 32'd1;
         end
-        unique case (verify_data_state)
-            VDS_PIN_RD_L: verify_data_state <= VDS_DELAY;
-            VDS_DELAY: begin
-                if (verify_data_delay > 5'd0) begin
-                    verify_data_delay <= verify_data_delay - 5'd1;
+        unique case (verify_state)
+            VS_PIN_RD_L: verify_state <= VS_DELAY;
+            VS_DELAY: begin
+                if (verify_delay > 5'd0) begin
+                    verify_delay <= verify_delay - 5'd1;
                 end else begin
-                    verify_data_state <= VDS_PIN_RD_H;
+                    verify_state <= VS_PIN_RD_H;
                 end
             end
-            VDS_PIN_RD_H: begin
-                if ((cart_d_in == arg) || verify_data_timeout == 32'd0) begin
-                    verify_data_state <= VDS_COMPLETE;
+            VS_PIN_RD_H: begin
+                if (verify_pass || (verify_timeout == 32'd0)) begin
+                    verify_state <= VS_COMPLETE;
                 end else begin
-                    verify_data_delay <= 5'd24; // 400ns in 16.667ns ticks
-                    verify_data_state <= VDS_PIN_RD_L;
+                    verify_delay <= 5'd24; // 400ns in 16.667ns ticks
+                    verify_state <= VS_PIN_RD_L;
                 end
             end
             default: ;
@@ -259,13 +261,36 @@ always @(posedge clk) begin
             default: ;
         endcase
 
-        if (state == S_EXEC_VERIFY_DATA) begin
-            unique case (verify_data_state)
-                VDS_PIN_RD_L: cart_rd <= 1'b0;
-                VDS_PIN_RD_H: cart_rd <= 1'b1;
+        if (state == S_EXEC_VERIFY) begin
+            unique case (verify_state)
+                VS_PIN_RD_L: cart_rd <= 1'b0;
+                VS_PIN_RD_H: cart_rd <= 1'b1;
                 default: /* nothing */ ;
             endcase
         end
+    end
+end
+
+always @(posedge clk) begin
+    tx_valid <= 1'b0;
+    tx_data <= 8'd0;
+
+    if (!reset) begin
+        unique case (command)
+            CMD_PING: begin
+                tx_valid <= 1'b1;
+                tx_data <= ~arg;
+            end
+            CMD_GET_DATA: begin
+                tx_valid <= 1'b1;
+                tx_data <= cart_d_in;
+            end
+            CMD_VERIFY_DATA, CMD_VERIFY_STATUS_REGISTER: begin
+                tx_valid <= (verify_state == VS_COMPLETE);
+                tx_data <= verify_pass;
+            end
+            default: /* nop */ ;
+        endcase
     end
 end
 
