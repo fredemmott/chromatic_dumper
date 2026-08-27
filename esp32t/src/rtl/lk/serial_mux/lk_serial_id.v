@@ -10,7 +10,7 @@ localparam ROM_BLOB = {
     "fredemmott/FlashGBX", 8'h00,
 
     // Our version timestamp - BCD
-    /* YYYY */ 8'h20, 8'h26, /* MM */ 8'h08, /*  DD */ 8'h18,
+    /* YYYY */ 8'h20, 8'h26, /* MM */ 8'h08, /*  DD */ 8'h27,
 
     // If we do multiple builds on the same day... __NOT__ BCD!
     8'd00, // Revision
