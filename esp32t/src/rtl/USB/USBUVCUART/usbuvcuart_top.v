@@ -46,8 +46,9 @@ module usbuvcuart_top(
     input               lk_tx_dval,
     input[7:0]          lk_tx_data,
 
-    output reg           lk_rx_dval,
-    output reg [7:0]     lk_rx_data
+    input               lk_rx_rdy,
+    output reg          lk_rx_dval,
+    output reg [7:0]    lk_rx_data
 );
 
     wire yLineValid;
@@ -171,7 +172,6 @@ module usbuvcuart_top(
     reg [11:0]  audio_txdat_len;
     reg         audio_txcork;
 
-    logic        lk_rxrdy;
     logic [7:0]  lk_txdat;
     logic [11:0] lk_txdat_len;
     logic        lk_txcork;
@@ -236,7 +236,7 @@ module usbuvcuart_top(
                         1'b1;
 
     assign usb_rxrdy = (endpt_sel == EP_UART) ? uart_rxrdy :
-                       (endpt_sel == EP_FLASHGBX) ? lk_rxrdy :
+                       (endpt_sel == EP_FLASHGBX) ? lk_rx_rdy:
                        (endpt_sel == EP_CTRL) ? 1'b1 : 1'b0;
 
     /* TODO: txiso_pid_i(iso_pid_data) shall be per endpoint, but so far
@@ -1160,15 +1160,6 @@ module usbuvcuart_top(
     logic [7:0] lk_tx_buf [4095:0];
     logic [11:0] lk_tx_read_p;
     logic [11:0] lk_tx_write_p;
-
-    // Previously, did:
-    //
-    //     assign lk_rxrdy = lk_tx_remaining < 13'd4096;
-    // This no longer works as we don't ack every command; we need to still accept commands when there's no more
-    // response accepted, or capacity for response.
-    //
-    // This depends on the host to take the TX buffer size into account.
-    assign lk_rxrdy = 1'b1;
 
     always @(posedge pClk) begin
         lk_txdat <= lk_tx_buf[lk_tx_read_p + (lk_txpop ? 12'd1 : 12'd0)];

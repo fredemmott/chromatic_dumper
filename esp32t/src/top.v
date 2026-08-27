@@ -433,11 +433,6 @@ module top #(parameter ISSIMU=0)
     wire lcd_off_overwrite;
 
     // FlashGBX "LK" firmware
-    wire      lk_tx_dval;
-    wire[7:0] lk_tx_data;
-    wire      lk_rx_dval;
-    wire[7:0] lk_rx_data;
-
     wire lk_cart_enabled;
 
     wire [15:0] lk_cart_a;
@@ -704,6 +699,7 @@ module top #(parameter ISSIMU=0)
     wire       LK_ENABLED;
     wire       LK_TX_DVAL;
     wire [7:0] LK_TX_DATA;
+    wire       LK_RX_RDY;
     wire       LK_RX_DVAL;
     wire [7:0] LK_RX_DATA;
     usbuvcuart_top u_usb_top(
@@ -738,6 +734,7 @@ module top #(parameter ISSIMU=0)
         .lk_enabled(LK_ENABLED),
         .lk_tx_dval(LK_TX_DVAL),
         .lk_tx_data(LK_TX_DATA),
+        .lk_rx_rdy(LK_RX_RDY),
         .lk_rx_dval(LK_RX_DVAL),
         .lk_rx_data(LK_RX_DATA)
     );
@@ -846,9 +843,9 @@ module top #(parameter ISSIMU=0)
 
     // FlashGBX "LK" protocol
     lk_top u_lk(
-        .usbClk         (PHY_CLKOUT),
-        .cartClk        (PHY_CLKOUT),
+        .clk            (PHY_CLKOUT),
         .reset          (!LK_ENABLED),
+        .rx_ready       (LK_RX_RDY),
         .rx_valid       (LK_RX_DVAL),
         .rx_data        (LK_RX_DATA),
         .tx_valid       (LK_TX_DVAL),

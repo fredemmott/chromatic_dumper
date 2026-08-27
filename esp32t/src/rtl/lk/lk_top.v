@@ -1,11 +1,10 @@
 import lk_types::*;
 
 module lk_top(
-    input  wire        usbClk,
-    input  wire        cartClk,
+    input  wire        clk,
     input  wire        reset,
 
-    // USB-CDC
+    output reg         rx_ready,
     input  wire        rx_valid,
     input  wire [7:0]  rx_data,
     output reg         tx_valid,
@@ -26,63 +25,135 @@ module lk_top(
 );
 assign cart_enabled = 1'b1;
 
-(* syn_preserve *) reg [1:0] lk_cdc_usb_reset;
-always @(posedge usbClk or posedge reset) begin
-    if (reset) lk_cdc_usb_reset <= 2'b11;
-    else       lk_cdc_usb_reset <= { lk_cdc_usb_reset[0], 1'b0 };
+logic [7:0] fifo [2047:0];
+logic [10:0] fifo_read_p;
+logic [10:0] fifo_write_p;
+logic [11:0] fifo_count;
+logic [7:0] fifo_q;
+assign fifo_q = fifo[fifo_read_p];
+assign rx_ready = (fifo_count <= 12'd1536); // 2048 - 512 (max packet size)
+
+wire next_byte_valid = fifo_count > 12'd0;
+wire [7:0] next_byte = fifo_q;
+//wire next_byte_valid = rx_valid;
+//wire [7:0] next_byte = rx_data;
+
+typedef enum {
+  S_IDLE,
+  S_WAIT_ARG,
+  S_EXEC_VERIFY_DATA
+} state_t;
+state_t state;
+state_t state_d;
+always @(posedge clk) begin
+    state_d <= state;
 end
-wire usbReset = lk_cdc_usb_reset[1];
 
-(* syn_preserve *) reg [1:0] lk_cdc_cart_reset;
-always @(posedge cartClk or posedge reset) begin
-    if (reset) lk_cdc_cart_reset <= 2'b11;
-    else       lk_cdc_cart_reset <= { lk_cdc_cart_reset[0], 1'b0 };
+logic next_byte_pop;
+always @(*) begin
+    next_byte_pop = 1'b0;
+    if (next_byte_valid) begin
+        unique case (state)
+            S_IDLE, S_WAIT_ARG: next_byte_pop = 1'b1;
+            default: ;
+        endcase
+    end
 end
-wire cartReset = lk_cdc_cart_reset[1];
 
-
-reg [7:0] rx_data_d;
-
-always @(posedge usbClk) begin
-    if (rx_valid) begin
-        rx_data_d <= rx_data;
+always @(posedge clk) begin
+    if (reset) begin
+        fifo_count <= 12'd0;
+        fifo_read_p <= 11'd0;
+        fifo_write_p <= 11'd0;
+    end else begin
+        if (rx_valid) begin
+            fifo[fifo_write_p] <= rx_data;
+            fifo_write_p <= fifo_write_p + 11'd1;
+        end
+        if (next_byte_pop) begin
+            fifo_read_p <= fifo_read_p + 11'd1;
+        end
+        unique case ({rx_valid, next_byte_pop})
+            2'b00, 2'b11: /* no change to count */ ;
+            2'b01: fifo_count <= fifo_count - 12'd1;
+            2'b10: fifo_count <= fifo_count + 12'd1;
+        endcase
     end
 end
 
 typedef enum {
-  S_IDLE,
-  S_WAIT_ARG
-} state_t;
+    VDS_PIN_RD_L,
+    VDS_DELAY,
+    VDS_PIN_RD_H, // also read and TX here
+    VDS_COMPLETE
+} verify_data_state_t;
+verify_data_state_t verify_data_state;
 
-state_t state;
-
-logic have_command;
 command_t command;
+command_t command_latched;
 logic [7:0] arg;
+logic [7:0] arg_latched;
 
-assign have_command = (state == S_WAIT_ARG) && rx_valid;
-assign command = have_command ? command_t'(rx_data_d) : CMD_NOP;
-assign arg = rx_data;
+always @(*) begin
+    command = CMD_NOP;
+    arg = 8'd0;
+    unique case (state)
+        S_IDLE: /* nop */;
+        S_WAIT_ARG: begin
+            // NOP *until* we receive the arg byte, then we have everything
+            if (next_byte_valid) begin
+                command = command_latched;
+                arg = next_byte;
+            end
+        end
+        default: begin
+            command = command_latched;
+            arg = arg_latched;
+        end
+    endcase
+end
 
-always @(posedge usbClk) begin
+
+always @(posedge clk) begin
     state <= state;
+    command_latched <= command_latched;
+    arg_latched <= arg_latched;
 
-    if (usbReset) begin
+    if (reset) begin
         state <= S_IDLE;
-    end else if (rx_valid) begin
+        command_latched <= CMD_NOP;
+        arg_latched <= 8'd0;
+    end else if (state == S_EXEC_VERIFY_DATA) begin
+        if (verify_data_state == VDS_COMPLETE) begin
+            state <= S_IDLE;
+        end
+    end else if (next_byte_valid) begin
         unique case (state)
-            S_IDLE: state <= S_WAIT_ARG;
-            S_WAIT_ARG: state <= S_IDLE;
+            S_IDLE: begin
+                command_latched <= command_t'(next_byte);
+
+                state <= S_WAIT_ARG;
+            end
+            S_WAIT_ARG: begin
+                arg_latched <= next_byte;
+
+                if (command == CMD_VERIFY_DATA) begin
+                    state <= S_EXEC_VERIFY_DATA;
+                end else begin
+                    state <= S_IDLE;
+                end
+            end
+            S_EXEC_VERIFY_DATA: /* nothing */ ;
             default: state <= S_IDLE;
         endcase
     end
 end
 
-always @(posedge cartClk) begin
+always @(posedge clk) begin
     tx_valid <= 1'b0;
     tx_data <= 8'd0;
 
-    if (!usbReset) begin
+    if (!reset) begin
         unique case (command)
             CMD_PING: begin
                 tx_valid <= 1'b1;
@@ -92,7 +163,45 @@ always @(posedge cartClk) begin
                 tx_valid <= 1'b1;
                 tx_data <= cart_d_in;
             end
+            CMD_VERIFY_DATA: begin
+                tx_valid <= (verify_data_state == VDS_COMPLETE);
+                tx_data <= cart_d_in;
+            end
             default: /* nop */ ;
+        endcase
+    end
+end
+
+logic [4:0] verify_data_delay;
+logic [31:0] verify_data_timeout;
+
+always @(posedge clk) begin
+    if (state != S_EXEC_VERIFY_DATA) begin
+        verify_data_delay <= 5'd24; // 400ns in 16.667ns ticks
+        verify_data_timeout <= 32'd18_000; // 300usec in 16.667 ticks
+        verify_data_state <= VDS_PIN_RD_L;
+    end else begin
+        if (verify_data_timeout > 32'd0) begin
+            verify_data_timeout <= verify_data_timeout - 32'd1;
+        end
+        unique case (verify_data_state)
+            VDS_PIN_RD_L: verify_data_state <= VDS_DELAY;
+            VDS_DELAY: begin
+                if (verify_data_delay > 5'd0) begin
+                    verify_data_delay <= verify_data_delay - 5'd1;
+                end else begin
+                    verify_data_state <= VDS_PIN_RD_H;
+                end
+            end
+            VDS_PIN_RD_H: begin
+                if ((cart_d_in == arg) || verify_data_timeout == 32'd0) begin
+                    verify_data_state <= VDS_COMPLETE;
+                end else begin
+                    verify_data_delay <= 5'd24; // 400ns in 16.667ns ticks
+                    verify_data_state <= VDS_PIN_RD_L;
+                end
+            end
+            default: ;
         endcase
     end
 end
@@ -105,8 +214,8 @@ end
             TARGET.value <= arg[IDX]; \
         end
 
-always @(posedge cartClk) begin
-    if (cartReset) begin
+always @(posedge clk) begin
+    if (reset) begin
         cart_clk <= 1'b1;
         cart_wr <= 1'b1;
         cart_rd <= 1'b1;
@@ -149,6 +258,14 @@ always @(posedge cartClk) begin
             end
             default: ;
         endcase
+
+        if (state == S_EXEC_VERIFY_DATA) begin
+            unique case (verify_data_state)
+                VDS_PIN_RD_L: cart_rd <= 1'b0;
+                VDS_PIN_RD_H: cart_rd <= 1'b1;
+                default: /* nothing */ ;
+            endcase
+        end
     end
 end
 

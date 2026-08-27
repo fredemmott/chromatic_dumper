@@ -2,17 +2,28 @@ package lk_types;
 
 typedef enum logic [7:0] {
     CMD_NOP = 8'd0,
-    CMD_PING = 8'd1,
+    CMD_PING = 8'd1, // ( cookie ) -> ~cookie
 
     CMD_SET_ADDRESS_MSB = 8'd2,
     CMD_SET_ADDRESS_LSB = 8'd3,
-    CMD_SET_OUTPUT_ENABLE = 8'd4,
+    CMD_SET_OUTPUT_ENABLE = 8'd4, // (4 bits for OE pin select, 4 bits for values)
     CMD_SET_DATA = 8'd5,
-    CMD_GET_DATA = 8'd6,
-    CMD_SET_PINS_A = 8'd7,
-    CMD_SET_PINS_B = 8'd8
+    CMD_GET_DATA = 8'd6, // no arg, provided by CMD_SET_ADDRESS_LSB)
+    CMD_SET_PINS_A = 8'd7, // (4 bits for pin select, 4 bits for values)
+    CMD_SET_PINS_B = 8'd8, // ditto
+    CMD_VERIFY_DATA = 8'd9 // (expected byte)
 } command_t;
 
+function command_produces_tx (command_t cmd);
+    begin
+        unique case(cmd)
+            CMD_GET_DATA,
+            CMD_PING,
+            CMD_VERIFY_DATA: return 1'b1;
+            default: return 1'b0;
+        endcase
+    end
+endfunction
 
 typedef struct {
     logic oe;
