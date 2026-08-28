@@ -22,16 +22,20 @@ typedef enum logic [7:0] {
     CMD_VERIFY_DATA = 8'd9, // (expected byte)
     CMD_VERIFY_STATUS_REGISTER = 8'd10, // arg ignored
     CMD_SET_STATUS_REGISTER_MASK = 8'd11,
-    CMD_SET_STATUS_REGISTER_VALUE = 8'd12
+    CMD_SET_STATUS_REGISTER_VALUE = 8'd12,
+    CMD_GET_STATE_BITS = 8'd13,
+    CMD_SET_CART_POWER = 8'd14 // (0 or 1)
 } command_t;
+
 
 function command_produces_tx (command_t cmd);
     begin
         unique case(cmd)
             CMD_GET_DATA,
             CMD_PING,
-            CMD_VERIFY_DATA: return 1'b1;
-            CMD_VERIFY_STATUS_REGISTER: return 1'b1;
+            CMD_VERIFY_DATA,
+            CMD_VERIFY_STATUS_REGISTER,
+            CMD_GET_STATE_BITS: return 1'b1;
             default: return 1'b0;
         endcase
     end
@@ -43,6 +47,10 @@ typedef struct {
 } tristate_pin_t;
 
 // indicies for bitmasks
+
+localparam STATE_BIT_CART_PRESENT = 0;
+localparam STATE_BIT_CART_ENABLED = 1;
+
 localparam SET_PINS_A_CLK = 0;
 localparam SET_PINS_A_WR = 1;
 localparam SET_PINS_A_RD = 2;

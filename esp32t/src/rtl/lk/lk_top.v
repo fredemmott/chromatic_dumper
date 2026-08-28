@@ -11,6 +11,7 @@ module lk_top(
     output reg  [7:0]  tx_data,
 
     output reg         cart_enabled,
+    input  wire        cart_det,
 
     output reg  [15:0] cart_a,
     output reg         cart_a_oe,
@@ -24,7 +25,6 @@ module lk_top(
     output tristate_pin_t cart_rst,
     output tristate_pin_t cart_audio
 );
-assign cart_enabled = 1'b1;
 
 logic [7:0] fifo [2047:0];
 logic [10:0] fifo_read_p;
@@ -278,6 +278,14 @@ always @(posedge clk) begin
 end
 
 always @(posedge clk) begin
+    if (reset) begin
+        cart_enabled <= 1'b0;
+    end else if (command == CMD_SET_CART_POWER) begin
+        cart_enabled <= next_byte[0];
+    end
+end
+
+always @(posedge clk) begin
     tx_valid <= 1'b0;
     tx_data <= 8'd0;
 
@@ -294,6 +302,12 @@ always @(posedge clk) begin
             CMD_VERIFY_DATA, CMD_VERIFY_STATUS_REGISTER: begin
                 tx_valid <= (verify_state == VS_COMPLETE);
                 tx_data <= verify_pass;
+            end
+            CMD_GET_STATE_BITS: begin
+                tx_valid <= 1'b1;
+                tx_data <= 8'd0;
+                tx_data[STATE_BIT_CART_PRESENT] <= cart_det;
+                tx_data[STATE_BIT_CART_ENABLED] <= cart_enabled;
             end
             default: /* nop */ ;
         endcase

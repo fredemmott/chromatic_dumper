@@ -879,6 +879,7 @@ module top #(parameter ISSIMU=0)
         .tx_valid       (LK_TX_DVAL),
         .tx_data        (LK_TX_DATA),
         .cart_enabled   (lk_cart_enabled),
+        .cart_det       (CART_DET),
         .cart_a         (lk_cart_a),
         .cart_a_oe      (lk_cart_a_oe),
         .cart_clk       (lk_cart_clk),
