@@ -20,13 +20,13 @@ module top #(parameter ISSIMU=0)
     input               BTN_START,
 
     inout   [15:0]      CART_A,
-    output              CART_CLK,
-    output              CART_CS,
+    inout               CART_CLK,
+    inout               CART_CS,
     inout   [7:0]       CART_D,
-    output              CART_RD,
+    inout               CART_RD,
     inout               CART_RST,
-    output              CART_WR,
-    output              CART_DATA_DIR_E,
+    inout               CART_WR,
+    inout               CART_DATA_DIR_E,
 
     input               CART_DET,
     // FlashGBX LK: inout because some flash cartridges need this held high to enable flash chip commands
@@ -436,6 +436,7 @@ module top #(parameter ISSIMU=0)
     wire lk_cart_enabled;
 
     wire [15:0] lk_cart_a;
+    wire lk_cart_a_oe;
     wire lk_cart_clk;
     wire lk_cart_cs;
     wire [7:0] lk_cart_d_in;
@@ -463,32 +464,59 @@ module top #(parameter ISSIMU=0)
     // _DIR_E can be thought of as 'is read'
 
     // LK/EMU MUX: output ----------------------------------------
-    wire cart_enabled = lk_enabled ? lk_cart_enabled : 1;
+    wire cart_disabled = lk_enabled & !lk_cart_enabled;
+    wire cart_a_is_input =
+        cart_disabled ? 1'b1 :
+        lk_enabled ? (~lk_cart_a_oe) :
+        1'b0;
+    wire cart_d_is_input =
+        cart_disabled ? 1'b1 :
+        lk_enabled ? lk_cart_data_dir_e :
+        emu_cart_data_dir_e;
+    wire cart_rst_is_input =
+        cart_disabled ? 1'b1 :
+        lk_enabled ? (~lk_cart_rst.oe) :
+        1'b1;
+    wire cart_audio_is_input =
+        cart_disabled ? 1'b1 :
+        lk_enabled ? (~lk_cart_audio.oe) :
+        1'b1;
 
-    wire [15:0] cart_a = lk_enabled ? lk_cart_a : emu_cart_a;
-    assign CART_A = cart_enabled ? cart_a : 'bZ;
+    assign CART_DATA_DIR_E = cart_disabled ? 1'bZ : cart_d_is_input;
 
-    assign CART_CLK = lk_enabled ? lk_cart_clk : emu_cart_clk;
-    assign CART_CS = lk_enabled ? lk_cart_cs : emu_cart_cs;
-    assign CART_RD = lk_enabled ? lk_cart_rd : emu_cart_rd;
-    assign CART_WR = lk_enabled ? lk_cart_wr : emu_cart_wr;
-    assign CART_DATA_DIR_E = lk_enabled ? lk_cart_data_dir_e : emu_cart_data_dir_e;
+    assign CART_A =
+        cart_a_is_input ? 16'bZ :
+        lk_enabled ? lk_cart_a :
+        emu_cart_a;
+    assign CART_CLK =
+        cart_disabled ? 1'bZ :
+        lk_enabled ? lk_cart_clk :
+        emu_cart_clk;
+    assign CART_CS =
+        cart_disabled ? 1'bZ :
+        lk_enabled ? lk_cart_cs :
+        emu_cart_cs;
+    assign CART_D =
+        cart_d_is_input ? 8'bZ :
+        lk_enabled ? lk_cart_d_out :
+        emu_cart_d_out;
+    assign CART_RD =
+        cart_disabled ? 1'bZ :
+        lk_enabled ? lk_cart_rd :
+        emu_cart_rd;
+    assign CART_RST =
+        cart_rst_is_input ? 1'bZ :
+        lk_cart_rst.value; // always input for emu
+    assign CART_WR =
+        cart_disabled ? 1'bZ :
+        lk_enabled ? lk_cart_wr :
+        emu_cart_wr;
+    assign CART_AUDIN =
+        cart_audio_is_input ? 1'bZ :
+        lk_cart_audio.value; // unused by emu, treat as always input
 
-    // LK only writes, emu only reads
-    assign CART_RST = (lk_enabled && lk_cart_rst.oe) ? lk_cart_rst.value : 1'bZ;
-    assign emu_cart_rst_in = lk_enabled ? 1'b0 : CART_RST;
-
-    // LK/EMU MUX: inout -----------------------------------------
-    wire [7:0] cart_d_in = CART_D;
-    wire [7:0] cart_d_out = lk_enabled ? lk_cart_d_out : emu_cart_d_out;
-    // Not actually used by the Chromatic firmware anywehere
-    assign CART_AUDIN = (lk_enabled && lk_cart_audio.oe) ? lk_cart_audio.value : 1'bZ;
-
-
-    assign emu_cart_d_in = (emu_cart_data_dir_e && !lk_enabled) ? cart_d_in : 8'h00;
-    assign lk_cart_d_in = (lk_cart_data_dir_e && lk_enabled) ? cart_d_in : 8'h00;
-
-    assign CART_D = CART_DATA_DIR_E ? 8'hZZ : cart_d_out;
+    assign emu_cart_d_in = (emu_cart_data_dir_e && !lk_enabled) ? CART_D : 8'h00;
+    assign lk_cart_d_in = (lk_cart_data_dir_e && lk_enabled) ? CART_D : 8'h00;
     // END LK/EMU MUX
 
     wire [8:0] MCU_buttons;
@@ -852,6 +880,7 @@ module top #(parameter ISSIMU=0)
         .tx_data        (LK_TX_DATA),
         .cart_enabled   (lk_cart_enabled),
         .cart_a         (lk_cart_a),
+        .cart_a_oe      (lk_cart_a_oe),
         .cart_clk       (lk_cart_clk),
         .cart_cs        (lk_cart_cs),
         .cart_rd        (lk_cart_rd),

@@ -54,5 +54,6 @@ localparam SET_PINS_B_AUDIO = 2;
 
 localparam OE_AUDIO = 0;
 localparam OE_DATA = 1;
+localparam OE_ADDRESS = 2;
 
 endpackage

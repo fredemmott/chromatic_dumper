@@ -13,6 +13,7 @@ module lk_top(
     output reg         cart_enabled,
 
     output reg  [15:0] cart_a,
+    output reg         cart_a_oe,
     output reg         cart_clk,
     output reg         cart_cs,
     output reg         cart_rd,
@@ -228,6 +229,8 @@ always @(posedge clk) begin
         cart_a <= 16'd0;
         cart_d_out <= 8'd0;
         cart_data_dir_e <= 1'b1; // read
+
+        cart_a_oe <= 1'b1;
     end else begin
         unique case (command)
             CMD_SET_OUTPUT_ENABLE: begin
@@ -236,6 +239,9 @@ always @(posedge clk) begin
                 end
                 if (arg[OE_DATA + 4]) begin
                     cart_data_dir_e <= ~arg[OE_DATA];
+                end
+                if (arg[OE_ADDRESS + 4]) begin
+                    cart_a_oe <= arg[OE_ADDRESS];
                 end
             end
             CMD_SET_PINS_A: begin
