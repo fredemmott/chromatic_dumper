@@ -168,6 +168,7 @@ end
 
 logic [4:0] verify_delay;
 logic [31:0] verify_timeout;
+logic [7:0] verify_result;
 
 logic verify_pass;
 always @(*) begin
@@ -198,6 +199,7 @@ always @(posedge clk) begin
             end
             VS_PIN_RD_H: begin
                 if (verify_pass || (verify_timeout == 32'd0)) begin
+                    verify_result <= cart_d_in;
                     verify_state <= VS_COMPLETE;
                 end else begin
                     verify_delay <= 5'd24; // 400ns in 16.667ns ticks
@@ -301,7 +303,7 @@ always @(posedge clk) begin
             end
             CMD_VERIFY_DATA, CMD_VERIFY_STATUS_REGISTER: begin
                 tx_valid <= (verify_state == VS_COMPLETE);
-                tx_data <= verify_pass;
+                tx_data <= verify_result;
             end
             CMD_GET_STATE_BITS: begin
                 tx_valid <= 1'b1;
