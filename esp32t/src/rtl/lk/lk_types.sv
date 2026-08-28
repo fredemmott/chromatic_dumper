@@ -23,8 +23,7 @@ typedef enum logic [7:0] {
     CMD_VERIFY_STATUS_REGISTER = 8'd10, // arg ignored
     CMD_SET_STATUS_REGISTER_MASK = 8'd11,
     CMD_SET_STATUS_REGISTER_VALUE = 8'd12,
-    CMD_GET_STATE_BITS = 8'd13,
-    CMD_SET_CART_POWER = 8'd14 // (0 or 1)
+    CMD_GET_STATE_BITS = 8'd13
 } command_t;
 
 
@@ -49,7 +48,6 @@ typedef struct {
 // indicies for bitmasks
 
 localparam STATE_BIT_CART_PRESENT = 0;
-localparam STATE_BIT_CART_ENABLED = 1;
 
 localparam SET_PINS_A_CLK = 0;
 localparam SET_PINS_A_WR = 1;

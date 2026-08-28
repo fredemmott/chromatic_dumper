@@ -279,13 +279,7 @@ always @(posedge clk) begin
     end
 end
 
-always @(posedge clk) begin
-    if (reset) begin
-        cart_enabled <= 1'b0;
-    end else if (command == CMD_SET_CART_POWER) begin
-        cart_enabled <= next_byte[0];
-    end
-end
+assign cart_enabled = 1'b1;
 
 always @(posedge clk) begin
     tx_valid <= 1'b0;
@@ -309,7 +303,6 @@ always @(posedge clk) begin
                 tx_valid <= 1'b1;
                 tx_data <= 8'd0;
                 tx_data[STATE_BIT_CART_PRESENT] <= cart_det;
-                tx_data[STATE_BIT_CART_ENABLED] <= cart_enabled;
             end
             default: /* nop */ ;
         endcase
