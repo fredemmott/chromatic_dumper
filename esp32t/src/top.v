@@ -581,7 +581,7 @@ module top #(parameter ISSIMU=0)
         .CART_D_OUT(emu_cart_d_out),
         .CART_DATA_DIR_E(emu_cart_data_dir_e),
         .CART_RD(emu_cart_rd),
-        .CART_RST_IN(emu_cart_rst_in),
+        .CART_RST_IN(CART_RST),
         .CART_WR(emu_cart_wr),
 
         .IR_RX(IR_RX),
