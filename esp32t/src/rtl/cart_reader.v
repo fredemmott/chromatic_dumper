@@ -473,7 +473,7 @@ always @(posedge clk or posedge reset) begin
         tx_valid        <= 1'b0;
         tx_data         <= 8'd0;
         cart_a          <= 16'hFFFF;
-        cart_clk        <= 1'b1;
+        cart_clk        <= 1'b0;
         cart_cs         <= 1'b1;
         cart_rd         <= 1'b1;
         cart_wr         <= 1'b1;
@@ -576,6 +576,7 @@ always @(posedge clk or posedge reset) begin
                 cart_wait_cnt <= cart_wait_cnt - 5'd1;
             end else begin
                 cart_data_dir_e <= 1'b0;
+                cart_clk        <= 1'b0;
                 cart_state      <= C_DONE;
             end
         end
