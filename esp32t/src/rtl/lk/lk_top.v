@@ -83,9 +83,10 @@ always @(posedge clk) begin
 end
 
 typedef enum {
-    VS_PIN_RD_L,
-    VS_DELAY,
-    VS_PIN_RD_H, // also read and TX here
+    VS_SET_RD_L,
+    VS_HOLD_RD_L,
+    VS_SET_RD_H, // also read and TX here
+    VS_HOLD_RD_H,
     VS_COMPLETE
 } verify_state_t;
 verify_state_t verify_state;
@@ -173,37 +174,48 @@ logic [7:0] verify_result;
 logic verify_pass;
 always @(*) begin
     unique case (command)
-        CMD_VERIFY_DATA: verify_pass = (cart_d_in == arg);
-        CMD_VERIFY_STATUS_REGISTER: verify_pass = (cart_d_in & status_register_mask) == status_register_value;
+        CMD_VERIFY_DATA: verify_pass = (verify_result == arg);
+        CMD_VERIFY_STATUS_REGISTER: verify_pass = (verify_result & status_register_mask) == status_register_value;
         default: verify_pass = 1'b0;
     endcase
 end
 
 always @(posedge clk) begin
+    verify_delay <= verify_delay;
     if (state != S_EXEC_VERIFY) begin
-        verify_delay <= 5'd24; // 400ns in 16.667ns ticks
+        //verify_timeout <= 32'd18_000; // 300usec in 16.667 ticks
         verify_timeout <= 32'd30_000_000; // 500msec in 16.667 ticks
-        verify_state <= VS_PIN_RD_L;
+        verify_state <= VS_SET_RD_L;
     end else begin
         if (verify_timeout > 32'd0) begin
             verify_timeout <= verify_timeout - 32'd1;
         end
         unique case (verify_state)
-            VS_PIN_RD_L: verify_state <= VS_DELAY;
-            VS_DELAY: begin
+            VS_SET_RD_L: begin
+                verify_delay <= 5'd24; // 400ns in 16.667ns ticks
+                verify_state <= VS_HOLD_RD_L;
+            end
+            VS_HOLD_RD_L: begin
                 if (verify_delay > 5'd0) begin
                     verify_delay <= verify_delay - 5'd1;
                 end else begin
-                    verify_state <= VS_PIN_RD_H;
+                    verify_result <= cart_d_in;
+                    verify_state <= VS_SET_RD_H;
                 end
             end
-            VS_PIN_RD_H: begin
+            VS_SET_RD_H: begin
                 if (verify_pass || (verify_timeout == 32'd0)) begin
-                    verify_result <= cart_d_in;
                     verify_state <= VS_COMPLETE;
                 end else begin
-                    verify_delay <= 5'd24; // 400ns in 16.667ns ticks
-                    verify_state <= VS_PIN_RD_L;
+                    verify_delay <= 5'd2; // ~ 30ns
+                    verify_state <= VS_HOLD_RD_H;
+                end
+            end
+            VS_HOLD_RD_H: begin
+                if (verify_delay > 5'd1) begin
+                    verify_delay <= verify_delay - 5'd1;
+                end else begin
+                    verify_state <= VS_SET_RD_L;
                 end
             end
             default: ;
@@ -271,8 +283,8 @@ always @(posedge clk) begin
 
         if (state == S_EXEC_VERIFY) begin
             unique case (verify_state)
-                VS_PIN_RD_L: cart_rd <= 1'b0;
-                VS_PIN_RD_H: cart_rd <= 1'b1;
+                VS_SET_RD_L: cart_rd <= 1'b0;
+                VS_SET_RD_H: cart_rd <= 1'b1;
                 default: /* nothing */ ;
             endcase
         end
