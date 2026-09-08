@@ -1082,7 +1082,10 @@ module usbuvcuart_top(
     reg        ep3_tx_dval;
     reg  [7:0] ep3_tx_data;
 
-    logic lk_rx_transfer_in_progress;
+    // (command, arg) repeated; we can match command with a single-bit counter;
+    logic lk_rx_count;
+    wire lk_rx_command = lk_rxval && (lk_rx_count == 1'b0);
+    wire lk_rx_command_produces_tx = lk_rx_command && lk_types::command_produces_tx(lk_types::command_t'(usb_rxdat));
 
     // New packet:    lk_rxact   & ~lk_rxact_d
     // End of packet: lk_rxact_d & ~lk_rxact
@@ -1094,67 +1097,38 @@ module usbuvcuart_top(
             lk_rxact_d <= {lk_rxact_d[0], lk_rxact};
         end
     end
-    wire lk_rx_begin = (lk_rxact_d == 2'b01);
-    wire lk_rx_end = (lk_rxact_d == 2'b10);
-
-    logic [11:0] lk_rx_packet_size;
-    always @(posedge `EP6_CLOCK) begin
-        if (usb_busreset | RESET_IN | ~lk_enabled) begin
-            lk_rx_packet_size <= 12'd0;
-            lk_rx_transfer_in_progress <= 1'b0;
-        end else begin
-            lk_rx_packet_size <= lk_rx_packet_size;
-            lk_rx_transfer_in_progress <= lk_rx_transfer_in_progress;
-
-            unique case ({lk_rx_begin, lk_rx_end, lk_rxval})
-                3'b000: ;
-                3'b001: lk_rx_packet_size <= lk_rx_packet_size + 12'd1;
-                3'b010: lk_rx_transfer_in_progress <= (lk_rx_packet_size == 12'd512);
-                3'b011: lk_rx_transfer_in_progress <= (lk_rx_packet_size == 12'd511);
-                3'b100: begin
-                    lk_rx_transfer_in_progress <= 1'b1;
-                    lk_rx_packet_size <= 12'd0;
-                end
-                3'b101: begin
-                    lk_rx_transfer_in_progress <= 1'b1;
-                    lk_rx_packet_size <= 12'd1;
-                end
-                // zero-byte and single-byte packets are both short packets
-                3'b110, 3'b111: lk_rx_transfer_in_progress <= 1'b0;
-            endcase
-        end
-    end
 
     always @(posedge `EP6_CLOCK) begin
         lk_rx_dval <= 1'b0;
         lk_rx_data <= 8'd0;
-        if (lk_rxval) begin
+        lk_rx_count <= lk_rx_count;
+        if (usb_busreset | RESET_IN | ~lk_enabled) begin
+            lk_rx_count <= 1'b0;
+        end else if (lk_rxval) begin
             lk_rx_dval <= 1'b1;
             lk_rx_data <= usb_rxdat;
+            // single-bit 'counter'
+            lk_rx_count <= ~lk_rx_count;
         end
     end
 
-    logic [5:0] lk_uncork_timeout;
+    logic [15:0] lk_tx_expected_count;
     always @(posedge pClk) begin
-        if (lk_rxval) begin
-            lk_uncork_timeout <= 6'd60; // 1 usec
-        end else if (lk_uncork_timeout > 6'd0) begin
-            lk_uncork_timeout <= lk_uncork_timeout - 6'd1;
+        if (usb_busreset | RESET_IN | ~lk_enabled) begin
+            lk_tx_expected_count <= 16'd0;
+        end else begin
+            unique case ({lk_rx_command_produces_tx, lk_tx_dval})
+                2'b00, 2'b11: /* no change */ ;
+                2'b01: lk_tx_expected_count <= lk_tx_expected_count - 16'd1;
+                2'b10: lk_tx_expected_count <= lk_tx_expected_count + 16'd1;
+            endcase
         end
     end
 
     logic [12:0] lk_tx_remaining;
 
     always @(posedge pClk) begin
-        lk_txcork <=
-            (lk_tx_remaining == 12'd0) || (
-                (lk_tx_remaining < 12'd512) && (
-                    // Actively rx'ing, or additional packets are expected
-                    lk_rx_transfer_in_progress
-                    // even if we're not expecting more packets, wait a little while to process them
-                    | (lk_uncork_timeout != 6'd0)
-                )
-            );
+        lk_txcork <= (lk_tx_remaining < 12'd512) && (lk_tx_expected_count > 16'd0);
     end
 
     logic [7:0] lk_tx_buf [4095:0];
