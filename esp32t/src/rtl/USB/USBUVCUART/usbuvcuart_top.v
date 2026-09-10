@@ -1117,7 +1117,8 @@ module usbuvcuart_top(
     end
 
     always @(posedge pClk) begin
-        lk_txcork <= (lk_tx_remaining < 13'd512) && (lk_tx_remaining < lk_tx_expected_count);
+        lk_txcork <= (lk_tx_remaining == 13'd0)
+            || ((lk_tx_remaining < 13'd512) && (lk_tx_remaining < lk_tx_expected_count));
     end
 
     lk_usb_simplex_fifo #(
