@@ -1087,17 +1087,6 @@ module usbuvcuart_top(
     wire lk_rx_command = lk_rxval && (lk_rx_count == 1'b0);
     wire lk_rx_command_produces_tx = lk_rx_command && lk_types::command_produces_tx(lk_types::command_t'(usb_rxdat));
 
-    // New packet:    lk_rxact   & ~lk_rxact_d
-    // End of packet: lk_rxact_d & ~lk_rxact
-    logic [1:0] lk_rxact_d;
-    always @(posedge pClk) begin
-        if (usb_busreset | RESET_IN | ~lk_enabled) begin
-            lk_rxact_d <= 'd0;
-        end else begin
-            lk_rxact_d <= {lk_rxact_d[0], lk_rxact};
-        end
-    end
-
     always @(posedge `EP6_CLOCK) begin
         lk_rx_dval <= 1'b0;
         lk_rx_data <= 8'd0;
@@ -1117,7 +1106,7 @@ module usbuvcuart_top(
         if (usb_busreset | RESET_IN | ~lk_enabled) begin
             lk_tx_expected_count <= 16'd0;
         end else begin
-            unique case ({lk_rx_command_produces_tx, lk_tx_dval})
+            unique case ({lk_rx_command_produces_tx, lk_txpop})
                 2'b00, 2'b11: /* no change */ ;
                 2'b01: lk_tx_expected_count <= lk_tx_expected_count - 16'd1;
                 2'b10: lk_tx_expected_count <= lk_tx_expected_count + 16'd1;
@@ -1128,46 +1117,53 @@ module usbuvcuart_top(
     logic [12:0] lk_tx_remaining;
 
     always @(posedge pClk) begin
-        lk_txcork <= (lk_tx_remaining < 12'd512) && (lk_tx_expected_count > 16'd0);
+        lk_txcork <= (lk_tx_remaining < 12'd512) && (lk_tx_remaining < lk_tx_expected_count);
     end
 
     logic [7:0] lk_tx_buf [4095:0];
     logic [11:0] lk_tx_read_p;
     logic [11:0] lk_tx_write_p;
 
+    logic [11:0] lk_tx_read_p_next;
+    logic [11:0] lk_tx_write_p_next;
+    logic [12:0] lk_tx_remaining_next;
+
+    always_comb begin
+        unique case ({lk_txpop, lk_tx_dval})
+            2'b00, 2'b11: lk_tx_remaining_next = lk_tx_remaining;
+            2'b01: lk_tx_remaining_next = lk_tx_remaining + 13'd1;
+            2'b10: lk_tx_remaining_next = lk_tx_remaining - 13'd1;
+        endcase
+        lk_tx_read_p_next = lk_tx_read_p + (lk_txpop ? 12'd1 : 12'd0);
+        lk_tx_write_p_next = lk_tx_write_p + (lk_tx_dval ? 12'd1 : 12'd0);
+    end
+
     always @(posedge pClk) begin
-        lk_txdat <= lk_tx_buf[lk_tx_read_p + (lk_txpop ? 12'd1 : 12'd0)];
+        lk_txdat <= lk_tx_buf[lk_tx_read_p_next];
 
         if (usb_busreset | RESET_IN | ~lk_enabled) begin
             lk_tx_read_p <= 12'd0;
             lk_tx_write_p <= 12'd0;
             lk_tx_remaining <= 13'd0;
         end else begin
-            unique case ({lk_txpop, lk_tx_dval})
-                2'b00, 2'b11: /* no change */ ;
-                2'b01: lk_tx_remaining <= lk_tx_remaining + 13'd1;
-                2'b10: lk_tx_remaining <= lk_tx_remaining - 13'd1;
-            endcase
-
-            if (lk_txpop) begin
-                lk_tx_read_p <= lk_tx_read_p + 12'd1;
-            end
-
             if (lk_tx_dval) begin
                 lk_tx_buf[lk_tx_write_p] <= lk_tx_data;
-                lk_tx_write_p <= lk_tx_write_p + 12'd1;
-                if (lk_tx_write_p == lk_tx_read_p) begin
+                if (lk_tx_write_p == lk_tx_read_p_next) begin
                     lk_txdat <= lk_tx_data;
                 end
             end
+
+            lk_tx_remaining <= lk_tx_remaining_next;
+            lk_tx_read_p <= lk_tx_read_p_next;
+            lk_tx_write_p <= lk_tx_write_p_next;
         end
     end
 
     always @(posedge pClk) begin
         if (usb_busreset | RESET_IN | ~lk_enabled) begin
             lk_txdat_len <= 12'd0;
-        end else if (!lk_txact) begin
-            lk_txdat_len <= (lk_tx_remaining > 13'd512) ? 12'd512 : lk_tx_remaining[11:0];
+        end else if (!(lk_txact | lk_txcork)) begin
+            lk_txdat_len <= (lk_tx_expected_count >= 16'd512) ? 12'd512 : lk_tx_expected_count[11:0];
         end
     end
 
