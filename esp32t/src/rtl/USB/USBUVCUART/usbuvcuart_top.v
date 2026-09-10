@@ -1101,63 +1101,45 @@ module usbuvcuart_top(
         end
     end
 
+    logic [12:0] lk_tx_remaining;
+    logic [12:0] lk_tx_inflight;
+
     logic [15:0] lk_tx_expected_count;
     always @(posedge pClk) begin
         if (usb_busreset | RESET_IN | ~lk_enabled) begin
             lk_tx_expected_count <= 16'd0;
         end else begin
-            unique case ({lk_rx_command_produces_tx, lk_txpop})
-                2'b00, 2'b11: /* no change */ ;
-                2'b01: lk_tx_expected_count <= lk_tx_expected_count - 16'd1;
-                2'b10: lk_tx_expected_count <= lk_tx_expected_count + 16'd1;
-            endcase
+            // It doesn't matter if usb_txpktfin & EP != LK, because if EP != LK, inflight is 0
+            lk_tx_expected_count <= lk_tx_expected_count
+                + (lk_rx_command_produces_tx ? 16'd1 : 16'd0)
+                - (usb_txpktfin ? {3'd0, lk_tx_inflight} : 16'd0);
         end
     end
 
-    logic [12:0] lk_tx_remaining;
-
     always @(posedge pClk) begin
-        lk_txcork <= (lk_tx_remaining < 12'd512) && (lk_tx_remaining < lk_tx_expected_count);
+        lk_txcork <= (lk_tx_remaining < 13'd512) && (lk_tx_remaining < lk_tx_expected_count);
     end
 
-    logic [7:0] lk_tx_buf [4095:0];
-    logic [11:0] lk_tx_read_p;
-    logic [11:0] lk_tx_write_p;
+    lk_usb_simplex_fifo #(
+        .ADDR_WIDTH(12)
+    ) lk_tx_fifo (
+        .clk_i       (pClk),
+        .reset_i     (usb_busreset | RESET_IN | ~lk_enabled),
 
-    logic [11:0] lk_tx_read_p_next;
-    logic [11:0] lk_tx_write_p_next;
-    logic [12:0] lk_tx_remaining_next;
+        .wr_val_i    (lk_tx_dval),
+        .wr_data_i   (lk_tx_data),
+        .wr_commit_i (1'b1),
+        .wr_rewind_i (1'b0),
 
-    always_comb begin
-        unique case ({lk_txpop, lk_tx_dval})
-            2'b00, 2'b11: lk_tx_remaining_next = lk_tx_remaining;
-            2'b01: lk_tx_remaining_next = lk_tx_remaining + 13'd1;
-            2'b10: lk_tx_remaining_next = lk_tx_remaining - 13'd1;
-        endcase
-        lk_tx_read_p_next = lk_tx_read_p + (lk_txpop ? 12'd1 : 12'd0);
-        lk_tx_write_p_next = lk_tx_write_p + (lk_tx_dval ? 12'd1 : 12'd0);
-    end
+        .rd_pop_i    (lk_txpop),
+        .rd_data_o   (lk_txdat),
+        .rd_commit_i (usb_txpktfin),
+        .rd_rewind_i (~lk_txact),
 
-    always @(posedge pClk) begin
-        lk_txdat <= lk_tx_buf[lk_tx_read_p_next];
-
-        if (usb_busreset | RESET_IN | ~lk_enabled) begin
-            lk_tx_read_p <= 12'd0;
-            lk_tx_write_p <= 12'd0;
-            lk_tx_remaining <= 13'd0;
-        end else begin
-            if (lk_tx_dval) begin
-                lk_tx_buf[lk_tx_write_p] <= lk_tx_data;
-                if (lk_tx_write_p == lk_tx_read_p_next) begin
-                    lk_txdat <= lk_tx_data;
-                end
-            end
-
-            lk_tx_remaining <= lk_tx_remaining_next;
-            lk_tx_read_p <= lk_tx_read_p_next;
-            lk_tx_write_p <= lk_tx_write_p_next;
-        end
-    end
+        .count_o     (lk_tx_remaining),
+        .inflight_o  (lk_tx_inflight),
+        .free_o      ()
+    );
 
     always @(posedge pClk) begin
         if (usb_busreset | RESET_IN | ~lk_enabled) begin
