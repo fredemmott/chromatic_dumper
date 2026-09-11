@@ -236,7 +236,7 @@ module usbuvcuart_top(
                         1'b1;
 
     assign usb_rxrdy = (endpt_sel == EP_UART) ? uart_rxrdy :
-                       (endpt_sel == EP_FLASHGBX) ? lk_rx_rdy:
+                       (endpt_sel == EP_FLASHGBX) ? 1'b1 : // FIXMElk_rx_rdy:
                        (endpt_sel == EP_CTRL) ? 1'b1 : 1'b0;
 
     /* TODO: txiso_pid_i(iso_pid_data) shall be per endpoint, but so far
@@ -1082,43 +1082,17 @@ module usbuvcuart_top(
     reg        ep3_tx_dval;
     reg  [7:0] ep3_tx_data;
 
-    // (command, arg) repeated; we can match command with a single-bit counter;
-    logic lk_rx_count;
-    wire lk_rx_command = lk_rxval && (lk_rx_count == 1'b0);
-    wire lk_rx_command_produces_tx = lk_rx_command && lk_types::command_produces_tx(lk_types::command_t'(usb_rxdat));
-
-    always @(posedge `EP6_CLOCK) begin
-        lk_rx_dval <= 1'b0;
-        lk_rx_data <= 8'd0;
-        lk_rx_count <= lk_rx_count;
-        if (usb_busreset | RESET_IN | ~lk_enabled) begin
-            lk_rx_count <= 1'b0;
-        end else if (lk_rxval) begin
-            lk_rx_dval <= 1'b1;
-            lk_rx_data <= usb_rxdat;
-            // single-bit 'counter'
-            lk_rx_count <= ~lk_rx_count;
-        end
-    end
-
     logic [12:0] lk_tx_remaining;
     logic [12:0] lk_tx_inflight;
 
-    logic [15:0] lk_tx_expected_count;
-    always @(posedge pClk) begin
-        if (usb_busreset | RESET_IN | ~lk_enabled) begin
-            lk_tx_expected_count <= 16'd0;
-        end else begin
-            // It doesn't matter if usb_txpktfin & EP != LK, because if EP != LK, inflight is 0
-            lk_tx_expected_count <= lk_tx_expected_count
-                + (lk_rx_command_produces_tx ? 16'd1 : 16'd0)
-                - (usb_txpktfin ? {3'd0, lk_tx_inflight} : 16'd0);
-        end
-    end
+    logic [15:0] lk_tx_expected;
 
     always @(posedge pClk) begin
+        lk_txcork <= lk_tx_remaining < 13'd2;
+        /* FIXME
         lk_txcork <= (lk_tx_remaining == 13'd0)
-            || ((lk_tx_remaining < 13'd512) && (lk_tx_remaining < lk_tx_expected_count));
+            || ((lk_tx_remaining < 13'd512) && (lk_tx_remaining < lk_tx_expected));
+            */
     end
 
     lk_usb_simplex_fifo #(
@@ -1145,8 +1119,68 @@ module usbuvcuart_top(
     always @(posedge pClk) begin
         if (usb_busreset | RESET_IN | ~lk_enabled) begin
             lk_txdat_len <= 12'd0;
-        end else if (!(lk_txact | lk_txcork)) begin
-            lk_txdat_len <= (lk_tx_expected_count >= 16'd512) ? 12'd512 : lk_tx_expected_count[11:0];
+        end else if (!lk_txact) begin
+            lk_txdat_len <= (lk_tx_expected >= 16'd512) ? 12'd512 : lk_tx_expected[11:0];
+        end
+    end
+
+    logic lk_rxfifo_pop;
+    logic [7:0] lk_rxfifo_q;
+    logic [11:0] lk_rxfifo_count;
+
+    lk_usb_simplex_fifo #(
+        .ADDR_WIDTH(12)
+    ) lk_rx_fifo (
+        .clk_i       (pClk),
+        .reset_i     (~lk_enabled),
+
+        .wr_val_i    (lk_rxval),
+        .wr_data_i   (usb_rxdat),
+        .wr_commit_i (usb_rxpktval),
+        .wr_rewind_i (~usb_rxact),
+
+        .rd_pop_i    (lk_rxfifo_pop),
+        .rd_data_o   (lk_rxfifo_q),
+        .rd_commit_i (1'b1),
+        .rd_rewind_i (1'b0),
+
+        .count_o     (lk_rxfifo_count),
+        .inflight_o  (),
+        .free_o      ()
+    );
+    assign lk_rxfifo_pop = lk_rxfifo_count > 12'd0;
+    assign lk_rx_dval = lk_rxfifo_pop;
+    assign lk_rx_data = lk_rxfifo_q;
+
+    // (command, arg) repeated; we can match command with a single-bit counter;
+    logic lk_rx_count;
+    wire lk_rx_command = lk_rxfifo_pop && (lk_rx_count == 1'b0);
+    wire lk_rx_command_produces_tx = lk_rx_command && lk_types::command_produces_tx(lk_types::command_t'(lk_rxfifo_q));
+
+    always @(posedge `EP6_CLOCK) begin
+        lk_rx_count <= lk_rx_count;
+        if (usb_busreset | RESET_IN | ~lk_enabled) begin
+            lk_rx_count <= 1'b0;
+        end else if (lk_rxfifo_pop) begin
+            // single-bit 'counter'
+            lk_rx_count <= ~lk_rx_count;
+        end
+    end
+
+    logic [12:0] lk_tx_inflight_d;
+
+    always @(posedge pClk) begin
+        if (usb_busreset | RESET_IN | ~lk_enabled) begin
+            lk_tx_expected <= 16'd0;
+        end else begin
+            lk_tx_inflight_d <= lk_tx_inflight;
+            // It doesn't matter if usb_txpktfin & EP != LK, because if EP != LK, inflight is 0
+            // We use 'usb_txpktfin' so that we reduce the expected count on 'commit'
+            // TODO: should this use lk_tx_inflight_d ?
+            lk_tx_expected <= lk_tx_expected
+                 + (lk_rxval ? 16'd1 : 16'd0)
+                //+ (lk_rx_command_produces_tx ? 16'd1 : 16'd0)
+                - (usb_txpktfin ? { 3'd0, lk_tx_inflight_d } : 16'd0);
         end
     end
 
