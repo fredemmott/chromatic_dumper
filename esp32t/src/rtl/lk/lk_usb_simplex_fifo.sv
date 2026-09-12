@@ -18,7 +18,8 @@
 // cycle, and a commit includes a write/pop occurring on that same cycle.
 //
 // This intentionally does not handle corking or optimizing packet sizes, as LK
-// needs app-specific logic there.
+// needs app-specific logic there; we also need *per-endpoint* reset, which is why
+// we can't use the same USB fifo as EP3
 module lk_usb_simplex_fifo #(
     parameter ADDR_WIDTH = 12
 )(
@@ -42,10 +43,6 @@ module lk_usb_simplex_fifo #(
     // Committed bytes available to read (shrinks with speculative pops,
     // grows back on rd_rewind_i)
     output wire [ADDR_WIDTH:0] count_o,
-    // Speculatively popped, uncommitted bytes - includes a pop on the
-    // current cycle, so at rd_commit_i time this is exactly the number of
-    // bytes being consumed
-    output wire [ADDR_WIDTH:0] inflight_o,
     // Free space, accounting for uncommitted (speculative) writes
     output wire [ADDR_WIDTH:0] free_o
 );
@@ -72,7 +69,6 @@ module lk_usb_simplex_fifo #(
                                                  rd_p_next;
 
     assign count_o    = wr_commit_p_d - rd_p;
-    assign inflight_o = rd_p_next - rd_commit_p;
     assign free_o     = DEPTH[ADDR_WIDTH:0] - (wr_p - rd_commit_p);
 
     always @(posedge clk_i) begin
