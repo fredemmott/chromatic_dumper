@@ -183,8 +183,7 @@ end
 always @(posedge clk) begin
     verify_delay <= verify_delay;
     if (state != S_EXEC_VERIFY) begin
-        //verify_timeout <= 32'd18_000; // 300usec in 16.667 ticks
-        verify_timeout <= 32'd30_000_000; // 500msec in 16.667 ticks
+        verify_timeout <= 32'd60_000; // 1ms in 16.667 ticks
         verify_state <= VS_SET_RD_L;
     end else begin
         if (verify_timeout > 32'd0) begin
