@@ -189,32 +189,31 @@ always @(posedge clk) begin
         if (verify_timeout > 32'd0) begin
             verify_timeout <= verify_timeout - 32'd1;
         end
+        if (verify_delay > 5'd0) begin
+            verify_delay <= verify_delay - 5'd1;
+        end
         unique case (verify_state)
             VS_SET_RD_L: begin
                 verify_delay <= 5'd24; // 400ns in 16.667ns ticks
                 verify_state <= VS_HOLD_RD_L;
             end
             VS_HOLD_RD_L: begin
-                if (verify_delay > 5'd0) begin
-                    verify_delay <= verify_delay - 5'd1;
-                end else begin
+                if (verify_delay == 5'd1) begin
                     verify_result <= cart_d_in;
                     verify_state <= VS_SET_RD_H;
                 end
             end
             VS_SET_RD_H: begin
-                if (verify_pass || (verify_timeout == 32'd0)) begin
-                    verify_state <= VS_COMPLETE;
-                end else begin
-                    verify_delay <= 5'd2; // ~ 30ns
-                    verify_state <= VS_HOLD_RD_H;
-                end
+                verify_delay <= 5'd3; // 50ns
+                verify_state <= VS_HOLD_RD_H;
             end
             VS_HOLD_RD_H: begin
-                if (verify_delay > 5'd1) begin
-                    verify_delay <= verify_delay - 5'd1;
-                end else begin
-                    verify_state <= VS_SET_RD_L;
+                if (verify_delay == 5'd1) begin
+                    if (verify_pass || (verify_timeout == 32'd0)) begin
+                        verify_state <= VS_COMPLETE;
+                    end else begin
+                        verify_state <= VS_SET_RD_L;
+                    end
                 end
             end
             default: ;
