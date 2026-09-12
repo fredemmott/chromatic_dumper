@@ -235,8 +235,9 @@ module usbuvcuart_top(
                         (endpt_sel == EP_UAC) ? audio_txcork :
                         1'b1;
 
+    wire lk_rxfifo_rxrdy;
     assign usb_rxrdy = (endpt_sel == EP_UART) ? uart_rxrdy :
-                       (endpt_sel == EP_FLASHGBX) ? 1'b1 : // FIXMElk_rx_rdy:
+                       (endpt_sel == EP_FLASHGBX) ? lk_rxfifo_rxrdy :
                        (endpt_sel == EP_CTRL) ? 1'b1 : 1'b0;
 
     /* TODO: txiso_pid_i(iso_pid_data) shall be per endpoint, but so far
@@ -1101,6 +1102,7 @@ module usbuvcuart_top(
     logic lk_rxfifo_pop;
     logic [7:0] lk_rxfifo_q;
     logic [12:0] lk_rxfifo_count;
+    logic [12:0] lk_rxfifo_free;
 
     lk_usb_simplex_fifo #(
         .ADDR_WIDTH(12)
@@ -1119,11 +1121,12 @@ module usbuvcuart_top(
         .rd_rewind_i (1'b0),
 
         .count_o     (lk_rxfifo_count),
-        .free_o      ()
+        .free_o      (lk_rxfifo_free)
     );
-    assign lk_rxfifo_pop = lk_rxfifo_count > 12'd0;
+    assign lk_rxfifo_pop = (lk_rxfifo_count > 12'd0) && lk_rx_rdy;
     assign lk_rx_dval = lk_rxfifo_pop;
     assign lk_rx_data = lk_rxfifo_q;
+    assign lk_rxfifo_rxrdy = lk_rxfifo_free >= 13'd512;
 
     // (command, arg) repeated; we can match command with a single-bit counter;
     logic lk_rx_count;
