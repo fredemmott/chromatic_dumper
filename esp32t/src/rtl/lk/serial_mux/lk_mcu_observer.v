@@ -15,31 +15,36 @@ module lk_mcu_observer_t(
     input clk,
     input reset,
     input enabled,
+    input rx_ready,
     input rx_valid,
     input [7:0] rx_data,
     output peer_t peer_o
 );
 
-// The UART can take multiple cycles to consume a single rx byte; to observe it, we want to detect
-// rising edges
-reg rx_valid_d;
+// GAO shows that we get rx_valid pulses without rx_ready, which means that they're not 'popped' this leads
+// to host writes of 'ABC' looking like 'AABBCC' etc.
+//
+// rx_ready is tied to the uart busy signal, and we get it a cycle late, so work on the negedge
+logic rx_ready_d;
 always @(posedge clk) begin
-    if (reset) begin
-        rx_valid_d <= 1'b0;
-    end else begin
-        rx_valid_d <= rx_valid;
-    end
+    rx_ready_d <= rx_ready;
 end
-wire rx_new_byte = rx_valid && !rx_valid_d;
+wire rx_ready_negedge = {rx_ready_d, rx_ready} == 2'b10;
 
-reg [7:0] rx_data_d;
+wire rx_new_byte = rx_valid && rx_ready_negedge;
+
+localparam ACTIVATE = { "CartIO" };
+
+reg [$bits(ACTIVATE) - 1:0] rx_data_sr;
 always @(posedge clk) begin
     if (reset) begin
-        rx_data_d <= 8'd0;
+        rx_data_sr <= '{default:0};
     end else if (rx_new_byte) begin
-        rx_data_d <= rx_data;
+        rx_data_sr <= { rx_data_sr[$bits(ACTIVATE) - 9:0] , rx_data };
     end
 end
+wire [7:0] rx_data_d = rx_data_sr[7:0];
+wire [$bits(ACTIVATE) + 8 - 1:0] rx_data_view = { rx_data_sr, rx_data };
 
 // MCU V1: (header, addr, payload0, payload1)
 //
@@ -52,7 +57,7 @@ end
 // 15 fits in 4 bits, so:
 reg [3:0] ignore_count;
 
-typedef enum {
+typedef enum logic [2:0] {
     S_DEFAULT,
     S_LK_SERIAL_ID,
     S_LK,
@@ -74,7 +79,7 @@ always @(posedge clk) begin
         S_DEFAULT: ignore_count <= 4'd3;
         // Don't bother with rx_new_byte: it will be set on the last cycle we spend here.
         // + 1 for CRC
-        S_MCU_V2_RX_LEN: ignore_count <= rx_data + 1;
+        S_MCU_V2_RX_LEN: ignore_count <= rx_data[3:0] + 1;
         S_MCU_RX_COUNTED: if (rx_new_byte) ignore_count <= ignore_count - 4'd1;
         default: ;
     endcase
@@ -92,14 +97,15 @@ state_t next_state;
 
 always @(*) begin
     next_state = state;
-    if (!enabled) begin
+    if (reset || !enabled) begin
         next_state = S_DEFAULT;
     end else begin
         unique case (state)
             S_DEFAULT: begin
                 if (rx_new_byte) begin
-                    if ((rx_data_d == 8'h55) && (rx_data == 8'hAA)) next_state = S_LK_SERIAL_ID;
-                    else if ((rx_data_d == "L") && (rx_data == "K")) next_state = S_LK;
+                    if ((rx_data_view[23:0] == 24'hAA5590)) next_state = S_LK_SERIAL_ID;
+                    // "CartIO"
+                    else if (rx_data_view == { ACTIVATE,  8'h00 }) next_state = S_LK;
                     else if (rx_data == 8'h8A) next_state = S_MCU_RX_COUNTED; // MCU V1
                     else if (rx_data == 8'h8F) next_state = S_MCU_V2_RX_ADDR;
                 end

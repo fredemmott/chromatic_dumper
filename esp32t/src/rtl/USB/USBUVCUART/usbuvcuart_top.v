@@ -1267,6 +1267,7 @@ module usbuvcuart_top(
         pClk,
         RESET_IN,
         lk_observer_enable,
+        ep3_rx_rdy,
         ep3_rx_dval,
         ep3_rx_data,
         lk_observer_peer_o
