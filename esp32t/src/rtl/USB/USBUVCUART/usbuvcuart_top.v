@@ -13,7 +13,6 @@ module usbuvcuart_top(
     input               ERST,
     output              pClk,
     output              usblocked,
-    input               xClk,
     input               hClk,
     input               hLineValid,
     input               hEnable,
@@ -1045,11 +1044,6 @@ module usbuvcuart_top(
 
     wire uart_cts = 1'b0;
 
-    `define EP3_CLOCK pClk
-    `define EP3_CLOCK_FREQ 30'd60_000_000
-    `define EP6_CLOCK pClk
-    `define EP6_CLOCK_FREQ 30'd60_000_000
-
     UART  #(
         .CLK_FREQ     (30'd60000000)  // set system clock frequency in Hz
     )u_UART
@@ -1132,7 +1126,7 @@ module usbuvcuart_top(
     wire cartio_rx_command = cartio_rxval && (cartio_rx_count == 1'b0);
     wire cartio_rx_command_produces_tx = cartio_rx_command && cartio_types::command_produces_tx(cartio_types::command_t'(usb_rxdat));
 
-    always @(posedge `EP6_CLOCK) begin
+    always @(posedge pClk) begin
         cartio_rx_count <= cartio_rx_count;
         if (~(cartio_enabled & cartio_rxact)) begin
             cartio_rx_count <= 1'b0;
@@ -1216,7 +1210,7 @@ module usbuvcuart_top(
     assign E_UART_RTS = s_ctl_sig[1];
 
     (* syn_preserve *) reg [1:0] cartio_cdc_dtr;
-    always @(posedge `EP3_CLOCK or negedge s_ctl_sig[0]) begin
+    always @(posedge pClk or negedge s_ctl_sig[0]) begin
         if (!s_ctl_sig[0]) begin
             cartio_cdc_dtr <= 2'b00;
         end else begin
@@ -1259,7 +1253,7 @@ module usbuvcuart_top(
     end
 
     reg cartio_observer_enable = 0;
-    always @(posedge `EP3_CLOCK) cartio_observer_enable <= ep3_is_mcu;
+    always @(posedge pClk) cartio_observer_enable <= ep3_is_mcu;
     cartio_serial_mux::peer_t cartio_observer_peer_o;
 
     cartio_mcu_observer_t cartio_observer(

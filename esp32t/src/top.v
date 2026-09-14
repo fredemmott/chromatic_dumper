@@ -736,7 +736,6 @@ module top #(parameter ISSIMU=0)
         .pClk(PHY_CLKOUT),
         .usblocked(usblocked),
         .hClk(gClk),
-        .xClk(xClk),
 
         .UART_TXD(UART_RXD), // output
         .UART_RXD(UART_TXD), // input
