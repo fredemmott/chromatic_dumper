@@ -7,10 +7,11 @@ module lk_serial_id_t(
 );
 
 localparam ROM_BLOB = {
-    "fredemmott/FlashGBX", 8'h00,
+    "fredemmott/CartIO", 8'h00,
 
     // Our version timestamp - BCD
-    /* YYYY */ 8'h20, 8'h26, /* MM */ 8'h08, /*  DD */ 8'h27,
+    /*  YYYY_MM_DD */
+    32'h2026_09_13,
 
     // If we do multiple builds on the same day... __NOT__ BCD!
     8'd00, // Revision
@@ -19,7 +20,7 @@ localparam ROM_BLOB = {
     8'd18, 8'd08,
 
     // USB interface number for cartridge IO
-    8'h06
+    8'd06
 };
 localparam ROM_LEN = $bits(ROM_BLOB) / 8;
 localparam ROM_ADDR_WIDTH = $clog2(ROM_LEN);
