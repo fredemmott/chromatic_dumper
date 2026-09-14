@@ -1,4 +1,4 @@
-module lk_serial_id_t(
+module cartio_serial_id_t(
     input clk,
     input enable,
     output reg complete,

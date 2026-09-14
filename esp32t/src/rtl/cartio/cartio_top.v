@@ -1,6 +1,6 @@
-import lk_types::*;
+import cartio_types::*;
 
-module lk_top(
+module cartio_top(
     input  wire        clk,
     input  wire        reset,
 

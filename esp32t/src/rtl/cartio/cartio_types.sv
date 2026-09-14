@@ -1,4 +1,4 @@
-package lk_types;
+package cartio_types;
 
 // All commands are two bytes: {command, arg}
 //

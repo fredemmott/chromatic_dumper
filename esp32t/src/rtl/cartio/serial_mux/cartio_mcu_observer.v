@@ -1,17 +1,17 @@
-package lk_serial_mux;
+package cartio_serial_mux;
 
 typedef enum {
     P_INVALID, // error handling only
     P_MCU,
-    P_LK_SERIAL_ID,
-    P_LK
+    P_CARTIO_SERIAL_ID,
+    P_CARTIO
 } peer_t;
 
 endpackage
 
-import lk_serial_mux::*;
+import cartio_serial_mux::*;
 
-module lk_mcu_observer_t(
+module cartio_mcu_observer_t(
     input clk,
     input reset,
     input enabled,
@@ -59,8 +59,8 @@ reg [3:0] ignore_count;
 
 typedef enum logic [2:0] {
     S_DEFAULT,
-    S_LK_SERIAL_ID,
-    S_LK,
+    S_CARTIO_SERIAL_ID,
+    S_CARTIO,
     // read the address byte from a v2 packet
     S_MCU_V2_RX_ADDR,
     // read the length byte from a v2 packet
@@ -87,8 +87,8 @@ end
 
 always @(*) begin
     unique case (state)
-        S_LK_SERIAL_ID: peer_o = P_LK_SERIAL_ID;
-        S_LK: peer_o = P_LK;
+        S_CARTIO_SERIAL_ID: peer_o = P_CARTIO_SERIAL_ID;
+        S_CARTIO: peer_o = P_CARTIO;
         default: peer_o = P_MCU;
     endcase
 end
@@ -103,9 +103,9 @@ always @(*) begin
         unique case (state)
             S_DEFAULT: begin
                 if (rx_new_byte) begin
-                    if ((rx_data_view[23:0] == 24'hAA5590)) next_state = S_LK_SERIAL_ID;
+                    if ((rx_data_view[23:0] == 24'hAA5590)) next_state = S_CARTIO_SERIAL_ID;
                     // "CartIO"
-                    else if (rx_data_view == { ACTIVATE,  8'h00 }) next_state = S_LK;
+                    else if (rx_data_view == { ACTIVATE,  8'h00 }) next_state = S_CARTIO;
                     else if (rx_data == 8'h8A) next_state = S_MCU_RX_COUNTED; // MCU V1
                     else if (rx_data == 8'h8F) next_state = S_MCU_V2_RX_ADDR;
                 end
@@ -113,7 +113,7 @@ always @(*) begin
             S_MCU_V2_RX_ADDR: if (rx_new_byte) next_state = S_MCU_V2_RX_LEN;
             S_MCU_V2_RX_LEN: if (rx_new_byte) next_state = S_MCU_RX_COUNTED;
             S_MCU_RX_COUNTED: if (rx_new_byte && (ignore_count == 4'd1)) next_state = S_DEFAULT;
-            S_LK_SERIAL_ID, S_LK: /* terminal until reset */ ;
+            S_CARTIO_SERIAL_ID, S_CARTIO: /* terminal until reset */ ;
             default: next_state = S_DEFAULT;
         endcase
     end

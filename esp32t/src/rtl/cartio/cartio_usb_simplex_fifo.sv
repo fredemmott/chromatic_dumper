@@ -20,11 +20,11 @@
 // This intentionally does not handle corking or optimizing packet sizes, as LK
 // needs app-specific logic there; we also need *per-endpoint* reset, which is why
 // we can't use the same USB fifo as EP3
-module lk_usb_simplex_fifo #(
+module cartio_usb_simplex_fifo #(
     parameter ADDR_WIDTH = 12
 )(
-    input  wire                clk_i,
-    input  wire                reset_i,
+    input  wire                clk,
+    input  wire                reset,
 
     // Write port
     input  wire                wr_val_i,
@@ -71,10 +71,10 @@ module lk_usb_simplex_fifo #(
     assign count_o    = wr_commit_p_d - rd_p;
     assign free_o     = DEPTH[ADDR_WIDTH:0] - (wr_p - rd_commit_p);
 
-    always @(posedge clk_i) begin
+    always @(posedge clk) begin
         rd_data_o <= buffer[rd_p_res[ADDR_WIDTH-1:0]];
 
-        if (reset_i) begin
+        if (reset) begin
             wr_p          <= '0;
             wr_commit_p   <= '0;
             wr_commit_p_d <= '0;

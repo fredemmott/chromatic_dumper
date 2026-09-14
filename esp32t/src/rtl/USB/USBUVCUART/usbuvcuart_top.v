@@ -40,15 +40,14 @@ module usbuvcuart_top(
     inout               usb_term_dp_io,
     inout               usb_term_dn_io,
 
-    // FlashGBX "LK" mode
-    output reg          lk_enabled,
+    output reg          cartio_enabled,
 
-    input               lk_tx_dval,
-    input[7:0]          lk_tx_data,
+    input               cartio_tx_dval,
+    input[7:0]          cartio_tx_data,
 
-    input               lk_rx_rdy,
-    output reg          lk_rx_dval,
-    output reg [7:0]    lk_rx_data
+    input               cartio_rx_rdy,
+    output reg          cartio_rx_dval,
+    output reg [7:0]    cartio_rx_data
 );
 
     wire yLineValid;
@@ -172,15 +171,15 @@ module usbuvcuart_top(
     reg [11:0]  audio_txdat_len;
     reg         audio_txcork;
 
-    logic [7:0]  lk_txdat;
-    logic [11:0] lk_txdat_len;
-    logic        lk_txcork;
+    logic [7:0]  cartio_txdat;
+    logic [11:0] cartio_txdat_len;
+    logic        cartio_txcork;
 
     localparam EP_CTRL = 4'd0;
     localparam EP_VC = 4'd1;
     localparam EP_VS = 4'd2;
     localparam EP_UART = 4'd3;
-    localparam EP_FLASHGBX = 4'd6;
+    localparam EP_CARTIO = 4'd6;
     localparam EP_UAC = {`AUDIO_DATA_EP_NUM}[3:0];
 
     wire        cmsos10_txval;
@@ -215,7 +214,7 @@ module usbuvcuart_top(
     assign usb_txdat = (endpt_sel == EP_CTRL) ? endpt0_dat[7:0] :
                        (endpt_sel == EP_VS) ? video_txdat  :
                        (endpt_sel == EP_UAC) ? audio_txdat :
-                       (endpt_sel == EP_FLASHGBX) ? lk_txdat :
+                       (endpt_sel == EP_CARTIO) ? cartio_txdat :
                        uart_txdat;
     /* only valid for ep0 */
     assign endpt0_send = cuart_txval | cmsos10_txval | cuvc_txval | cuac_txval;
@@ -224,20 +223,20 @@ module usbuvcuart_top(
     assign usb_txdat_len = (endpt_sel == EP_CTRL) ? endpt0_txlen :
                            (endpt_sel == EP_VS) ? video_txdat_len :
                            (endpt_sel == EP_UART) ? uart_txdat_len :
-                           (endpt_sel == EP_FLASHGBX) ? lk_txdat_len :
+                           (endpt_sel == EP_CARTIO) ? cartio_txdat_len :
                            (endpt_sel == EP_UAC) ? audio_txdat_len :
                            12'hFAE;
 
     assign usb_txcork = (endpt_sel == EP_CTRL) ? 1'b0 :
                         (endpt_sel == EP_VS) ? video_txcork :
                         (endpt_sel == EP_UART) ? uart_txcork :
-                        (endpt_sel == EP_FLASHGBX) ? lk_txcork :
+                        (endpt_sel == EP_CARTIO) ? cartio_txcork :
                         (endpt_sel == EP_UAC) ? audio_txcork :
                         1'b1;
 
-    wire lk_rxfifo_rxrdy;
+    wire cartio_rxfifo_rxrdy;
     assign usb_rxrdy = (endpt_sel == EP_UART) ? uart_rxrdy :
-                       (endpt_sel == EP_FLASHGBX) ? lk_rxfifo_rxrdy :
+                       (endpt_sel == EP_CARTIO) ? cartio_rxfifo_rxrdy :
                        (endpt_sel == EP_CTRL) ? 1'b1 : 1'b0;
 
     /* TODO: txiso_pid_i(iso_pid_data) shall be per endpoint, but so far
@@ -248,18 +247,18 @@ module usbuvcuart_top(
     wire video_txact = (endpt_sel == EP_VS) ? usb_txact : 0;
     wire audio_txact = (endpt_sel == EP_UAC) ? usb_txact : 0;
     wire uart_txact = (endpt_sel == EP_UART) ? usb_txact : 0;
-    wire lk_txact = (endpt_sel == EP_FLASHGBX) ? usb_txact : 0;
+    wire cartio_txact = (endpt_sel == EP_CARTIO) ? usb_txact : 0;
 
     wire video_txpop = (endpt_sel == EP_VS) ? usb_txpop : 0;
     wire audio_txpop = (endpt_sel == EP_UAC) ? usb_txpop : 0;
     wire uart_txpop = (endpt_sel == EP_UART) ? usb_txpop : 0;
-    wire lk_txpop = (endpt_sel == EP_FLASHGBX) ? usb_txpop : 0;
+    wire cartio_txpop = (endpt_sel == EP_CARTIO) ? usb_txpop : 0;
 
     wire uart_rxact = (endpt_sel == EP_UART) ? usb_rxact : 0;
-    wire lk_rxact = (endpt_sel == EP_FLASHGBX) ? usb_rxact : 0;
+    wire cartio_rxact = (endpt_sel == EP_CARTIO) ? usb_rxact : 0;
 
     wire uart_rxval = (endpt_sel == EP_UART) ? usb_rxval : 0;
-    wire lk_rxval = (endpt_sel == EP_FLASHGBX) ? usb_rxval : 0;
+    wire cartio_rxval = (endpt_sel == EP_CARTIO) ? usb_rxval : 0;
 
     wire [7:0] desc_index;
     wire [7:0] desc_type;
@@ -1077,106 +1076,106 @@ module usbuvcuart_top(
 
     // Support for the FlashGBX "LK" protocol
 
-    wire [12:0] lk_txfifo_count;
+    wire [12:0] cartio_txfifo_count;
 
-    lk_usb_simplex_fifo #(
+    cartio_usb_simplex_fifo #(
         .ADDR_WIDTH(12)
-    ) lk_txfifo (
-        .clk_i       (pClk),
-        .reset_i     (usb_busreset | RESET_IN | ~lk_enabled),
+    ) cartio_txfifo (
+        .clk         (pClk),
+        .reset       (usb_busreset | RESET_IN | ~cartio_enabled),
 
-        .wr_val_i    (lk_tx_dval),
-        .wr_data_i   (lk_tx_data),
+        .wr_val_i    (cartio_tx_dval),
+        .wr_data_i   (cartio_tx_data),
         .wr_commit_i (1'b1),
         .wr_rewind_i (1'b0),
 
-        .rd_pop_i    (lk_txpop),
-        .rd_data_o   (lk_txdat),
+        .rd_pop_i    (cartio_txpop),
+        .rd_data_o   (cartio_txdat),
         .rd_commit_i (usb_txpktfin),
-        .rd_rewind_i (~lk_txact),
+        .rd_rewind_i (~cartio_txact),
 
-        .count_o     (lk_txfifo_count),
+        .count_o     (cartio_txfifo_count),
         .free_o      ()
     );
 
-    logic lk_rxfifo_pop;
-    logic [7:0] lk_rxfifo_q;
-    logic [12:0] lk_rxfifo_count;
-    logic [12:0] lk_rxfifo_free;
+    logic cartio_rxfifo_pop;
+    logic [7:0] cartio_rxfifo_q;
+    logic [12:0] cartio_rxfifo_count;
+    logic [12:0] cartio_rxfifo_free;
 
-    lk_usb_simplex_fifo #(
+    cartio_usb_simplex_fifo #(
         .ADDR_WIDTH(12)
-    ) lk_rxfifo (
-        .clk_i       (pClk),
-        .reset_i     (~lk_enabled),
+    ) cartio_rxfifo (
+        .clk         (pClk),
+        .reset       (~cartio_enabled),
 
-        .wr_val_i    (lk_rxval),
+        .wr_val_i    (cartio_rxval),
         .wr_data_i   (usb_rxdat),
         .wr_commit_i (usb_rxpktval),
         .wr_rewind_i (~usb_rxact),
 
-        .rd_pop_i    (lk_rxfifo_pop),
-        .rd_data_o   (lk_rxfifo_q),
+        .rd_pop_i    (cartio_rxfifo_pop),
+        .rd_data_o   (cartio_rxfifo_q),
         .rd_commit_i (1'b1),
         .rd_rewind_i (1'b0),
 
-        .count_o     (lk_rxfifo_count),
-        .free_o      (lk_rxfifo_free)
+        .count_o     (cartio_rxfifo_count),
+        .free_o      (cartio_rxfifo_free)
     );
-    assign lk_rxfifo_pop = (lk_rxfifo_count > 12'd0) && lk_rx_rdy;
-    assign lk_rx_dval = lk_rxfifo_pop;
-    assign lk_rx_data = lk_rxfifo_q;
-    assign lk_rxfifo_rxrdy = lk_rxfifo_free >= 13'd512;
+    assign cartio_rxfifo_pop = (cartio_rxfifo_count > 12'd0) && cartio_rx_rdy;
+    assign cartio_rx_dval = cartio_rxfifo_pop;
+    assign cartio_rx_data = cartio_rxfifo_q;
+    assign cartio_rxfifo_rxrdy = cartio_rxfifo_free >= 13'd512;
 
     // (command, arg) repeated; we can match command with a single-bit counter;
-    logic lk_rx_count;
-    wire lk_rx_command = lk_rxval && (lk_rx_count == 1'b0);
-    wire lk_rx_command_produces_tx = lk_rx_command && lk_types::command_produces_tx(lk_types::command_t'(usb_rxdat));
+    logic cartio_rx_count;
+    wire cartio_rx_command = cartio_rxval && (cartio_rx_count == 1'b0);
+    wire cartio_rx_command_produces_tx = cartio_rx_command && cartio_types::command_produces_tx(cartio_types::command_t'(usb_rxdat));
 
     always @(posedge `EP6_CLOCK) begin
-        lk_rx_count <= lk_rx_count;
-        if (~(lk_enabled & lk_rxact)) begin
-            lk_rx_count <= 1'b0;
-        end else if (lk_rxval) begin
+        cartio_rx_count <= cartio_rx_count;
+        if (~(cartio_enabled & cartio_rxact)) begin
+            cartio_rx_count <= 1'b0;
+        end else if (cartio_rxval) begin
             // single-bit 'counter'
-            lk_rx_count <= ~lk_rx_count;
+            cartio_rx_count <= ~cartio_rx_count;
         end
     end
 
     // How many TX bytes are expected based on the commands in the current RX packet
     // uncommited until usb_rxpktval is high
-    logic [11:0] lk_tx_expected_thisrx;
+    logic [11:0] cartio_txexpected_thisrx;
     always @(posedge pClk) begin
-        if (lk_rxact) begin
-            lk_tx_expected_thisrx <= lk_tx_expected_thisrx + lk_rx_command_produces_tx;
+        if (cartio_rxact) begin
+            cartio_txexpected_thisrx <= cartio_txexpected_thisrx + cartio_rx_command_produces_tx;
         end else begin
-            lk_tx_expected_thisrx <= 12'd0;
+            cartio_txexpected_thisrx <= 12'd0;
         end
     end
 
-    logic [15:0] lk_tx_expected;
+    logic [15:0] cartio_txexpected;
 
     always @(posedge pClk) begin
-        if (~lk_enabled) begin
-            lk_tx_expected <= 16'd0;
-        end else if (endpt_sel == EP_FLASHGBX) begin
-            lk_tx_expected <= lk_tx_expected
-                - (usb_txpktfin ? 16'(lk_txdat_len) : 16'd0)
-                + (usb_rxpktval ? 16'(lk_tx_expected_thisrx) : 16'd0);
+        if (~cartio_enabled) begin
+            cartio_txexpected <= 16'd0;
+        end else if (endpt_sel == EP_CARTIO) begin
+            cartio_txexpected <= cartio_txexpected
+                - (usb_txpktfin ? 16'(cartio_txdat_len) : 16'd0)
+                + (usb_rxpktval ? 16'(cartio_txexpected_thisrx) : 16'd0);
         end else begin
-            lk_tx_expected <= lk_tx_expected;
+            cartio_txexpected <= cartio_txexpected;
         end
     end
 
     always @(posedge pClk) begin
-        lk_txcork <= (lk_txfifo_count < 13'd512) && (lk_txfifo_count < lk_tx_expected) && ~lk_txact;
+        cartio_txcork <= (cartio_txfifo_count < 13'd512) && (cartio_txfifo_count < cartio_txexpected) && ~cartio_txact;
     end
 
     always @(posedge pClk) begin
-        if (~lk_enabled) begin
-            lk_txdat_len <= 12'd0;
-        end else if (!lk_txact) begin
-            lk_txdat_len <= (lk_tx_expected >= 16'd512) ? 12'd512 : lk_tx_expected[11:0];
+        if (~cartio_enabled) begin
+            cartio_txdat_len <= 12'd0;
+        end else if (!cartio_txact) begin
+            cartio_txdat_len <= (cartio_txexpected >= 16'd512) ? 12'd512 : cartio_txexpected[11:0];
         end
     end
 
@@ -1216,24 +1215,24 @@ module usbuvcuart_top(
     assign E_UART_DTR = s_ctl_sig[0];
     assign E_UART_RTS = s_ctl_sig[1];
 
-    (* syn_preserve *) reg [1:0] lk_cdc_dtr;
+    (* syn_preserve *) reg [1:0] cartio_cdc_dtr;
     always @(posedge `EP3_CLOCK or negedge s_ctl_sig[0]) begin
         if (!s_ctl_sig[0]) begin
-            lk_cdc_dtr <= 2'b00;
+            cartio_cdc_dtr <= 2'b00;
         end else begin
-            lk_cdc_dtr <= { lk_cdc_dtr[0], 1'b1 };
+            cartio_cdc_dtr <= { cartio_cdc_dtr[0], 1'b1 };
         end
     end
-    wire ep3_reset = ~lk_cdc_dtr[1];
+    wire ep3_reset = ~cartio_cdc_dtr[1];
 
-    wire      lk_serial_id_tx_dval;
-    wire[7:0] lk_serial_id_tx_data;
+    wire      cartio_serial_id_tx_dval;
+    wire[7:0] cartio_serial_id_tx_data;
 
-    lk_serial_mux::peer_t ep3_peer = lk_serial_mux::P_MCU;
+    cartio_serial_mux::peer_t ep3_peer = cartio_serial_mux::P_MCU;
 
-    wire ep3_is_mcu = (ep3_peer == lk_serial_mux::P_MCU);
-    wire ep3_is_lk = (ep3_peer == lk_serial_mux::P_LK);
-    wire ep3_is_lk_serial_id = (ep3_peer == lk_serial_mux::P_LK_SERIAL_ID);
+    wire ep3_is_mcu = (ep3_peer == cartio_serial_mux::P_MCU);
+    wire ep3_is_cartio = (ep3_peer == cartio_serial_mux::P_CARTIO);
+    wire ep3_is_cartio_serial_id = (ep3_peer == cartio_serial_mux::P_CARTIO_SERIAL_ID);
 
     assign uart_tx_data_val = ep3_is_mcu ? ep3_rx_dval : 1'b0;
     assign uart_tx_data = ep3_is_mcu ? {8'd0, ep3_rx_data } : 16'd0;
@@ -1245,55 +1244,55 @@ module usbuvcuart_top(
         ep3_tx_data = 8'd0;
 
         unique case (ep3_peer)
-            lk_serial_mux::P_MCU: begin
+            cartio_serial_mux::P_MCU: begin
                 ep3_rx_rdy = !uart_tx_busy;
                 ep3_tx_dval = uart_rx_data_val;
                 ep3_tx_data = uart_rx_data[7:0];
             end
-            lk_serial_mux::P_LK_SERIAL_ID: begin
-                ep3_tx_dval = lk_serial_id_tx_dval;
-                ep3_tx_data = lk_serial_id_tx_data;
+            cartio_serial_mux::P_CARTIO_SERIAL_ID: begin
+                ep3_tx_dval = cartio_serial_id_tx_dval;
+                ep3_tx_data = cartio_serial_id_tx_data;
             end
-            lk_serial_mux::P_LK: ;
+            cartio_serial_mux::P_CARTIO: ;
             default: ;
         endcase
     end
 
-    reg lk_observer_enable = 0;
-    always @(posedge `EP3_CLOCK) lk_observer_enable <= ep3_is_mcu;
-    lk_serial_mux::peer_t lk_observer_peer_o;
+    reg cartio_observer_enable = 0;
+    always @(posedge `EP3_CLOCK) cartio_observer_enable <= ep3_is_mcu;
+    cartio_serial_mux::peer_t cartio_observer_peer_o;
 
-    lk_mcu_observer_t lk_observer(
+    cartio_mcu_observer_t cartio_observer(
         pClk,
         RESET_IN,
-        lk_observer_enable,
+        cartio_observer_enable,
         ep3_rx_rdy,
         ep3_rx_dval,
         ep3_rx_data,
-        lk_observer_peer_o
+        cartio_observer_peer_o
     );
 
-    wire lk_serial_id_complete;
-    lk_serial_id_t lk_serial_id(
+    wire cartio_serial_id_complete;
+    cartio_serial_id_t cartio_serial_id(
         pClk,
-        ep3_is_lk_serial_id,
-        lk_serial_id_complete,
-        lk_serial_id_tx_dval,
-        lk_serial_id_tx_data
+        ep3_is_cartio_serial_id,
+        cartio_serial_id_complete,
+        cartio_serial_id_tx_dval,
+        cartio_serial_id_tx_data
     );
 
-    lk_serial_mux::peer_t ep3_next_peer;
+    cartio_serial_mux::peer_t ep3_next_peer;
     always @(*) begin
-        lk_enabled = 1'b0;
+        cartio_enabled = 1'b0;
         ep3_next_peer = ep3_peer;
         if (ep3_reset) begin
-            ep3_next_peer = lk_serial_mux::P_MCU;
+            ep3_next_peer = cartio_serial_mux::P_MCU;
         end else begin
             unique case (ep3_peer)
-                lk_serial_mux::P_MCU: ep3_next_peer = lk_observer_peer_o;
-                lk_serial_mux::P_LK_SERIAL_ID: if (lk_serial_id_complete) ep3_next_peer = lk_serial_mux::P_MCU;
-                lk_serial_mux::P_LK: lk_enabled = 1'b1; // terminal until reset
-                default: ep3_next_peer = lk_serial_mux::P_INVALID;
+                cartio_serial_mux::P_MCU: ep3_next_peer = cartio_observer_peer_o;
+                cartio_serial_mux::P_CARTIO_SERIAL_ID: if (cartio_serial_id_complete) ep3_next_peer = cartio_serial_mux::P_MCU;
+                cartio_serial_mux::P_CARTIO: cartio_enabled = 1'b1; // terminal until reset
+                default: ep3_next_peer = cartio_serial_mux::P_INVALID;
             endcase
         end
     end
