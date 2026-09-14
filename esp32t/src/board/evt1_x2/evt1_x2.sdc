@@ -27,3 +27,24 @@ set_false_path -from [get_ports {CART_DET}]
 set_false_path -from [get_ports {POWER_ON_FPGA}]
 set_false_path -from [get_ports {VBUS_DET}]
 set_false_path -from [get_ports {USBC_FLIP}]
+
+///// CartIO (FlashGBX support) /////
+
+// Explicit CDC
+set_false_path -to [get_regs {*/cartio_cdc_*0_s0}]
+// Copies within `top` to decouple from PHY
+set_false_path -from [get_regs {cartio_enabled_d*}]
+
+// Correct (loosen) the timing requirements for resetting the DRAM.
+//
+// Not logically needed for CartIO, but the added complexity makes the routing harder
+
+report_timing -setup -max_paths 25
+report_timing -hold -max_paths 25
+report_timing -recovery -max_paths 25
+report_timing -removal -max_paths 25
+
+report_timing -setup -max_paths 25 -max_common_paths 1 -mod_ins {u_cartio}
+report_timing -hold -max_paths 25 -max_common_paths 1 -mod_ins {u_cartio}
+report_timing -recovery -max_paths 25 -max_common_paths 1 -mod_ins {u_cartio}
+report_timing -removal -max_paths 25 -max_common_paths 1 -mod_ins {u_cartio}

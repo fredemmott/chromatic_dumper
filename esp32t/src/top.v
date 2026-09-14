@@ -19,17 +19,18 @@ module top #(parameter ISSIMU=0)
     input               BTN_SEL,
     input               BTN_START,
 
-    output  [15:0]      CART_A,
-    output              CART_CLK,
-    output              CART_CS,
+    inout   [15:0]      CART_A,
+    inout               CART_CLK,
+    inout               CART_CS,
     inout   [7:0]       CART_D,
-    output              CART_RD,
+    inout               CART_RD,
     inout               CART_RST,
-    output              CART_WR,
-    output              CART_DATA_DIR_E,
+    inout               CART_WR,
+    inout               CART_DATA_DIR_E,
 
     input               CART_DET,
-    input               CART_AUDIN,
+    // FlashGBX LK: inout because some flash cartridges need this held high to enable flash chip commands
+    inout               CART_AUDIN,
 
     input               CLK_FPGA,       // 33.55432MHz
     input               CLK_27MHz,
@@ -112,6 +113,9 @@ module top #(parameter ISSIMU=0)
     input               VBAT_ADC_P,
     input               VBAT_ADC_N
 );
+    (* syn_preserve = 1 *) reg cartio_enabled;
+    (* syn_preserve = 1 *) reg cartio_enabled_d;
+    (* syn_preserve = 1 *) reg cartio_emu_lockout;
 
     assign POWER_DOWN_IO = 1'bZ;
     assign SDIO_LS = 1'd1;
@@ -245,7 +249,7 @@ module top #(parameter ISSIMU=0)
     always@(posedge gClk)
         LCD_VSYNC_r1 <= LCD_VSYNC;
 
-    reg memrst = 1'd0;
+    reg memrst = 1'd1;
 
     reg LCD_EN1;
     reg LCD_EN0;
@@ -340,7 +344,7 @@ module top #(parameter ISSIMU=0)
     aud_system_top u_aud_system_top(
         .gClk(gClk),
         .hClk(hClk),
-        .reset_n(lock_o),
+        .reset_n(~memrst),
         .left(left),
         .right(right),
 
@@ -363,12 +367,29 @@ module top #(parameter ISSIMU=0)
     always@(posedge xClk)
         CART_DET_sr <= {CART_DET_sr[16:0], CART_DET};
 
+    // CartIO (FlashGBX)
+    //
+    // While semantically this is irrelevant, even on the stock firmware, timing is *very* tight
+    // for memrst, and the extra complexity CartIO adds can push the routing over the edge.
+    //
+    // The delay here allows more flexibility
+    //
+    // It's also a good thing: lock_o flickers a bunch on boot. This can be a few milliseconds.
+    // This waits for it to be stable for 255 ticks *in a row*, which will be ~ 3.8 microseconds.
+    reg [7:0] lock_o_count = 8'd0;
+    wire xclk_lock_o = (lock_o_count == 8'hFF);
+    always@(posedge xClk) begin
+        if (!lock_o) lock_o_count <= 8'd0;
+        else if (!xclk_lock_o) lock_o_count <= lock_o_count + 1'd1;
+    end
+
+    reg cartio_emu_lockout;
     // CART_DET = 0 (no cart inserted)
-    always@(posedge xClk or negedge lock_o)
-        if(~lock_o)
-            memrst <= 1'd1;
-        else
-            memrst <= CART_DET_sr[17:2] == 16'h7FFF || CART_DET_sr[17:2] == 16'h8000;
+    always@(posedge xClk)
+        memrst <= CART_DET_sr[17:2] == 16'h7FFF ||
+                  CART_DET_sr[17:2] == 16'h8000 ||
+                  cartio_emu_lockout ||
+                  ~xclk_lock_o;
 
     mem_system_top #(ISSIMU)
     u_mem_system_top
@@ -410,6 +431,93 @@ module top #(parameter ISSIMU=0)
 
     wire lcd_on_int;
     wire lcd_off_overwrite;
+
+    // CartIO features (for FlashGBX)
+    wire cartio_cart_enabled;
+
+    wire [15:0] cartio_cart_a;
+    wire cartio_cart_a_oe;
+    wire cartio_cart_clk;
+    wire cartio_cart_cs;
+    wire [7:0] cartio_cart_d_in;
+    wire [7:0] cartio_cart_d_out;
+    wire cartio_cart_rd;
+    wire cartio_cart_wr;
+    wire cartio_cart_data_dir_e;
+    cartio_types::tristate_pin_t cartio_cart_rst;
+    cartio_types::tristate_pin_t cartio_cart_audio;
+
+    wire [15:0] emu_cart_a;
+    wire emu_cart_clk;
+    wire emu_cart_cs;
+    wire [7:0] emu_cart_d_in;
+    wire [7:0] emu_cart_d_out;
+    wire emu_cart_rd;
+    wire emu_cart_rst_in;
+    wire emu_cart_wr;
+    wire emu_cart_data_dir_e;
+
+    // from upstream (ModRetro) emu_system_top.v:
+    //     assign CART_D = CART_DATA_DIR ? CART_DOUT_r1 : {8{1'bZ}};
+    //
+    // So, CART_DATA_DIR == write; however, we get CART_DATA_DIR_E which is ~CART_DATA_DIR, so,
+    // _DIR_E can be thought of as 'is read'
+
+    // LK/EMU MUX: output ----------------------------------------
+    wire cart_disabled = cartio_enabled & !cartio_cart_enabled;
+    wire cart_a_is_input =
+        cart_disabled ? 1'b1 :
+        cartio_enabled ? (~cartio_cart_a_oe) :
+        1'b0;
+    wire cart_d_is_input =
+        cart_disabled ? 1'b1 :
+        cartio_enabled ? cartio_cart_data_dir_e :
+        emu_cart_data_dir_e;
+    wire cart_rst_is_input =
+        cart_disabled ? 1'b1 :
+        cartio_enabled ? (~cartio_cart_rst.oe) :
+        1'b1;
+    wire cart_audio_is_input =
+        cart_disabled ? 1'b1 :
+        cartio_enabled ? (~cartio_cart_audio.oe) :
+        1'b1;
+
+    assign CART_DATA_DIR_E = cart_disabled ? 1'bZ : cart_d_is_input;
+
+    assign CART_A =
+        cart_a_is_input ? 16'bZ :
+        cartio_enabled ? cartio_cart_a :
+        emu_cart_a;
+    assign CART_CLK =
+        cart_disabled ? 1'bZ :
+        cartio_enabled ? cartio_cart_clk :
+        emu_cart_clk;
+    assign CART_CS =
+        cart_disabled ? 1'bZ :
+        cartio_enabled ? cartio_cart_cs :
+        emu_cart_cs;
+    assign CART_D =
+        cart_d_is_input ? 8'bZ :
+        cartio_enabled ? cartio_cart_d_out :
+        emu_cart_d_out;
+    assign CART_RD =
+        cart_disabled ? 1'bZ :
+        cartio_enabled ? cartio_cart_rd :
+        emu_cart_rd;
+    assign CART_RST =
+        cart_rst_is_input ? 1'bZ :
+        cartio_cart_rst.value; // always input for emu
+    assign CART_WR =
+        cart_disabled ? 1'bZ :
+        cartio_enabled ? cartio_cart_wr :
+        emu_cart_wr;
+    assign CART_AUDIN =
+        cart_audio_is_input ? 1'bZ :
+        cartio_cart_audio.value; // unused by emu, treat as always input
+
+    assign emu_cart_d_in = (emu_cart_data_dir_e && !cartio_enabled) ? CART_D : 8'h00;
+    assign cartio_cart_d_in = (cartio_cart_data_dir_e && cartio_enabled) ? CART_D : 8'h00;
+    // END LK/EMU MUX
 
     wire [8:0] MCU_buttons;
 
@@ -466,14 +574,15 @@ module top #(parameter ISSIMU=0)
         .BTN_START(BTN_START_filtered | MCU_buttons[0]),
         .MENU_CLOSED(menuDisabled & ~slideOutActive),
 
-        .CART_A(CART_A),
-        .CART_CLK(CART_CLK),
-        .CART_CS(CART_CS),
-        .CART_D(CART_D),
-        .CART_RD(CART_RD),
-        .CART_RST(CART_RST),
-        .CART_WR(CART_WR),
-        .CART_DATA_DIR_E(CART_DATA_DIR_E),
+        .CART_A(emu_cart_a),
+        .CART_CLK(emu_cart_clk),
+        .CART_CS(emu_cart_cs),
+        .CART_D_IN(emu_cart_d_in),
+        .CART_D_OUT(emu_cart_d_out),
+        .CART_DATA_DIR_E(emu_cart_data_dir_e),
+        .CART_RD(emu_cart_rd),
+        .CART_RST_IN(CART_RST),
+        .CART_WR(emu_cart_wr),
 
         .IR_RX(IR_RX),
         .IR_LED(IR_LED),
@@ -615,6 +724,12 @@ module top #(parameter ISSIMU=0)
             else
                 usbrst <= 1'd0;
 
+    wire       CARTIO_ENABLED;
+    wire       CARTIO_TX_DVAL;
+    wire [7:0] CARTIO_TX_DATA;
+    wire       CARTIO_RX_RDY;
+    wire       CARTIO_RX_DVAL;
+    wire [7:0] CARTIO_RX_DATA;
     usbuvcuart_top u_usb_top(
         .CLK_24MHz(CLK_24MHz),
         .ERST(usbrst),
@@ -642,8 +757,20 @@ module top #(parameter ISSIMU=0)
         .usb_rxdn_i(usb_rxdn_i),
         .usb_pullup_en_o(usb_pullup_en_o),
         .usb_term_dp_io(usb_term_dp_io),
-        .usb_term_dn_io(usb_term_dn_io)
+        .usb_term_dn_io(usb_term_dn_io),
+        .cartio_enabled(CARTIO_ENABLED),
+        .cartio_tx_dval(CARTIO_TX_DVAL),
+        .cartio_tx_data(CARTIO_TX_DATA),
+        .cartio_rx_rdy(CARTIO_RX_RDY),
+        .cartio_rx_dval(CARTIO_RX_DVAL),
+        .cartio_rx_data(CARTIO_RX_DATA)
     );
+
+    always @(posedge xClk) begin
+        cartio_enabled_d <= CARTIO_ENABLED;
+        cartio_enabled <= cartio_enabled_d;
+        cartio_emu_lockout <= cartio_enabled_d;
+    end
 
     wire [13:0] hAdcValue_r1;
     wire hAdcReq_ext;
@@ -740,5 +867,29 @@ module top #(parameter ISSIMU=0)
     );
 
     assign I2S_BCLK = menuDisabled;
+
+    // Cartridge IO for use with FlashGBX
+    cartio_top u_cartio(
+        .clk            (PHY_CLKOUT),
+        .reset          (!CARTIO_ENABLED),
+        .rx_ready       (CARTIO_RX_RDY),
+        .rx_valid       (CARTIO_RX_DVAL),
+        .rx_data        (CARTIO_RX_DATA),
+        .tx_valid       (CARTIO_TX_DVAL),
+        .tx_data        (CARTIO_TX_DATA),
+        .cart_enabled   (cartio_cart_enabled),
+        .cart_det       (CART_DET),
+        .cart_a         (cartio_cart_a),
+        .cart_a_oe      (cartio_cart_a_oe),
+        .cart_clk       (cartio_cart_clk),
+        .cart_cs        (cartio_cart_cs),
+        .cart_rd        (cartio_cart_rd),
+        .cart_wr        (cartio_cart_wr),
+        .cart_rst       (cartio_cart_rst),
+        .cart_data_dir_e(cartio_cart_data_dir_e),
+        .cart_d_in      (cartio_cart_d_in),
+        .cart_d_out     (cartio_cart_d_out),
+        .cart_audio     (cartio_cart_audio)
+    );
 
 endmodule

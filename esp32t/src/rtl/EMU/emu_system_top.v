@@ -30,9 +30,10 @@ module emu_system_top
     output  [15:0]      CART_A,
     output              CART_CLK,
     output              CART_CS,
-    inout   [7:0]       CART_D,
+    input   [7:0]       CART_D_IN,
+    output  [7:0]       CART_D_OUT,
     output              CART_RD,
-    inout               CART_RST,
+    input               CART_RST_IN,
     output              CART_WR,
     output              CART_DATA_DIR_E,
 
@@ -150,7 +151,7 @@ module emu_system_top
     wire nCS;
 
     wire [7:0]  CART_DIN; 
-    assign CART_DIN = CART_D;
+    assign CART_DIN = CART_D_IN;
 
     wire cpu_speed;
     wire cpu_halt;
@@ -177,8 +178,6 @@ module emu_system_top
     wire sel_cram = a[15:13] == 3'b101;           // 8k cart ram at $a000
     wire cart_oe = (rd & ~a[15]) | (sel_cram & rd);
 
-    assign CART_RST = 1'bZ;
-
     reg gbreset;
     reg gbreset_ungated;
     reg CART_RST_r1;
@@ -196,7 +195,7 @@ module emu_system_top
         end
         else
         begin
-            CART_RST_r1 <= CART_RST;
+            CART_RST_r1 <= CART_RST_IN;
             CART_RST_r2 <= CART_RST_r1;
             gbreset_ungated <= ~LCD_INIT_DONE ? 1'b1 : ~CART_RST_r2;
             if(~ce_2x_r1 & ce_2x & ce)
@@ -232,7 +231,8 @@ module emu_system_top
        .CART_A          (CART_A         ),
        .CART_CLK        (CART_CLK       ),
        .CART_CS         (CART_CS        ),
-       .CART_D          (CART_D         ),
+       .CART_D_IN       (CART_D_IN      ),
+       .CART_D_OUT      (CART_D_OUT     ),
        .CART_RD         (CART_RD        ),
        .CART_WR         (CART_WR        ),
        .CART_DATA_DIR_E (CART_DATA_DIR_E),

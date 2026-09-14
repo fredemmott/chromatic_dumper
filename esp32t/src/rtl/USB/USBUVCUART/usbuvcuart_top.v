@@ -37,7 +37,16 @@ module usbuvcuart_top(
     input               usb_rxdn_i,
     output              usb_pullup_en_o,
     inout               usb_term_dp_io,
-    inout               usb_term_dn_io
+    inout               usb_term_dn_io,
+
+    output reg          cartio_enabled,
+
+    input               cartio_tx_dval,
+    input[7:0]          cartio_tx_data,
+
+    input               cartio_rx_rdy,
+    output reg          cartio_rx_dval,
+    output reg [7:0]    cartio_rx_data
 );
 
     wire yLineValid;
@@ -107,6 +116,14 @@ module usbuvcuart_top(
     wire [15:0] DESC_STRPRODUCT_LEN ;
     wire [15:0] DESC_STRSERIAL_ADDR ;
     wire [15:0] DESC_STRSERIAL_LEN  ;
+    wire [15:0] DESC_STRFLASHGBX_ADDR;
+    wire [15:0] DESC_STRFLASHGBX_LEN ;
+    wire [15:0] DESC_BLOBBOS_ADDR;
+    wire [15:0] DESC_BLOBBOS_LEN ;
+    wire [15:0] DESC_BLOBMSOS10COMPATID_ADDR;
+    wire [15:0] DESC_BLOBMSOS10COMPATID_LEN;
+    wire [15:0] DESC_BLOBMSOS10COMPATGUID_ADDR;
+    wire [15:0] DESC_BLOBMSOS10COMPATGUID_LEN;
     wire        DESCROM_HAVE_STRINGS;
     wire        RESET_IN;
 
@@ -153,11 +170,20 @@ module usbuvcuart_top(
     reg [11:0]  audio_txdat_len;
     reg         audio_txcork;
 
+    logic [7:0]  cartio_txdat;
+    logic [11:0] cartio_txdat_len;
+    logic        cartio_txcork;
+
     localparam EP_CTRL = 4'd0;
     localparam EP_VC = 4'd1;
     localparam EP_VS = 4'd2;
     localparam EP_UART = 4'd3;
+    localparam EP_CARTIO = 4'd6;
     localparam EP_UAC = {`AUDIO_DATA_EP_NUM}[3:0];
+
+    wire        cmsos10_txval;
+    wire [ 7:0] cmsos10_txdat;
+    wire [11:0] cmsos10_txdat_len;
 
     wire        cuart_txval;
     wire [ 7:0] cuart_txdat;
@@ -172,10 +198,12 @@ module usbuvcuart_top(
     wire [11:0] cuac_txdat_len;
 
     assign endpt0_dat = cuart_txval ? cuart_txdat :
+                        cmsos10_txval ? cmsos10_txdat :
                         cuvc_txval ? cuvc_txdat :
                         cuac_txval ? cuac_txdat :
                         8'd0;
     assign endpt0_txlen = cuart_txval ? cuart_txdat_len :
+                        cmsos10_txval ? cmsos10_txdat_len :
                         cuvc_txval ? cuvc_txdat_len :
                         cuac_txval ? cuac_txdat_len :
                         12'd0;
@@ -185,41 +213,57 @@ module usbuvcuart_top(
     assign usb_txdat = (endpt_sel == EP_CTRL) ? endpt0_dat[7:0] :
                        (endpt_sel == EP_VS) ? video_txdat  :
                        (endpt_sel == EP_UAC) ? audio_txdat :
+                       (endpt_sel == EP_CARTIO) ? cartio_txdat :
                        uart_txdat;
     /* only valid for ep0 */
-    assign endpt0_send = cuart_txval | cuvc_txval | cuac_txval;
+    assign endpt0_send = cuart_txval | cmsos10_txval | cuvc_txval | cuac_txval;
     assign usb_txval = (endpt_sel == EP_CTRL) ? endpt0_send : 1'b0;
 
     assign usb_txdat_len = (endpt_sel == EP_CTRL) ? endpt0_txlen :
                            (endpt_sel == EP_VS) ? video_txdat_len :
                            (endpt_sel == EP_UART) ? uart_txdat_len :
+                           (endpt_sel == EP_CARTIO) ? cartio_txdat_len :
                            (endpt_sel == EP_UAC) ? audio_txdat_len :
                            12'hFAE;
 
     assign usb_txcork = (endpt_sel == EP_CTRL) ? 1'b0 :
                         (endpt_sel == EP_VS) ? video_txcork :
                         (endpt_sel == EP_UART) ? uart_txcork :
+                        (endpt_sel == EP_CARTIO) ? cartio_txcork :
                         (endpt_sel == EP_UAC) ? audio_txcork :
                         1'b1;
 
+    wire cartio_rxfifo_rxrdy;
     assign usb_rxrdy = (endpt_sel == EP_UART) ? uart_rxrdy :
+                       (endpt_sel == EP_CARTIO) ? cartio_rxfifo_rxrdy :
                        (endpt_sel == EP_CTRL) ? 1'b1 : 1'b0;
 
     /* TODO: txiso_pid_i(iso_pid_data) shall be per endpoint, but so far
        we need only 1 packet/microframe on each EP */
 
     /* signals from Device Controller to EPs*/
+    wire ctrl_txact = (endpt_sel == EP_CTRL) ? usb_txact : 0;
     wire video_txact = (endpt_sel == EP_VS) ? usb_txact : 0;
     wire audio_txact = (endpt_sel == EP_UAC) ? usb_txact : 0;
     wire uart_txact = (endpt_sel == EP_UART) ? usb_txact : 0;
+    wire cartio_txact = (endpt_sel == EP_CARTIO) ? usb_txact : 0;
 
     wire video_txpop = (endpt_sel == EP_VS) ? usb_txpop : 0;
     wire audio_txpop = (endpt_sel == EP_UAC) ? usb_txpop : 0;
     wire uart_txpop = (endpt_sel == EP_UART) ? usb_txpop : 0;
+    wire cartio_txpop = (endpt_sel == EP_CARTIO) ? usb_txpop : 0;
 
     wire uart_rxact = (endpt_sel == EP_UART) ? usb_rxact : 0;
+    wire cartio_rxact = (endpt_sel == EP_CARTIO) ? usb_rxact : 0;
 
     wire uart_rxval = (endpt_sel == EP_UART) ? usb_rxval : 0;
+    wire cartio_rxval = (endpt_sel == EP_CARTIO) ? usb_rxval : 0;
+
+    wire [7:0] desc_index;
+    wire [7:0] desc_type;
+
+    logic [15:0] desc_strmux_addr;
+    logic [15:0] desc_strmux_len;
 
     usbuac_ep audio_ep(
         .rst(RESET_IN),
@@ -403,16 +447,18 @@ module usbuvcuart_top(
             ,.desc_strvendor_len_i  (DESC_STRVENDOR_LEN  )
             ,.desc_strproduct_addr_i(DESC_STRPRODUCT_ADDR)
             ,.desc_strproduct_len_i (DESC_STRPRODUCT_LEN )
-            ,.desc_strserial_addr_i (DESC_STRSERIAL_ADDR )
-            ,.desc_strserial_len_i  (DESC_STRSERIAL_LEN  )
+            // The controller doesn't support custom strings, and will instead just report
+            // the serial... so lets mux them :)
+            ,.desc_strserial_addr_i (desc_strmux_addr)
+            ,.desc_strserial_len_i  (desc_strmux_len)
             ,.desc_have_strings_i   (DESCROM_HAVE_STRINGS)
 
-            ,.desc_bos_addr_i(16'd0)
-            ,.desc_bos_len_i(16'd0)
+            ,.desc_bos_addr_i(16'd0 /* DESC_BLOBBOS_ADDR */)
+            ,.desc_bos_len_i(16'd0 /* DESC_BLOBBOS_LEN */)
             ,.desc_hidrpt_addr_i(16'd0)
             ,.desc_hidrpt_len_i(16'd0)
-            ,.desc_index_o()
-            ,.desc_type_o()
+            ,.desc_index_o(desc_index)
+            ,.desc_type_o(desc_type)
 
             ,.utmi_dataout_o        (PHY_DATAOUT       )
             ,.utmi_txvalid_o        (PHY_TXVALID       )
@@ -427,6 +473,19 @@ module usbuvcuart_top(
             ,.utmi_termselect_o     (PHY_TERMSELECT    )
             ,.utmi_reset_o          (PHY_RESET         )
          );
+
+    always @(*) begin
+        if ({desc_type, desc_index} == 16'h0305) begin
+           desc_strmux_addr = DESC_STRFLASHGBX_ADDR;
+           desc_strmux_len = DESC_STRFLASHGBX_LEN;
+        end else if ({desc_type, desc_index} == 16'h03ee) begin
+            desc_strmux_addr = DESC_BLOBBOS_ADDR;
+            desc_strmux_len = DESC_BLOBBOS_LEN;
+        end else begin
+           desc_strmux_addr = DESC_STRSERIAL_ADDR;
+           desc_strmux_len = DESC_STRSERIAL_LEN;
+        end
+    end
 
     wire [63:0] serial;
     //==============================================================
@@ -445,7 +504,7 @@ module usbuvcuart_top(
         ,.RESET                  (RESET_IN            )
         ,.playerNum              (playerNum)
         ,.serial                 (serial)
-        ,.i_descrom_raddr        (DESCROM_RADDR       )
+        ,.i_descrom_raddr        (DESCROM_RADDR)
         ,.o_descrom_rdat         (DESCROM_RDAT        )
         ,.o_desc_dev_addr        (DESC_DEV_ADDR       )
         ,.o_desc_dev_len         (DESC_DEV_LEN        )
@@ -463,6 +522,10 @@ module usbuvcuart_top(
         ,.o_desc_strproduct_len  (DESC_STRPRODUCT_LEN )
         ,.o_desc_strserial_addr  (DESC_STRSERIAL_ADDR )
         ,.o_desc_strserial_len   (DESC_STRSERIAL_LEN  )
+        ,.o_desc_strflashgbx_addr(DESC_STRFLASHGBX_ADDR )
+        ,.o_desc_strflashgbx_len (DESC_STRFLASHGBX_LEN  )
+        ,.o_desc_blobbos_addr    (DESC_BLOBBOS_ADDR   )
+        ,.o_desc_blobbos_len     (DESC_BLOBBOS_LEN    )
         ,.o_descrom_have_strings (DESCROM_HAVE_STRINGS)
     );
 
@@ -561,13 +624,35 @@ module usbuvcuart_top(
                         cdata_phase_active <= 1'b1;
                     end else if (cdata_phase_active) begin
                         cdata_phase_active <= 1'b0;
-                        cdata_rxtx <= 1'b0;
-                        hdr_len <= 3'd0;
+                        // Support multi-byte control responses, which we need for our larger
+                        // USB descriptors and blobs with CartIO support added
+                        if (bmRequestType[7] ? ~endpt0_send : (cdata_ofs >= wLength)) begin
+                            cdata_rxtx <= 1'b0;
+                            hdr_len <= 3'd0;
+                        end
                     end
                 end else
                     hdr_len <= 3'd0;
             end
         end // if (~RESET_IN)
+
+    ctrl_msos10 msos10_ctrl(
+            .RESET_IN(RESET_IN),
+            .pClk(pClk),
+            .header_ready(header_ready),
+            .bmRequestType(bmRequestType),
+            .bRequest(bRequest),
+            .wValue(wValue),
+            .wIndex(wIndex),
+            .wLength(wLength),
+            .cdata_ofs(cdata_ofs),
+
+            .usb_txact(ctrl_txact),
+            .usb_txpop(usb_txpop),
+            .usb_txval(cmsos10_txval),
+            .usb_txdat_len(cmsos10_txdat_len),
+            .usb_txdat(cmsos10_txdat)
+        );
 
     ctrl_uart uart_if_ctrl(
         .RESET_IN(RESET_IN),
@@ -959,13 +1044,8 @@ module usbuvcuart_top(
     wire [15:0] uart_rx_data    ;
     wire        uart_rx_data_val;
 
-
     wire uart_cts = 1'b0;
-    wire        ep3_rx_dval;
-    wire [7:0]  ep3_rx_data;
 
-    assign uart_tx_data     = {8'd0,ep3_rx_data};
-    assign uart_tx_data_val = ep3_rx_dval;
     UART  #(
         .CLK_FREQ     (30'd60000000)  // set system clock frequency in Hz
     )u_UART
@@ -990,6 +1070,117 @@ module usbuvcuart_top(
     //==============================================================
     //======FIFO
 
+    // Support for the FlashGBX "LK" protocol
+
+    wire [12:0] cartio_txfifo_count;
+
+    cartio_usb_simplex_fifo #(
+        .ADDR_WIDTH(12)
+    ) cartio_txfifo (
+        .clk         (pClk),
+        .reset       (usb_busreset | RESET_IN | ~cartio_enabled),
+
+        .wr_val_i    (cartio_tx_dval),
+        .wr_data_i   (cartio_tx_data),
+        .wr_commit_i (1'b1),
+        .wr_rewind_i (1'b0),
+
+        .rd_pop_i    (cartio_txpop),
+        .rd_data_o   (cartio_txdat),
+        .rd_commit_i (usb_txpktfin),
+        .rd_rewind_i (~cartio_txact),
+
+        .count_o     (cartio_txfifo_count),
+        .free_o      ()
+    );
+
+    logic cartio_rxfifo_pop;
+    logic [7:0] cartio_rxfifo_q;
+    logic [12:0] cartio_rxfifo_count;
+    logic [12:0] cartio_rxfifo_free;
+
+    cartio_usb_simplex_fifo #(
+        .ADDR_WIDTH(12)
+    ) cartio_rxfifo (
+        .clk         (pClk),
+        .reset       (~cartio_enabled),
+
+        .wr_val_i    (cartio_rxval),
+        .wr_data_i   (usb_rxdat),
+        .wr_commit_i (usb_rxpktval),
+        .wr_rewind_i (~usb_rxact),
+
+        .rd_pop_i    (cartio_rxfifo_pop),
+        .rd_data_o   (cartio_rxfifo_q),
+        .rd_commit_i (1'b1),
+        .rd_rewind_i (1'b0),
+
+        .count_o     (cartio_rxfifo_count),
+        .free_o      (cartio_rxfifo_free)
+    );
+    assign cartio_rxfifo_pop = (cartio_rxfifo_count > 12'd0) && cartio_rx_rdy;
+    assign cartio_rx_dval = cartio_rxfifo_pop;
+    assign cartio_rx_data = cartio_rxfifo_q;
+    assign cartio_rxfifo_rxrdy = cartio_rxfifo_free >= 13'd512;
+
+    // (command, arg) repeated; we can match command with a single-bit counter;
+    logic cartio_rx_count;
+    wire cartio_rx_command = cartio_rxval && (cartio_rx_count == 1'b0);
+    wire cartio_rx_command_produces_tx = cartio_rx_command && cartio_types::command_produces_tx(cartio_types::command_t'(usb_rxdat));
+
+    always @(posedge pClk) begin
+        cartio_rx_count <= cartio_rx_count;
+        if (~(cartio_enabled & cartio_rxact)) begin
+            cartio_rx_count <= 1'b0;
+        end else if (cartio_rxval) begin
+            // single-bit 'counter'
+            cartio_rx_count <= ~cartio_rx_count;
+        end
+    end
+
+    // How many TX bytes are expected based on the commands in the current RX packet
+    // uncommited until usb_rxpktval is high
+    logic [11:0] cartio_txexpected_thisrx;
+    always @(posedge pClk) begin
+        if (cartio_rxact) begin
+            cartio_txexpected_thisrx <= cartio_txexpected_thisrx + cartio_rx_command_produces_tx;
+        end else begin
+            cartio_txexpected_thisrx <= 12'd0;
+        end
+    end
+
+    logic [15:0] cartio_txexpected;
+
+    always @(posedge pClk) begin
+        if (~cartio_enabled) begin
+            cartio_txexpected <= 16'd0;
+        end else if (endpt_sel == EP_CARTIO) begin
+            cartio_txexpected <= cartio_txexpected
+                - (usb_txpktfin ? 16'(cartio_txdat_len) : 16'd0)
+                + (usb_rxpktval ? 16'(cartio_txexpected_thisrx) : 16'd0);
+        end else begin
+            cartio_txexpected <= cartio_txexpected;
+        end
+    end
+
+    always @(posedge pClk) begin
+        cartio_txcork <= (cartio_txfifo_count < 13'd512) && (cartio_txfifo_count < cartio_txexpected) && ~cartio_txact;
+    end
+
+    always @(posedge pClk) begin
+        if (~cartio_enabled) begin
+            cartio_txdat_len <= 12'd0;
+        end else if (!cartio_txact) begin
+            cartio_txdat_len <= (cartio_txexpected >= 16'd512) ? 12'd512 : cartio_txexpected[11:0];
+        end
+    end
+
+    wire       ep3_rx_dval;
+    wire [7:0] ep3_rx_data;
+    reg        ep3_rx_rdy;
+    reg        ep3_tx_dval;
+    reg  [7:0] ep3_tx_data;
+
     usb_fifo usb_fifo
     (
          .i_clk         (pClk   )//clock
@@ -1006,13 +1197,13 @@ module usbuvcuart_top(
         ,.o_usb_txcork  (uart_txcork)
         ,.o_usb_txlen   (uart_txdat_len )
         ,.o_usb_txdat   (uart_txdat )
-        //Endpoint 3
+        // Endpoint 3 (USB serial)
         ,.i_ep3_tx_clk  (pClk             )
         ,.i_ep3_tx_max  (12'd64           )
-        ,.i_ep3_tx_dval (uart_rx_data_val )
-        ,.i_ep3_tx_data (uart_rx_data[7:0])
+        ,.i_ep3_tx_dval (ep3_tx_dval      )
+        ,.i_ep3_tx_data (ep3_tx_data      )
         ,.i_ep3_rx_clk  (pClk             )
-        ,.i_ep3_rx_rdy  (!uart_tx_busy    )
+        ,.i_ep3_rx_rdy  (ep3_rx_rdy       )
         ,.o_ep3_rx_dval (ep3_rx_dval      )
         ,.o_ep3_rx_data (ep3_rx_data      )
     );
@@ -1020,6 +1211,91 @@ module usbuvcuart_top(
     assign    E_UART_DTR = s_ctl_sig[0];
     assign    E_UART_RTS = s_ctl_sig[1];
 
+    (* syn_preserve *) reg [1:0] cartio_cdc_dtr;
+    always @(posedge pClk or negedge s_ctl_sig[0]) begin
+        if (!s_ctl_sig[0]) begin
+            cartio_cdc_dtr <= 2'b00;
+        end else begin
+            cartio_cdc_dtr <= { cartio_cdc_dtr[0], 1'b1 };
+        end
+    end
+    wire ep3_reset = ~cartio_cdc_dtr[1];
+
+    wire      cartio_serial_id_tx_dval;
+    wire[7:0] cartio_serial_id_tx_data;
+
+    cartio_serial_mux::peer_t ep3_peer = cartio_serial_mux::P_MCU;
+
+    wire ep3_is_mcu = (ep3_peer == cartio_serial_mux::P_MCU);
+    wire ep3_is_cartio = (ep3_peer == cartio_serial_mux::P_CARTIO);
+    wire ep3_is_cartio_serial_id = (ep3_peer == cartio_serial_mux::P_CARTIO_SERIAL_ID);
+
+    assign uart_tx_data_val = ep3_is_mcu ? ep3_rx_dval : 1'b0;
+    assign uart_tx_data = ep3_is_mcu ? {8'd0, ep3_rx_data } : 16'd0;
+
+    always @(*) begin
+        ep3_rx_rdy = 1'b0;
+
+        ep3_tx_dval = 1'b0;
+        ep3_tx_data = 8'd0;
+
+        unique case (ep3_peer)
+            cartio_serial_mux::P_MCU: begin
+                ep3_rx_rdy = !uart_tx_busy;
+                ep3_tx_dval = uart_rx_data_val;
+                ep3_tx_data = uart_rx_data[7:0];
+            end
+            cartio_serial_mux::P_CARTIO_SERIAL_ID: begin
+                ep3_tx_dval = cartio_serial_id_tx_dval;
+                ep3_tx_data = cartio_serial_id_tx_data;
+            end
+            cartio_serial_mux::P_CARTIO: ;
+            default: ;
+        endcase
+    end
+
+    reg cartio_observer_enable = 0;
+    always @(posedge pClk) cartio_observer_enable <= ep3_is_mcu;
+    cartio_serial_mux::peer_t cartio_observer_peer_o;
+
+    cartio_mcu_observer_t cartio_observer(
+        pClk,
+        RESET_IN,
+        cartio_observer_enable,
+        ep3_rx_rdy,
+        ep3_rx_dval,
+        ep3_rx_data,
+        cartio_observer_peer_o
+    );
+
+    wire cartio_serial_id_complete;
+    cartio_serial_id_t cartio_serial_id(
+        pClk,
+        ep3_is_cartio_serial_id,
+        cartio_serial_id_complete,
+        cartio_serial_id_tx_dval,
+        cartio_serial_id_tx_data
+    );
+
+    cartio_serial_mux::peer_t ep3_next_peer;
+    always @(*) begin
+        cartio_enabled = 1'b0;
+        ep3_next_peer = ep3_peer;
+        if (ep3_reset) begin
+            ep3_next_peer = cartio_serial_mux::P_MCU;
+        end else begin
+            unique case (ep3_peer)
+                cartio_serial_mux::P_MCU: ep3_next_peer = cartio_observer_peer_o;
+                cartio_serial_mux::P_CARTIO_SERIAL_ID: if (cartio_serial_id_complete) ep3_next_peer = cartio_serial_mux::P_MCU;
+                cartio_serial_mux::P_CARTIO: cartio_enabled = 1'b1; // terminal until reset
+                default: ep3_next_peer = cartio_serial_mux::P_INVALID;
+            endcase
+        end
+    end
+
+    always @(posedge pClk) begin
+        ep3_peer <= ep3_next_peer;
+    end
 endmodule
 
 module delay(input rst, input clk, input in, output out);
@@ -1093,6 +1369,252 @@ module rgb_to_ycbcr_pipeline(
         .O_dout2(Cr), //output [7:0] O_dout2
         .O_doutvalid(yEnable) //output O_doutvalid
         );
+
+endmodule
+
+module ctrl_msos10 #(
+    parameter [7:0] MSOS10VENDOR_CODE = 8'h42  // Must match bMS_VendorCode in BOS Platform Capability
+)(
+    input             RESET_IN,
+    input             pClk,
+    input             header_ready,
+    input      [7:0]  bmRequestType,
+    input      [7:0]  bRequest,
+    input      [15:0] wValue,
+    input      [15:0] wIndex,
+    input      [15:0] wLength,
+    input      [15:0] cdata_ofs,
+
+    input             usb_txact,
+    input             usb_txpop,
+    output reg        usb_txval,
+    output logic [11:0] usb_txdat_len,
+    output reg [7:0]  usb_txdat
+);
+    localparam COMPAT_ID_BLOB = {
+        // Header section (40 bytes)
+        8'h28, 8'h00, 8'h00, 8'h00, // dwLength
+        8'h00, 8'h01, // bcdVersion
+        8'h04, 8'h00, // wIndex
+        8'h01, // bCount
+        8'h00, 8'h00, 8'h00, 8'h00, // RESERVED
+        8'h00, 8'h00, 8'h00,
+
+        // Function section (24 bytes)
+        8'h06, // bFirstInterfaceNumber
+        8'h01, // RESERVED
+        "WINUSB", 8'h00, 8'h00, // compatibleID
+        8'h00, 8'h00, 8'h00, 8'h00, // subCompatibleID
+        8'h00, 8'h00, 8'h00, 8'h00,
+        8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00 // RESERVED
+    };
+
+    localparam EXTENDED_PROPERTIES_BLOB = {
+        // Header (10 bytes)
+        8'he0, 8'h00, 8'h00, 8'h00, // dwLength (224 bytes)
+        8'h00, 8'h01, // bcdVersion
+        8'h05, 8'h00, // wIndex
+        8'h01, 8'h00, // wCount
+
+        // Custom Property (136 bytes)
+        8'hd6, 8'h00, 8'h00, 8'h00, // dwSize
+        8'h07, 8'h00, 8'h00, 8'h00, // dwPropertyDataType
+        8'h2a, 8'h00, // dwPropertyNameLength (40)
+        "D", 8'h00, // bPropertyName,
+        "e", 8'h00,
+        "v", 8'h00,
+        "i", 8'h00,
+        "c", 8'h00,
+        "e", 8'h00,
+        "I", 8'h00,
+        "n", 8'h00,
+        "t", 8'h00,
+        "e", 8'h00,
+        "r", 8'h00,
+        "f", 8'h00,
+        "a", 8'h00,
+        "c", 8'h00,
+        "e", 8'h00,
+        "G", 8'h00,
+        "U", 8'h00,
+        "I", 8'h00,
+        "D", 8'h00,
+        "s", 8'h00,
+        8'h00, 8'h00,
+        // bPropertyName
+        8'h9e, 8'h00, 8'h00, 8'h00, // dwPropertyDataLength (158)
+        // Freshly randomly generated GUID; we don't actually use this, but on Windows,
+        // libusb can't select a winusb interface on a composite device unless it has *any* GUID
+        // "{4aefd4e2-a2be-40fb-9392-1edbd7359e20}\0" (UTF-16LE)
+        // "{4aefd4e2-a2be-40fb-9392-1edbd7359e21}\0" (UTF-16LE) ... because we need at least two GUIDs for Windows to recognize the property
+        "{", 8'h00,
+        "4", 8'h00,
+        "a", 8'h00,
+        "e", 8'h00,
+        "f", 8'h00,
+        "d", 8'h00,
+        "4", 8'h00,
+        "e", 8'h00,
+        "2", 8'h00,
+        "-", 8'h00,
+        "a", 8'h00,
+        "2", 8'h00,
+        "b", 8'h00,
+        "e", 8'h00,
+        "-", 8'h00,
+        "4", 8'h00,
+        "0", 8'h00,
+        "f", 8'h00,
+        "b", 8'h00,
+        "-", 8'h00,
+        "9", 8'h00,
+        "3", 8'h00,
+        "9", 8'h00,
+        "2", 8'h00,
+        "-", 8'h00,
+        "1", 8'h00,
+        "e", 8'h00,
+        "d", 8'h00,
+        "b", 8'h00,
+        "d", 8'h00,
+        "7", 8'h00,
+        "3", 8'h00,
+        "5", 8'h00,
+        "9", 8'h00,
+        "e", 8'h00,
+        "2", 8'h00,
+        "0", 8'h00,
+        "}", 8'h00,
+        8'h00, 8'h00, // MULTI_SZ entry terminator
+        "{", 8'h00,
+        "4", 8'h00,
+        "a", 8'h00,
+        "e", 8'h00,
+        "f", 8'h00,
+        "d", 8'h00,
+        "4", 8'h00,
+        "e", 8'h00,
+        "2", 8'h00,
+        "-", 8'h00,
+        "a", 8'h00,
+        "2", 8'h00,
+        "b", 8'h00,
+        "e", 8'h00,
+        "-", 8'h00,
+        "4", 8'h00,
+        "0", 8'h00,
+        "f", 8'h00,
+        "b", 8'h00,
+        "-", 8'h00,
+        "9", 8'h00,
+        "3", 8'h00,
+        "9", 8'h00,
+        "2", 8'h00,
+        "-", 8'h00,
+        "1", 8'h00,
+        "e", 8'h00,
+        "d", 8'h00,
+        "b", 8'h00,
+        "d", 8'h00,
+        "7", 8'h00,
+        "3", 8'h00,
+        "5", 8'h00,
+        "9", 8'h00,
+        "e", 8'h00,
+        "2", 8'h00,
+        "1", 8'h00,
+        "}", 8'h00,
+        8'h00, 8'h00, // MULTI_SZ entry terminator
+        8'h00, 8'h00 // MULTI_SZ list terminator
+    };
+    localparam COMPAT_ID_BLOB_ADDR = 0;
+    localparam COMPAT_ID_BLOB_LEN = $bits(COMPAT_ID_BLOB) / 8;
+    localparam EXTENDED_PROPERTIES_BLOB_ADDR = COMPAT_ID_BLOB_ADDR + COMPAT_ID_BLOB_LEN;
+    localparam EXTENDED_PROPERTIES_BLOB_LEN = $bits(EXTENDED_PROPERTIES_BLOB) / 8;
+    localparam BLOB = { COMPAT_ID_BLOB, EXTENDED_PROPERTIES_BLOB };
+    localparam BLOB_LEN = $bits(BLOB) / 8;
+    logic [7:0] rom [BLOB_LEN - 1: 0];
+
+    integer i;
+    initial begin
+        for (i = 0;  i < BLOB_LEN; i = i + 1) begin
+            rom[i] = BLOB[((BLOB_LEN - 1 - i)*8) +: 8];
+        end
+    end
+
+    wire is_msos10_compat_id_req = header_ready &&
+                         ((bmRequestType == 8'hC0) || (bmRequestType == 8'hC1)) &&
+                         (bRequest == MSOS10VENDOR_CODE) &&
+                         (wIndex == 16'h0004);
+    // Actually an 'extended property' request, but we only have the one extended property :)
+    wire is_msos10_compat_guid_req = header_ready &&
+                         ((bmRequestType == 8'hC0) || (bmRequestType == 8'hC1)) &&
+                         (bRequest == MSOS10VENDOR_CODE) &&
+                         // MS OS 1.0 documentation says the interface will be in the high byte, but
+                         // the WinUSB driver has a behavior that always sets wValue to the interface number
+                         // for device-to-interface requests... and this one is sent on interface 0 as it's a control
+                         // request.
+                         //
+                         // An MS employee has described this as a security feature of the WinUSB driver - which just
+                         // happens to be incompatible with the specs for how WinUSB devices are enumerated.
+                         //
+                         // Commenting this out is *required* for the WinUSB driver to work correctly, however it
+                         // also means that we're going to be returning these GUIDs for all interfaces, not just
+                         // the one we care about. So... clients need to be careful about which interface they use
+                         // and can't just use the GUID as a... unique... identifier.
+                         //
+                         // (wValue[15:8] == 8'(`FLASHGBX_IFACE)) &&
+                         // (wValue[7:0] == 8'd0) &&
+                         (wIndex == 16'h0005);
+    wire is_msos10_req = is_msos10_compat_id_req | is_msos10_compat_guid_req;
+
+    wire [15:0] base_addr = is_msos10_compat_id_req ? COMPAT_ID_BLOB_ADDR : EXTENDED_PROPERTIES_BLOB_ADDR;
+    wire [15:0] len = is_msos10_compat_id_req ? COMPAT_ID_BLOB_LEN : EXTENDED_PROPERTIES_BLOB_LEN;
+
+    // Calculate actual ROM address to read
+
+    wire [15:0] next_offset = cdata_ofs + usb_txpop;
+    wire [15:0] rom_raddr = base_addr + next_offset;
+    wire [7:0] rom_rdat = rom[rom_raddr];
+
+    wire [5:0] packet_index = cdata_ofs[11:6];
+    wire [11:0] packet_offset = {packet_index, 6'd0};
+
+    wire [15:0] total_length = (wLength < len) ? wLength : len;
+    wire [11:0] packet_length = (total_length > packet_offset + 12'd64) ? 12'd64 : (total_length - packet_offset);
+
+    always @(posedge pClk) begin
+        if (RESET_IN) begin
+            usb_txdat_len <= 12'd0;
+        end else if (~usb_txact) begin
+            usb_txdat_len <= is_msos10_req ? packet_length : 12'd0;
+        end
+    end
+
+    always @(posedge pClk) begin
+        if (RESET_IN) begin
+            usb_txval     <= 1'b0;
+            usb_txdat     <= 8'd0;
+        end else if (is_msos10_req && usb_txact) begin
+            usb_txdat <= rom_rdat;
+            if (usb_txpop) begin
+                if ((cdata_ofs + 16'd1) >= (packet_offset + packet_length)) begin
+                    /* One-cycle dip terminates the current packet:
+                     * either the whole transfer is done, or we just popped
+                     * the 64th byte of a max-size packet. */
+                    usb_txval <= ~(((cdata_ofs + 16'd1) >= total_length)
+                                 || (cdata_ofs[5:0] == 6'd63));
+                end else begin
+                    usb_txval <= (cdata_ofs < total_length);
+                end
+            end else if (cdata_ofs[5:0] == 16'd0) begin
+                // Start of a packet, might be first packet
+                usb_txval <= 1'b1;
+            end
+        end else begin
+            usb_txval <= 1'b0;
+        end
+    end
 
 endmodule
 
