@@ -33,7 +33,7 @@ wire rx_ready_negedge = {rx_ready_d, rx_ready} == 2'b10;
 
 wire rx_new_byte = rx_valid && rx_ready_negedge;
 
-localparam ACTIVATE = { "CartIO" };
+localparam ACTIVATE = { "fredemmott/CartIO" };
 
 reg [$bits(ACTIVATE) - 1:0] rx_data_sr;
 always @(posedge clk) begin
