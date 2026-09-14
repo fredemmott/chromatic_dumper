@@ -105,7 +105,6 @@
         <File path="src/rtl/EMU/CORE/speedcontrol.vhd" type="file.vhdl" enable="1"/>
         <File path="src/board/evt1_x2/evt1_x2.cst" type="file.cst" enable="1"/>
         <File path="src/board/evt1_x2/evt1_x2.sdc" type="file.sdc" enable="1"/>
-        <File path="sysMon.rao" type="file.gao" enable="0"/>
         <File path="src/rtl/BSP/tlv320regs.hex" type="file.other" enable="1"/>
     </FileList>
 </Project>
