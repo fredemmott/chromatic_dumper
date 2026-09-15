@@ -4,9 +4,11 @@ module cartio_top(
     input  wire        clk,
     input  wire        reset,
 
+
     output reg         rx_ready,
     input  wire        rx_valid,
     input  wire [7:0]  rx_data,
+    output reg         tx_flush,
     output reg         tx_valid,
     output reg  [7:0]  tx_data,
 
@@ -120,6 +122,7 @@ always @(posedge clk) begin
     state <= state;
     command_latched <= command_latched;
     arg_latched <= arg_latched;
+    tx_flush <= 1'b0;
 
     if (reset) begin
         state <= S_IDLE;
@@ -137,12 +140,14 @@ always @(posedge clk) begin
                 state <= S_WAIT_ARG;
             end
             S_WAIT_ARG: begin
+                state <= S_IDLE;
                 arg_latched <= next_byte;
 
                 unique case (command)
                     CMD_VERIFY_DATA: state <= S_EXEC_VERIFY;
                     CMD_VERIFY_STATUS_REGISTER: state <= S_EXEC_VERIFY;
-                    default: state <= S_IDLE;
+                    CMD_FLUSH: tx_flush <= 1'b1;
+                    default: /* nothing to do */ ;
                 endcase
             end
             S_EXEC_VERIFY: /* nothing */ ;

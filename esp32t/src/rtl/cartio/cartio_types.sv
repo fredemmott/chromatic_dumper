@@ -23,7 +23,8 @@ typedef enum logic [7:0] {
     CMD_VERIFY_STATUS_REGISTER = 8'd10, // arg ignored
     CMD_SET_STATUS_REGISTER_MASK = 8'd11,
     CMD_SET_STATUS_REGISTER_VALUE = 8'd12,
-    CMD_GET_STATE_BITS = 8'd13
+    CMD_GET_STATE_BITS = 8'd13,
+    CMD_FLUSH = 8'd14 // let's move to 8'd2
 } command_t;
 
 

@@ -725,6 +725,7 @@ module top #(parameter ISSIMU=0)
                 usbrst <= 1'd0;
 
     wire       CARTIO_ENABLED;
+    wire       CARTIO_TX_FLUSH;
     wire       CARTIO_TX_DVAL;
     wire [7:0] CARTIO_TX_DATA;
     wire       CARTIO_RX_RDY;
@@ -759,6 +760,7 @@ module top #(parameter ISSIMU=0)
         .usb_term_dp_io(usb_term_dp_io),
         .usb_term_dn_io(usb_term_dn_io),
         .cartio_enabled(CARTIO_ENABLED),
+        .cartio_tx_flush(CARTIO_TX_FLUSH),
         .cartio_tx_dval(CARTIO_TX_DVAL),
         .cartio_tx_data(CARTIO_TX_DATA),
         .cartio_rx_rdy(CARTIO_RX_RDY),
@@ -875,6 +877,7 @@ module top #(parameter ISSIMU=0)
         .rx_ready       (CARTIO_RX_RDY),
         .rx_valid       (CARTIO_RX_DVAL),
         .rx_data        (CARTIO_RX_DATA),
+        .tx_flush       (CARTIO_TX_FLUSH),
         .tx_valid       (CARTIO_TX_DVAL),
         .tx_data        (CARTIO_TX_DATA),
         .cart_enabled   (cartio_cart_enabled),

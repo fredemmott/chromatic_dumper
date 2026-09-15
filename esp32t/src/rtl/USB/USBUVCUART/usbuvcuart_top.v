@@ -41,6 +41,7 @@ module usbuvcuart_top(
 
     output reg          cartio_enabled,
 
+    input               cartio_tx_flush,
     input               cartio_tx_dval,
     input[7:0]          cartio_tx_data,
 
@@ -1072,7 +1073,8 @@ module usbuvcuart_top(
 
     // Support for the FlashGBX "LK" protocol
 
-    wire [12:0] cartio_txfifo_count;
+    logic [12:0] cartio_txfifo_count;
+    logic [12:0] cartio_txfifo_free;
 
     cartio_usb_simplex_fifo #(
         .ADDR_WIDTH(12)
@@ -1091,7 +1093,7 @@ module usbuvcuart_top(
         .rd_rewind_i (~cartio_txact),
 
         .count_o     (cartio_txfifo_count),
-        .free_o      ()
+        .free_o      (cartio_txfifo_free)
     );
 
     logic cartio_rxfifo_pop;
@@ -1121,7 +1123,7 @@ module usbuvcuart_top(
     assign cartio_rxfifo_pop = (cartio_rxfifo_count > 12'd0) && cartio_rx_rdy;
     assign cartio_rx_dval = cartio_rxfifo_pop;
     assign cartio_rx_data = cartio_rxfifo_q;
-    assign cartio_rxfifo_rxrdy = cartio_rxfifo_free >= 13'd512;
+    assign cartio_rxfifo_rxrdy = (cartio_rxfifo_free >= 13'd512) && (cartio_txfifo_free >= 13'd512);
 
     // (command, arg) repeated; we can match command with a single-bit counter;
     logic cartio_rx_count;
@@ -1138,40 +1140,56 @@ module usbuvcuart_top(
         end
     end
 
-    // How many TX bytes are expected based on the commands in the current RX packet
-    // uncommited until usb_rxpktval is high
-    logic [11:0] cartio_txexpected_thisrx;
-    always @(posedge pClk) begin
-        if (cartio_rxact) begin
-            cartio_txexpected_thisrx <= cartio_txexpected_thisrx + cartio_rx_command_produces_tx;
-        end else begin
-            cartio_txexpected_thisrx <= 12'd0;
-        end
-    end
+    logic cartio_tx_flush_pending;
+    logic cartio_txact_d;
+    wire cartio_txact_posedge = {cartio_txact_d, cartio_txact} == 2'b01;
 
-    logic [15:0] cartio_txexpected;
-
+    // Packet remainder counter; packets are 512 bytes, so 9-bit counter wraps at the end of a full packet
+    logic [8:0] cartio_tx_since_flush;
+    // WARNING: Only valid during txact posedge
+    wire [8:0] cartio_tx_since_flush_next_packet = cartio_tx_since_flush
+        - cartio_txdat_len[8:0]
+        + (cartio_tx_dval ? 9'd1 : 9'd0);
     always @(posedge pClk) begin
+        cartio_txact_d <= cartio_txact;
+        cartio_tx_since_flush <= cartio_tx_since_flush;
+        cartio_tx_flush_pending <= cartio_tx_flush_pending;
+
+        // assuming !(cartio_tx_dval && cartio_tx_flush), as CMD_FLUSH does not produce TX
+        //
+        // we want to ignore flush if (expected TX %) 512 == 0; we only use it to mark short packets
         if (~cartio_enabled) begin
-            cartio_txexpected <= 16'd0;
-        end else if (endpt_sel == EP_CARTIO) begin
-            cartio_txexpected <= cartio_txexpected
-                - (usb_txpktfin ? 16'(cartio_txdat_len) : 16'd0)
-                + (usb_rxpktval ? 16'(cartio_txexpected_thisrx) : 16'd0);
-        end else begin
-            cartio_txexpected <= cartio_txexpected;
+            cartio_tx_since_flush <= 9'd0;
+            cartio_tx_flush_pending <= 1'b0;
+        end else if (cartio_txact_posedge) begin
+            // wrap in either direction is fine as we just care about (count % 512)
+            cartio_tx_since_flush <= cartio_tx_since_flush_next_packet;
+            if (cartio_tx_flush || cartio_tx_flush_pending) begin
+                cartio_tx_flush_pending <= cartio_tx_since_flush_next_packet != 9'd0;
+            end
+        end else if (cartio_tx_flush) begin
+            cartio_tx_flush_pending <= cartio_tx_since_flush != 9'd0;
+        end else if (cartio_tx_dval) begin
+            cartio_tx_since_flush <= cartio_tx_since_flush + 9'd1;
         end
     end
 
     always @(posedge pClk) begin
-        cartio_txcork <= (cartio_txfifo_count < 13'd512) && (cartio_txfifo_count < cartio_txexpected) && ~cartio_txact;
+        if (cartio_txact) begin
+            // We MUST NOT cork while in-progress
+            cartio_txcork <= 1'b0;
+        end else begin
+            cartio_txcork <=
+                (cartio_txfifo_count == 13'd0) ||
+                ((cartio_txfifo_count < 13'd512) && ~cartio_tx_flush_pending);
+        end
     end
 
     always @(posedge pClk) begin
         if (~cartio_enabled) begin
             cartio_txdat_len <= 12'd0;
         end else if (!cartio_txact) begin
-            cartio_txdat_len <= (cartio_txexpected >= 16'd512) ? 12'd512 : cartio_txexpected[11:0];
+            cartio_txdat_len <= (cartio_txfifo_count >= 13'd512) ? 12'd512 : cartio_txfifo_count[11:0];
         end
     end
 
