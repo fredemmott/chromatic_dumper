@@ -76,30 +76,12 @@ module usb_desc #(
         output [15:0] o_desc_strproduct_len,
         output [15:0] o_desc_strserial_addr,
         output [15:0] o_desc_strserial_len,
-        output [15:0] o_desc_strflashgbx_addr,
-        output [15:0] o_desc_strflashgbx_len,
-        output [15:0] o_desc_blobbos_addr,
-        output [15:0] o_desc_blobbos_len,
+        output [15:0] o_desc_strcartio_addr,
+        output [15:0] o_desc_strcartio_len,
         output       o_descrom_have_strings
 );
     localparam CARTIOSTR = "Cartridge IO (fredemmott)";
     localparam CARTIOSTR_LEN = $bits(CARTIOSTR) / 8;
-
-
-    localparam BOSBLOB = {
-        8'h12, // bLength
-        8'h03, // bDescriptorType
-        "M", 8'h00, // qwSignature
-        "S", 8'h00,
-        "F", 8'h00,
-        "T", 8'h00,
-        "1", 8'h00,
-        "0", 8'h00,
-        "0", 8'h00, // qwSignature
-        8'h42, // bMS_VendorCode,
-        8'h00 //bPad
-    };
-    localparam BOSBLOB_LEN = $bits(BOSBLOB) / 8;
 
 
     // Truncate descriptor data to keep only the necessary pieces;
@@ -176,9 +158,7 @@ module usb_desc #(
     localparam  DESC_STRSERIAL_LEN    = 2 + 2*SERIALSTR_LEN;
     localparam  DESC_STRCARTIO_ADDR = DESC_STRSERIAL_ADDR + DESC_STRSERIAL_LEN;
     localparam  DESC_STRCARTIO_LEN  = 2 + 2*CARTIOSTR_LEN;
-    localparam  DESC_BLOBBOS_ADDR     = DESC_STRCARTIO_ADDR + DESC_STRCARTIO_LEN;
-    localparam  DESC_BLOBBOS_LEN      = BOSBLOB_LEN;
-    localparam  DESC_END_ADDR         = DESC_BLOBBOS_ADDR + DESC_BLOBBOS_LEN;
+    localparam  DESC_END_ADDR         = DESC_STRCARTIO_ADDR + DESC_STRCARTIO_LEN;
 
     assign  o_desc_dev_addr        = DESC_DEV_ADDR        ;
     assign  o_desc_dev_len         = DESC_DEV_LEN         ;
@@ -196,10 +176,8 @@ module usb_desc #(
     assign  o_desc_strproduct_len  = DESC_STRPRODUCT_LEN  ;
     assign  o_desc_strserial_addr  = DESC_STRSERIAL_ADDR  ;
     assign  o_desc_strserial_len   = DESC_STRSERIAL_LEN   ;
-    assign  o_desc_strflashgbx_addr= DESC_STRCARTIO_ADDR;
-    assign  o_desc_strflashgbx_len = DESC_STRCARTIO_LEN ;
-    assign  o_desc_blobbos_addr    = DESC_BLOBBOS_ADDR;
-    assign  o_desc_blobbos_len     = DESC_BLOBBOS_LEN ;
+    assign  o_desc_strcartio_addr  = DESC_STRCARTIO_ADDR;
+    assign  o_desc_strcartio_len   = DESC_STRCARTIO_LEN ;
 
     // Truncate descriptor data to keep only the necessary pieces;
     // either just the full-speed stuff, || full-speed plus high-speed,
@@ -766,9 +744,6 @@ module usb_desc #(
                     descrom[DESC_STRCARTIO_ADDR + 2*i + 2][z] <= CARTIOSTR[(CARTIOSTR_LEN - 1 - i)*8+z];
                 end
                 descrom[DESC_STRCARTIO_ADDR + 2*i + 3] <= 8'h00;
-            end
-            for(i = 0; i < BOSBLOB_LEN; i = i + 1) begin
-                descrom[DESC_BLOBBOS_ADDR + i] <= BOSBLOB[(BOSBLOB_LEN - 1 - i)*8 +: 8];
             end
         end
       end
