@@ -24,7 +24,8 @@ typedef enum logic [7:0] {
     CMD_SET_STATUS_REGISTER_MASK = 8'd11,
     CMD_SET_STATUS_REGISTER_VALUE = 8'd12,
     CMD_GET_STATE_BITS = 8'd13,
-    CMD_FLUSH = 8'd14 // let's move to 8'd2
+    CMD_FLUSH = 8'd14,
+    CMD_DELAY = 8'd15 // (number of ticks)
 } command_t;
 
 

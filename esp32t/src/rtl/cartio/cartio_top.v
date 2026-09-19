@@ -44,7 +44,8 @@ wire [7:0] next_byte = fifo_q;
 typedef enum {
   S_IDLE,
   S_WAIT_ARG,
-  S_EXEC_VERIFY // post-write CMD_VERIFY_DATA or CMD_VERIFY_STATUS_REGISTER
+  S_EXEC_VERIFY, // post-write CMD_VERIFY_DATA or CMD_VERIFY_STATUS_REGISTER
+  S_EXEC_DELAY
 } state_t;
 state_t state;
 state_t state_d;
@@ -93,6 +94,8 @@ typedef enum {
 } verify_state_t;
 verify_state_t verify_state;
 
+wire delay_complete;
+
 command_t command;
 command_t command_latched;
 logic [7:0] arg;
@@ -132,6 +135,10 @@ always @(posedge clk) begin
         if (verify_state == VS_COMPLETE) begin
             state <= S_IDLE;
         end
+    end else if (state == S_EXEC_DELAY) begin
+        if (delay_complete) begin
+            state <= S_IDLE;
+        end
     end else if (next_byte_valid) begin
         unique case (state)
             S_IDLE: begin
@@ -146,6 +153,7 @@ always @(posedge clk) begin
                 unique case (command)
                     CMD_VERIFY_DATA: state <= S_EXEC_VERIFY;
                     CMD_VERIFY_STATUS_REGISTER: state <= S_EXEC_VERIFY;
+                    CMD_DELAY: state <= S_EXEC_DELAY;
                     CMD_FLUSH: tx_flush <= 1'b1;
                     default: /* nothing to do */ ;
                 endcase
@@ -323,5 +331,16 @@ always @(posedge clk) begin
         endcase
     end
 end
+
+logic [7:0] delay_counter;
+always @(posedge clk) begin
+    delay_counter <= arg;
+    if (state == S_EXEC_DELAY) begin
+        if (delay_counter >= 8'd1) begin
+            delay_counter <= delay_counter - 8'd1;
+        end
+    end
+end
+assign delay_complete = delay_counter == 1'b1;
 
 endmodule
