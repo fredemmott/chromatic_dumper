@@ -15,7 +15,7 @@ localparam ROM_BLOB = {
 
     // Our version timestamp - BCD
     /*  YYYY_MM_DD */
-    32'h2026_09_15,
+    32'h2026_09_19,
 
     // If we do multiple builds on the same day... __NOT__ BCD!
     8'd00, // Revision

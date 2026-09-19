@@ -11,21 +11,21 @@ package cartio_types;
 typedef enum logic [7:0] {
     CMD_NOP = 8'd0,
     CMD_PING = 8'd1, // ( cookie ) -> ~cookie
+    CMD_DELAY = 8'd2, // (number of ticks)
+    CMD_FLUSH = 8'd3,
 
-    CMD_SET_ADDRESS_MSB = 8'd2,
-    CMD_SET_ADDRESS_LSB = 8'd3,
-    CMD_SET_OUTPUT_ENABLE = 8'd4, // ({4 bits for OE pin select, 4 bits for values})
-    CMD_SET_DATA = 8'd5,
-    CMD_GET_DATA = 8'd6,
-    CMD_SET_PINS_A = 8'd7, // ({4 bits for pin select, 4 bits for values})
-    CMD_SET_PINS_B = 8'd8, // ({4 bits for pin select, 4 bits for values})
-    CMD_VERIFY_DATA = 8'd9, // (expected byte)
-    CMD_VERIFY_STATUS_REGISTER = 8'd10, // arg ignored
-    CMD_SET_STATUS_REGISTER_MASK = 8'd11,
-    CMD_SET_STATUS_REGISTER_VALUE = 8'd12,
-    CMD_GET_STATE_BITS = 8'd13,
-    CMD_FLUSH = 8'd14,
-    CMD_DELAY = 8'd15 // (number of ticks)
+    CMD_SET_ADDRESS_MSB = 8'd4,
+    CMD_SET_ADDRESS_LSB = 8'd5,
+    CMD_SET_OUTPUT_ENABLE = 8'd6, // ({4 bits for OE pin select, 4 bits for values})
+    CMD_SET_DATA = 8'd7,
+    CMD_GET_DATA = 8'd8,
+    CMD_SET_PINS_A = 8'd9, // ({4 bits for pin select, 4 bits for values})
+    CMD_SET_PINS_B = 8'd10, // ({4 bits for pin select, 4 bits for values})
+    CMD_VERIFY_DATA = 8'd11, // (expected byte)
+    CMD_VERIFY_STATUS_REGISTER = 8'd12, // arg ignored
+    CMD_SET_STATUS_REGISTER_MASK = 8'd13,
+    CMD_SET_STATUS_REGISTER_VALUE = 8'd14,
+    CMD_GET_STATE_BITS = 8'd15
 } command_t;
 
 
