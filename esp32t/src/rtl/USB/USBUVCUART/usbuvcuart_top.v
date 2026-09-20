@@ -1207,10 +1207,9 @@ module usbuvcuart_top(
     wire      cartio_serial_id_tx_dval;
     wire[7:0] cartio_serial_id_tx_data;
 
-    cartio_serial_mux::peer_t ep3_peer = cartio_serial_mux::P_MCU;
+    cartio_serial_mux::peer_t ep3_peer;
 
     wire ep3_is_mcu = (ep3_peer == cartio_serial_mux::P_MCU);
-    wire ep3_is_cartio = (ep3_peer == cartio_serial_mux::P_CARTIO);
     wire ep3_is_cartio_serial_id = (ep3_peer == cartio_serial_mux::P_CARTIO_SERIAL_ID);
 
     assign uart_tx_data_val = ep3_is_mcu ? ep3_rx_dval : 1'b0;
@@ -1229,29 +1228,29 @@ module usbuvcuart_top(
                 ep3_tx_data = uart_rx_data[7:0];
             end
             cartio_serial_mux::P_CARTIO_SERIAL_ID: begin
+                ep3_rx_rdy = 1'b1;
                 ep3_tx_dval = cartio_serial_id_tx_dval;
                 ep3_tx_data = cartio_serial_id_tx_data;
             end
-            cartio_serial_mux::P_CARTIO: ;
+            cartio_serial_mux::P_OBSERVER_ONLY: begin
+                ep3_rx_rdy = 1'b1;
+            end
             default: ;
         endcase
     end
 
-    reg cartio_observer_enable = 0;
-    always @(posedge pClk) cartio_observer_enable <= ep3_is_mcu;
-    cartio_serial_mux::peer_t cartio_observer_peer_o;
-
+    wire cartio_serial_id_complete;
     cartio_mcu_observer_t cartio_observer(
         pClk,
-        RESET_IN,
-        cartio_observer_enable,
+        RESET_IN | ep3_reset,
         ep3_rx_rdy,
         ep3_rx_dval,
         ep3_rx_data,
-        cartio_observer_peer_o
+        cartio_serial_id_complete,
+        cartio_enabled,
+        ep3_peer
     );
 
-    wire cartio_serial_id_complete;
     cartio_serial_id_t cartio_serial_id(
         pClk,
         ep3_is_cartio_serial_id,
@@ -1259,26 +1258,6 @@ module usbuvcuart_top(
         cartio_serial_id_tx_dval,
         cartio_serial_id_tx_data
     );
-
-    cartio_serial_mux::peer_t ep3_next_peer;
-    always @(*) begin
-        cartio_enabled = 1'b0;
-        ep3_next_peer = ep3_peer;
-        if (ep3_reset) begin
-            ep3_next_peer = cartio_serial_mux::P_MCU;
-        end else begin
-            unique case (ep3_peer)
-                cartio_serial_mux::P_MCU: ep3_next_peer = cartio_observer_peer_o;
-                cartio_serial_mux::P_CARTIO_SERIAL_ID: if (cartio_serial_id_complete) ep3_next_peer = cartio_serial_mux::P_MCU;
-                cartio_serial_mux::P_CARTIO: cartio_enabled = 1'b1; // terminal until reset
-                default: ep3_next_peer = cartio_serial_mux::P_INVALID;
-            endcase
-        end
-    end
-
-    always @(posedge pClk) begin
-        ep3_peer <= ep3_next_peer;
-    end
 endmodule
 
 module delay(input rst, input clk, input in, output out);

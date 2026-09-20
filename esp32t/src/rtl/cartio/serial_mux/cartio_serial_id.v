@@ -15,10 +15,10 @@ localparam ROM_BLOB = {
 
     // Our version timestamp - BCD
     /*  YYYY_MM_DD */
-    32'h2026_09_19,
+    32'h2026_09_20,
 
     // If we do multiple builds on the same day... __NOT__ BCD!
-    8'd01, // Revision
+    8'd00, // Revision
 
     // Upstream (ModRetro) version number - __NOT__ BCD
     8'd18, 8'd08,
