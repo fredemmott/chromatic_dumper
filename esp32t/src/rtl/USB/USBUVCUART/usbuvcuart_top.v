@@ -39,7 +39,7 @@ module usbuvcuart_top(
     inout               usb_term_dp_io,
     inout               usb_term_dn_io,
 
-    output reg          cartio_enabled,
+    output reg cartio_reset,
 
     input               cartio_tx_flush,
     input               cartio_tx_dval,
@@ -1045,7 +1045,7 @@ module usbuvcuart_top(
         .ADDR_WIDTH(12)
     ) cartio_txfifo (
         .clk         (pClk),
-        .reset       (usb_busreset | RESET_IN | ~cartio_enabled),
+        .reset       (RESET_IN | usb_busreset),
 
         .wr_val_i    (cartio_tx_dval),
         .wr_data_i   (cartio_tx_data),
@@ -1070,7 +1070,7 @@ module usbuvcuart_top(
         .ADDR_WIDTH(12)
     ) cartio_rxfifo (
         .clk         (pClk),
-        .reset       (~cartio_enabled),
+        .reset       (RESET_IN | usb_busreset),
 
         .wr_val_i    (cartio_rxval),
         .wr_data_i   (usb_rxdat),
@@ -1097,7 +1097,7 @@ module usbuvcuart_top(
 
     always @(posedge pClk) begin
         cartio_rx_count <= cartio_rx_count;
-        if (~(cartio_enabled & cartio_rxact)) begin
+        if (~cartio_rxact) begin
             cartio_rx_count <= 1'b0;
         end else if (cartio_rxval) begin
             // single-bit 'counter'
@@ -1123,7 +1123,7 @@ module usbuvcuart_top(
         // assuming !(cartio_tx_dval && cartio_tx_flush), as CMD_FLUSH does not produce TX
         //
         // we want to ignore flush if (expected TX %) 512 == 0; we only use it to mark short packets
-        if (~cartio_enabled) begin
+        if (RESET_IN) begin
             cartio_tx_since_flush <= 9'd0;
             cartio_tx_flush_pending <= 1'b0;
         end else if (cartio_txact_posedge) begin
@@ -1151,11 +1151,15 @@ module usbuvcuart_top(
     end
 
     always @(posedge pClk) begin
-        if (~cartio_enabled) begin
+        if (RESET_IN | usb_busreset) begin
             cartio_txdat_len <= 12'd0;
         end else if (!cartio_txact) begin
             cartio_txdat_len <= (cartio_txfifo_count >= 13'd512) ? 12'd512 : cartio_txfifo_count[11:0];
         end
+    end
+
+    always @(posedge pClk) begin
+        cartio_reset <= (RESET_IN | usb_busreset);
     end
 
     wire       ep3_rx_dval;
@@ -1194,16 +1198,6 @@ module usbuvcuart_top(
     assign    E_UART_DTR = s_ctl_sig[0];
     assign    E_UART_RTS = s_ctl_sig[1];
 
-    (* syn_preserve *) reg [1:0] cartio_cdc_dtr;
-    always @(posedge pClk or negedge s_ctl_sig[0]) begin
-        if (!s_ctl_sig[0]) begin
-            cartio_cdc_dtr <= 2'b00;
-        end else begin
-            cartio_cdc_dtr <= { cartio_cdc_dtr[0], 1'b1 };
-        end
-    end
-    wire ep3_reset = ~cartio_cdc_dtr[1];
-
     wire      cartio_serial_id_tx_dval;
     wire[7:0] cartio_serial_id_tx_data;
 
@@ -1238,26 +1232,7 @@ module usbuvcuart_top(
             default: ;
         endcase
     end
-
-    wire cartio_serial_id_complete;
-    cartio_mcu_observer_t cartio_observer(
-        pClk,
-        RESET_IN | ep3_reset,
-        ep3_rx_rdy,
-        ep3_rx_dval,
-        ep3_rx_data,
-        cartio_serial_id_complete,
-        cartio_enabled,
-        ep3_peer
-    );
-
-    cartio_serial_id_t cartio_serial_id(
-        pClk,
-        ep3_is_cartio_serial_id,
-        cartio_serial_id_complete,
-        cartio_serial_id_tx_dval,
-        cartio_serial_id_tx_data
-    );
+    assign ep3_peer = cartio_serial_mux::P_MCU;
 endmodule
 
 module delay(input rst, input clk, input in, output out);
