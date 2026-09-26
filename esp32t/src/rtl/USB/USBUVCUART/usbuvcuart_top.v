@@ -1010,8 +1010,13 @@ module usbuvcuart_top(
     wire [15:0] uart_rx_data    ;
     wire        uart_rx_data_val;
 
-    wire uart_cts = 1'b0;
 
+    wire uart_cts = 1'b0;
+    wire        ep3_rx_dval;
+    wire [7:0]  ep3_rx_data;
+
+    assign uart_tx_data     = {8'd0,ep3_rx_data};
+    assign uart_tx_data_val = ep3_rx_dval;
     UART  #(
         .CLK_FREQ     (30'd60000000)  // set system clock frequency in Hz
     )u_UART
@@ -1034,9 +1039,7 @@ module usbuvcuart_top(
     );
 
     //==============================================================
-    //======FIFO
-
-    // Support for the FlashGBX "LK" protocol
+    //====== Support for Cartridge IO (fredemmott)
 
     logic [12:0] cartio_txfifo_count;
     logic [12:0] cartio_txfifo_free;
@@ -1162,6 +1165,9 @@ module usbuvcuart_top(
         cartio_reset <= (RESET_IN | usb_busreset);
     end
 
+    //==============================================================
+    //======FIFO
+
     wire       ep3_rx_dval;
     wire [7:0] ep3_rx_data;
     reg        ep3_rx_rdy;
@@ -1187,10 +1193,10 @@ module usbuvcuart_top(
         // Endpoint 3 (USB serial)
         ,.i_ep3_tx_clk  (pClk             )
         ,.i_ep3_tx_max  (12'd64           )
-        ,.i_ep3_tx_dval (ep3_tx_dval      )
-        ,.i_ep3_tx_data (ep3_tx_data      )
+        ,.i_ep3_tx_dval (uart_rx_data_val )
+        ,.i_ep3_tx_data (uart_rx_data[7:0])
         ,.i_ep3_rx_clk  (pClk             )
-        ,.i_ep3_rx_rdy  (ep3_rx_rdy       )
+        ,.i_ep3_rx_rdy  (!uart_tx_busy    )
         ,.o_ep3_rx_dval (ep3_rx_dval      )
         ,.o_ep3_rx_data (ep3_rx_data      )
     );
@@ -1198,41 +1204,6 @@ module usbuvcuart_top(
     assign    E_UART_DTR = s_ctl_sig[0];
     assign    E_UART_RTS = s_ctl_sig[1];
 
-    wire      cartio_serial_id_tx_dval;
-    wire[7:0] cartio_serial_id_tx_data;
-
-    cartio_serial_mux::peer_t ep3_peer;
-
-    wire ep3_is_mcu = (ep3_peer == cartio_serial_mux::P_MCU);
-    wire ep3_is_cartio_serial_id = (ep3_peer == cartio_serial_mux::P_CARTIO_SERIAL_ID);
-
-    assign uart_tx_data_val = ep3_is_mcu ? ep3_rx_dval : 1'b0;
-    assign uart_tx_data = ep3_is_mcu ? {8'd0, ep3_rx_data } : 16'd0;
-
-    always @(*) begin
-        ep3_rx_rdy = 1'b0;
-
-        ep3_tx_dval = 1'b0;
-        ep3_tx_data = 8'd0;
-
-        unique case (ep3_peer)
-            cartio_serial_mux::P_MCU: begin
-                ep3_rx_rdy = !uart_tx_busy;
-                ep3_tx_dval = uart_rx_data_val;
-                ep3_tx_data = uart_rx_data[7:0];
-            end
-            cartio_serial_mux::P_CARTIO_SERIAL_ID: begin
-                ep3_rx_rdy = 1'b1;
-                ep3_tx_dval = cartio_serial_id_tx_dval;
-                ep3_tx_data = cartio_serial_id_tx_data;
-            end
-            cartio_serial_mux::P_OBSERVER_ONLY: begin
-                ep3_rx_rdy = 1'b1;
-            end
-            default: ;
-        endcase
-    end
-    assign ep3_peer = cartio_serial_mux::P_MCU;
 endmodule
 
 module delay(input rst, input clk, input in, output out);
